@@ -74,6 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Równoległe operacje (ten sam NIP, kod `TOW-nnnn`, mapowanie, przelicznik, numer wersji szablonu) kończą się ponowieniem albo komunikatem zamiast błędu 500 (BE-7, BE-17).
 - Wartości dłuższe niż kolumna (CRUD, nazwa klucza API, kody i jednostki zapamiętywane w negocjacji, nazwa szablonu z długiej nazwy dostawcy) dają komunikat walidacji zamiast `DataError`/500 na MariaDB; pola formularzy mają `maxlength` (BE-8/EDGE-18).
 - Plik w magazynie zapisywany atomowo z `fsync`; nieudane przyjęcie dokumentu usuwa zapisany przez nie plik; `STORAGE_DIR` sprawdzany przy starcie (niezapisywalny → czytelny błąd zamiast 500 przy pierwszym uploadzie) (BE-9, BE-10).
+- `tools/backup.sh` wykrywa nieudany lub pusty zrzut bazy i archiwum storage (`bash` + `set -euo pipefail`, sprawdzenie `CREATE TABLE` i `Dump completed` w zrzucie, `tar -t` archiwum); przy błędzie usuwa niekompletny katalog kopii i kończy się kodem ≠ 0 zamiast „Kopia zapasowa zapisana” (FR-1).
+- Obraz Dockera ustawia `STORAGE_DIR=/data/storage` (bez tej zmiennej w `.env` aplikacja jako nie-root próbowała pisać do `/app/storage`); entrypoint najpierw sprawdza zapisywalność storage (błąd konfiguracji → od razu czytelny komunikat), ponawia tylko błąd połączenia z bazą („Baza niegotowa”), a nieudaną migrację zgłasza raz, bez pętli ponowień (FR-7).
 
 ### Security
 - DoS przez złożoność kwadratową: wykrywanie grupy pozycji działa w jednym przejściu drzewa, a podpowiedzi mapowań korzystają z indeksu sufiksów ścieżek (rozpoznawanie po samym typie wartości tylko dla pierwszych 1 000 ścieżek). Szeroki JSON 1,15 MB: 35,6 s → 1,0 s; XML 1,5 MB: 162 s → 1,5 s (SEC-1).

@@ -11,22 +11,59 @@ if [ "$(id -u)" = "0" ]; then
   exec setpriv --reuid="$APP_UID" --regid="$APP_GID" --init-groups "$0" "$@"
 fi
 
-# Migracje z ponawianiem (baza może jeszcze wstawać); backoff 2s, 4s, ... do 30s.
+# FR-7: najpierw błędy konfiguracji (nie ponawiane), potem czekanie na bazę (ponawiane tylko
+# przy błędzie połączenia), na końcu jedna próba migracji z czytelnym komunikatem.
+probe="$STORAGE/.write-test.$$"
+if ! { mkdir -p "$STORAGE" && : > "$probe" && rm -f "$probe"; } 2>/dev/null; then
+  echo "Błąd konfiguracji: katalog STORAGE_DIR=$STORAGE nie jest zapisywalny dla uid $(id -u) - popraw STORAGE_DIR/wolumen, przerywam." >&2
+  exit 1
+fi
+
 if [ -d migrations ]; then
+  # Sonda połączenia: kod 3 = baza nieosiągalna/niegotowa (ponawiamy), inny = błąd konfiguracji (koniec).
   attempt=1
   delay=2
   max="${DB_WAIT_ATTEMPTS:-10}"
-  until flask db upgrade; do
-    if [ "$attempt" -ge "$max" ]; then
-      echo "Migracje nie powiodły się po $attempt próbach - przerywam." >&2
+  while :; do
+    rc=0
+    python - <<'PY' || rc=$?
+import os, sys
+try:
+    import sqlalchemy as sa
+    from sqlalchemy.exc import OperationalError
+    engine = sa.create_engine(os.environ.get("DATABASE_URL", "sqlite:///xmlparser-dev.db"))
+except Exception as exc:  # zły URL, brak sterownika itp.
+    print(f"Błąd konfiguracji bazy (DATABASE_URL): {type(exc).__name__}: {exc}", file=sys.stderr)
+    sys.exit(1)
+try:
+    with engine.connect():
+        pass
+except OperationalError as exc:
+    print(f"OperationalError: {exc.orig if exc.orig is not None else exc}", file=sys.stderr)
+    sys.exit(3)
+except Exception as exc:
+    print(f"Błąd konfiguracji bazy: {type(exc).__name__}: {exc}", file=sys.stderr)
+    sys.exit(1)
+PY
+    [ "$rc" -eq 0 ] && break
+    if [ "$rc" -ne 3 ]; then
+      echo "Błąd konfiguracji połączenia z bazą (szczegóły powyżej) - nie ponawiam, przerywam." >&2
       exit 1
     fi
-    echo "Baza niegotowa lub migracja nieudana (próba $attempt/$max), ponawiam za ${delay}s..." >&2
+    if [ "$attempt" -ge "$max" ]; then
+      echo "Baza nieosiągalna po $attempt próbach - przerywam." >&2
+      exit 1
+    fi
+    echo "Baza niegotowa (próba $attempt/$max), ponawiam za ${delay}s..." >&2
     sleep "$delay"
     attempt=$((attempt + 1))
     delay=$((delay * 2))
     [ "$delay" -gt 30 ] && delay=30
   done
+  if ! flask db upgrade; then
+    echo "Migracja bazy nie powiodła się (baza osiągalna, błąd migracji lub startu aplikacji - szczegóły powyżej). Nie ponawiam; sprawdź log, w razie potrzeby odtwórz kopię z tools/backup.sh." >&2
+    exit 1
+  fi
 fi
 # Seed jest idempotentny (tworzy tylko brakujące jednostki/admina/klucz demo; nie resetuje danych).
 if flask --help | grep -q " seed"; then flask seed; fi

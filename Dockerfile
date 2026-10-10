@@ -1,5 +1,6 @@
 FROM python:3.12.15-slim-trixie
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 FLASK_APP=app:create_app HOME=/home/app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 FLASK_APP=app:create_app HOME=/home/app \
+    STORAGE_DIR=/data/storage
 WORKDIR /app
 RUN useradd --system --uid 10001 --user-group --create-home --home-dir /home/app app
 COPY requirements.txt requirements.lock ./
