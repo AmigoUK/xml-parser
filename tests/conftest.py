@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from app import create_app
@@ -27,3 +29,18 @@ def app(tmp_path):
 @pytest.fixture
 def client(app):
     return app.test_client()
+
+
+SAMPLES = Path(__file__).resolve().parent.parent / "demo" / "samples"
+
+
+def sample_bytes(name: str) -> bytes:
+    return (SAMPLES / name).read_bytes()
+
+
+@pytest.fixture
+def seeded(app):
+    from app.services.seed import seed_base, seed_demo
+    seed_base()
+    seed_demo()
+    return app
