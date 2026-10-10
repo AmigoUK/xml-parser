@@ -37,8 +37,11 @@ class Config:
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
     REMEMBER_COOKIE_DURATION = timedelta(hours=8)
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
-    # limit prób logowania (SEC-2): po LOGIN_MAX_ATTEMPTS nieudanych w oknie — blokada e-maila/IP
+    # limit prób logowania (SEC-2): główny per (e-mail, IP); per IP i per sam e-mail z wyższymi progami
     LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", 5))
     LOGIN_LOCKOUT_MINUTES = int(os.environ.get("LOGIN_LOCKOUT_MINUTES", 15))
+    LOGIN_MAX_ATTEMPTS_PER_IP = int(os.environ.get("LOGIN_MAX_ATTEMPTS_PER_IP", 20))
+    LOGIN_MAX_ATTEMPTS_PER_EMAIL = int(os.environ.get("LOGIN_MAX_ATTEMPTS_PER_EMAIL", 50))
+    LOGIN_EMAIL_LOCKOUT_MINUTES = int(os.environ.get("LOGIN_EMAIL_LOCKOUT_MINUTES", 5))
     # liczba zaufanych reverse proxy przed aplikacją (OPS-8); 0 = nagłówki X-Forwarded-* ignorowane
     TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", 0))

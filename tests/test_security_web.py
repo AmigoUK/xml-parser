@@ -148,10 +148,83 @@ def test_login_lockout_expires_after_window(seeded, client):
 
 
 def test_login_lockout_per_ip_across_emails(seeded, client):
-    for i in range(5):
-        _login(client, email=f"nieznany{i}@example.com", password="x")
-    r = _login(client)
+    # rozpylanie haseł po wielu kontach z jednego IP — próg per IP (20)
+    for i in range(19):
+        assert _login(client, email=f"nieznany{i}@example.com", password="x").status_code == 200
+    assert _login(client, email="nieznany99@example.com", password="x").status_code == 200
+    assert _login(client).status_code == 429
+
+
+def test_attacker_cannot_lock_out_admin_from_other_ip(seeded, client):
+    for _ in range(8):
+        _login(client, password="zle", environ_base={"REMOTE_ADDR": "203.0.113.5"})
+    assert _login(client, password="zle", environ_base={"REMOTE_ADDR": "203.0.113.5"}).status_code == 429
+    # admin z innego adresu loguje się normalnie (próg per sam e-mail jest dużo wyższy)
+    r = _login(client, environ_base={"REMOTE_ADDR": "198.51.100.1"})
+    assert r.status_code == 302
+
+
+def test_blocked_attempts_do_not_extend_lockout_or_count_globally(seeded, client):
+    ip = {"REMOTE_ADDR": "203.0.113.6"}
+    for _ in range(5):
+        _login(client, password="zle", environ_base=ip)
+    for _ in range(60):  # zablokowane — nie są zapisywane, więc nie wliczają się do progu per e-mail
+        assert _login(client, password="zle", environ_base=ip).status_code == 429
+    assert LoginAttempt.query.count() == 5
+    assert _login(client, environ_base={"REMOTE_ADDR": "198.51.100.2"}).status_code == 302
+
+
+def test_global_email_threshold_across_many_ips(seeded, app, client):
+    for i in range(50):
+        _login(client, password="zle", environ_base={"REMOTE_ADDR": f"10.1.{i // 4}.{i % 4 + 1}"})
+    r = _login(client, environ_base={"REMOTE_ADDR": "198.51.100.3"})
     assert r.status_code == 429
+    for a in LoginAttempt.query.all():  # okno per e-mail jest krótsze (5 min)
+        a.created_at = utcnow() - timedelta(minutes=6)
+    db.session.commit()
+    assert _login(client, environ_base={"REMOTE_ADDR": "198.51.100.3"}).status_code == 302
+
+
+def test_parallel_burst_cannot_bypass_limit(tmp_path, monkeypatch):
+    """Równoległe próby (wątki, wspólna baza SQLite w pliku): hasło sprawdzone najwyżej LOGIN_MAX_ATTEMPTS razy."""
+    import threading
+
+    app = create_app({
+        "TESTING": True, "SECRET_KEY": "test", "WTF_CSRF_ENABLED": False,
+        "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'race.db'}",
+        "SQLALCHEMY_ENGINE_OPTIONS": {"connect_args": {"timeout": 30}},
+        "STORAGE_DIR": str(tmp_path / "s"), "ADMIN_EMAIL": "admin@example.com", "ADMIN_PASSWORD": "haslo123",
+        "DEMO_MODE": False,
+    })
+    with app.app_context():
+        db.create_all()
+        from app.services.seed import seed_base
+        seed_base()
+    checks = []
+    original = User.check_password
+
+    def slow_check(self, pw):
+        checks.append(pw)
+        import time
+        time.sleep(0.05)  # okno wyścigu między odczytem licznika a zapisem
+        return original(self, pw)
+
+    monkeypatch.setattr(User, "check_password", slow_check)
+    barrier = threading.Barrier(12)
+    codes = []
+
+    def worker():
+        c = app.test_client()
+        barrier.wait()
+        codes.append(c.post("/login", data={"email": "admin@example.com", "password": "zle"}).status_code)
+
+    threads = [threading.Thread(target=worker) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(codes) == 12
+    assert len(checks) <= 5 and codes.count(429) >= 7
 
 
 def test_login_lockout_is_per_ip_not_global(seeded, client):

@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Healthcheck usługi `app`; `/healthz` sprawdza połączenie z bazą (503 przy awarii, pole `db`) (OPS-7).
 - Limity zasobów kontenerów (`APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS`) i rotacja logów dockera (OPS-12, OPS-18).
 - `requirements.lock` z przypiętymi zależnościami przechodnimi, używany w obrazie (OPS-6).
-- Limit prób logowania: po 5 nieudanych próbach w 15 min (osobno na e-mail i na adres IP) blokada na 15 min z komunikatem; liczone w bazie (tabela `login_attempts`), więc działa przy wielu workerach; konfigurowalne `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES` (SEC-2).
+- Limit prób logowania liczony w bazie (tabela `login_attempts`, działa przy wielu workerach): 5 nieudanych prób w 15 min dla pary (e-mail, IP) → blokada tej pary na 15 min; 20 prób z jednego IP na dowolne konta; 50 prób na jedno konto z dowolnych IP w 5 min → krótka blokada konta. Obcy bez hasła nie zablokuje admina logującego się z innego adresu. Próba zapisywana przed sprawdzeniem hasła (równoległe żądania nie omijają limitu), próby zablokowane nie przedłużają blokady. Progi konfigurowalne `LOGIN_*` (SEC-2).
 - Nieudane i zablokowane logowania zapisywane w historii (`login_failed`, `login_blocked`) (SEC-2).
 - `TRUSTED_PROXY_COUNT` — ProxyFix włączany tylko dla jawnie zaufanych proxy (domyślnie 0) (OPS-8).
 
