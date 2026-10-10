@@ -9,7 +9,7 @@ from flask import flash, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy.exc import DataError, IntegrityError
 
-from app.engine.values import AmbiguousNumberError, to_decimal
+from app.engine.values import parse_factor
 from app.extensions import db
 from app.services.audit import audit
 
@@ -50,12 +50,11 @@ def _parse(f: CrudField, raw: str | None, model=None):
         if f.required:
             raise ValueError(f"Pole „{f.label}” jest wymagane.")
         return None
-    if f.type == "number":
+    if f.type == "number":  # jedyne pole liczbowe to przelicznik — wspólna reguła (FR-2)
         try:
-            return to_decimal(raw, reject_ambiguous=True)
-        except AmbiguousNumberError:  # „1,000” / „1.000” — błąd formularza, nie cicha interpretacja 1,0
-            raise ValueError(f"Pole „{f.label}”: niejednoznaczna liczba „{raw}” — wpisz ją bez separatora "
-                             "tysięcy, np. 1000 albo 1,5.") from None
+            return parse_factor(raw)
+        except ValueError as exc:
+            raise ValueError(f"Pole „{f.label}”: {exc}") from None
     if f.type == "select":
         if not raw.isdigit():
             raise ValueError(f"Nieprawidłowa wartość pola „{f.label}”.")

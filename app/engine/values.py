@@ -143,6 +143,41 @@ def to_decimal(raw, decimal_sep: str | None = None, *, reject_ambiguous: bool = 
     return _no_negative_zero(d)
 
 
+
+MAX_FACTOR_INTEGER_DIGITS = 12
+
+
+def parse_factor(raw) -> Decimal:
+    """Przelicznik jednostek (CRUD, negocjacja, podpowiedzi, transformacja 'convert') — jedna reguła (FR-2).
+
+    Pole ma jawną intencję dziesiętną, więc kropka jest ZAWSZE separatorem dziesiętnym („1.125” → 1,125;
+    „1.000” → 1). Przecinek z dokładnie 3 cyframi („1,125”) pozostaje niejednoznaczny — błąd z działającymi
+    formami do wpisania. Liczba JSON (int/float) jest jednoznaczna. Wynik > 0 i < 10^12."""
+    if isinstance(raw, bool) or raw is None:
+        raise ValueError("Przelicznik musi być liczbą.")
+    if isinstance(raw, (int, float, Decimal)):
+        raw = PlainNumber(raw)
+    elif not isinstance(raw, str):
+        raise ValueError("Przelicznik musi być liczbą.")
+    text = raw.strip()
+    if isinstance(raw, PlainNumber):
+        factor = to_decimal(raw)
+    elif "." in text:
+        factor = to_decimal(text, ".")
+    else:
+        try:
+            factor = to_decimal(text, reject_ambiguous=True)
+        except AmbiguousNumberError:
+            raise AmbiguousNumberError(
+                f"Niejednoznaczny przelicznik „{text}” — przecinek przed 3 cyframi może oznaczać tysiące. "
+                f"Wpisz {text.replace(',', '.')} (kropka to separator dziesiętny) albo {text.replace(',', '')} "
+                f"(bez separatora).") from None
+    if factor <= 0:
+        raise ValueError("Przelicznik musi być większy od zera.")
+    if factor >= Decimal(10) ** MAX_FACTOR_INTEGER_DIGITS:
+        raise ValueError(f"Przelicznik jest zbyt duży (maks. {MAX_FACTOR_INTEGER_DIGITS} cyfr całkowitych).")
+    return factor
+
 # Wnioskowanie separatora dziesiętnego z innych wartości dokumentu (EDGE-11): pojedynczy separator
 # z liczbą cyfr po nim różną od 3 albo poprzedzony „0”/ponad 3 cyframi jest na pewno dziesiętny;
 # zapis mieszany („1.234,56”) wskazuje separator ostatni. Sprzeczne wskazania → brak wniosku.

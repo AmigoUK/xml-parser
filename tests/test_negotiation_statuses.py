@@ -240,10 +240,12 @@ def test_add_conversion_twice_updates_existing(supplier):
 
 def test_add_conversion_ambiguous_factor_is_error(supplier):
     d = ingest(inv("C/2"), "c.json")
-    for raw in ("1,000", "1.000"):
-        with pytest.raises(NegotiationError, match="[Nn]iejednoznaczn"):
-            resolve(d, "add_conversion", {"from_unit": "karton", "to_unit": "szt", "factor": raw}, True, "qa")
+    with pytest.raises(NegotiationError, match="[Nn]iejednoznaczn"):
+        resolve(d, "add_conversion", {"from_unit": "karton", "to_unit": "szt", "factor": "1,000"}, True, "qa")
     assert UnitConversion.query.count() == 0
+    # FR-2: w polu przelicznika kropka jest zawsze separatorem dziesiętnym
+    resolve(d, "add_conversion", {"from_unit": "karton", "to_unit": "szt", "factor": "1.000"}, True, "qa")
+    assert UnitConversion.query.one().factor == 1
 
 
 def _crud_conv(client, factor, supplier_id=""):

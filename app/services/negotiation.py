@@ -8,7 +8,7 @@ from app.engine.canonical import FIELD_LABELS, LINE_KEYS
 from app.engine.lookups import norm_alias, norm_product_name
 from app.engine.suggest import FIELDS_BY_KEY, norm_tax_id, tax_ids_match
 from app.engine.tree import relative_path
-from app.engine.values import AmbiguousNumberError, normalize_gtin, to_decimal
+from app.engine.values import normalize_gtin, parse_factor
 from sqlalchemy.exc import DataError, IntegrityError
 
 from app.extensions import db
@@ -90,17 +90,8 @@ def _line(doc: Document, line_no) -> dict:
 
 
 def parse_factor_input(raw) -> Decimal:
-    """Przelicznik z formularza (negocjacja, CRUD): liczba > 0; „1,000” / „1.000” → błąd, nie 1,0."""
-    try:
-        factor = to_decimal(raw, reject_ambiguous=True)
-    except AmbiguousNumberError:
-        raise ValueError(f"Niejednoznaczna liczba „{raw}” — wpisz przelicznik bez separatora tysięcy, "
-                         "np. 1000 albo 1,5.") from None
-    if factor <= 0:
-        raise ValueError("Przelicznik musi być większy od zera.")
-    if factor >= Decimal(10) ** 12:
-        raise ValueError("Przelicznik jest zbyt duży (maks. 12 cyfr całkowitych).")
-    return factor
+    """Przelicznik z formularza negocjacji — ta sama reguła co CRUD i edytor (``parse_factor``, FR-2)."""
+    return parse_factor(raw)
 
 
 def find_supplier_by_tax_id(tax_id: str | None, exclude_id: int | None = None) -> Supplier | None:

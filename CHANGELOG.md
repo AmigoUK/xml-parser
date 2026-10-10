@@ -64,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ręcznie odrzucony dokument pozostaje odrzucony po `POST /api/v1/documents/{id}/reprocess` (409 `rejected`), po zapisie z edytora, po „Przetwórz ponownie” i po próbie rozwiązania problemu; odrzucenia automatyczne (nieczytelny plik, zbyt wiele pozycji) można przetworzyć ponownie (BE-2/EDGE-6).
 - „Zapamiętaj” towar dla pozycji bez kodu i GTIN nie przepina już cudzego mapowania tego dostawcy; pozycja z samym GTIN nie nadpisuje mapowania po kodzie (BE-3/EDGE-3).
 - Ponowne dodanie przelicznika dla tego samego dostawcy, towaru i jednostki aktualizuje istniejący zamiast tworzyć duplikat; CRUD odrzuca duplikat, a wyszukiwanie wybiera najnowszy przelicznik (BE-4).
-- Przelicznik `1,000` / `1.000` w CRUD i negocjacji to błąd formularza zamiast cichego 1,0.
+- Przelicznik `1,000` w CRUD i negocjacji to błąd formularza zamiast cichego 1,0.
+- Przelicznik z 3 miejscami po przecinku (np. 1,125 kg) daje się wpisać: w polach przelicznika (CRUD, negocjacja, podpowiedź systemu, transformacja `convert` w edytorze) kropka jest zawsze separatorem dziesiętnym (`1.125` → 1,125; `1.000` → 1), a przecinek z dokładnie 3 cyframi (`1,125`) daje komunikat z działającymi formami („wpisz 1.125 albo 1125”). Podpowiedź przelicznika z nazwy towaru („Ser 1125 g”) nie jest już odrzucana przy zapisie. Jedna funkcja `parse_factor` we wszystkich tych miejscach (FR-2).
 - Ponowne przetworzenie oryginału nie oznacza go jako duplikatu kopii zatwierdzonej przez „Dopuść duplikat” (BE-5).
 - Ręczne przypisanie usuniętego towaru (lub jednostki) nie daje już statusu zatwierdzonego — pozycja dostaje problem blokujący (EDGE-7).
 - Porównanie NIP/VAT uwzględnia prefiks kraju: `FR123456789` ≠ `DE123456789`; prefiks pomijany tylko, gdy po jednej stronie go brak (EDGE-8).

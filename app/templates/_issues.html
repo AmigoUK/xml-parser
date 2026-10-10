@@ -98,7 +98,7 @@
         <input type="hidden" name="line_no" value="{{ i.line_no }}">
         <div class="d-flex gap-2 align-items-center flex-wrap small">
           1 {{ i.source_value }} =
-          <input class="form-control form-control-sm w-auto" name="factor" value="{{ g.factor or '' }}" placeholder="np. 12" required>
+          <input class="form-control form-control-sm w-auto" name="factor" value="{{ g.factor or '' }}" placeholder="np. 12 albo 1.125" title="Kropka to separator dziesiętny" required>
           <select class="form-select form-select-sm w-auto" name="to_unit">
             {% for u in ctx.units if u.is_base %}<option value="{{ u.code }}" {% if u.code == g.to_unit %}selected{% endif %}>{{ u.code }}</option>{% endfor %}
           </select>

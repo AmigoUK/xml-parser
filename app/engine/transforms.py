@@ -11,6 +11,7 @@ import regex
 from .gs1 import DATE_AIS, GS1Error, gs1_date, parse_gs1
 from .tree import Node, SourceTree
 from .values import DECIMAL_SEPARATORS, PlainNumber, fmt_qty, to_decimal
+from .values import parse_factor as parse_conversion_factor
 
 MAX_PATTERN = 200
 MAX_INPUT = 1000
@@ -38,17 +39,9 @@ def _num(v, ctx, sep: str | None = None) -> Decimal:
 
 
 def parse_factor(arg) -> Decimal:
-    """Współczynnik transformacji 'convert' — liczba dodatnia (EDGE-16; do zmiany znaku służy 'negate')."""
-    if isinstance(arg, bool) or arg is None:
-        raise ValueError("Współczynnik przeliczenia musi być liczbą.")
-    if isinstance(arg, (int, float, Decimal)):
-        arg = PlainNumber(arg)  # liczba JSON w szablonie jest jednoznaczna
-    elif not isinstance(arg, str):
-        raise ValueError("Współczynnik przeliczenia musi być liczbą.")
-    factor = to_decimal(arg, reject_ambiguous=True)
-    if factor <= 0:
-        raise ValueError("Współczynnik przeliczenia musi być większy od zera (do zmiany znaku służy 'negate').")
-    return factor
+    """Współczynnik transformacji 'convert' — wspólna reguła przelicznika (EDGE-16, FR-2);
+    do zmiany znaku służy 'negate'."""
+    return parse_conversion_factor(arg)
 
 
 def _decimal(v, arg, ctx):
