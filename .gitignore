@@ -27,3 +27,6 @@ htmlcov/
 
 # Kopie zapasowe (dump bazy + storage)
 backups/
+
+# Claude Code (lokalne worktree agentów)
+.claude/
