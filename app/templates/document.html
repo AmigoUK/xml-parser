@@ -6,7 +6,7 @@
   <div>
     <h1 class="h4 m-0">Dokument #{{ doc.id }} <span class="badge text-bg-{{ {'approved':'success','needs_review':'warning','duplicate':'secondary','rejected':'danger'}.get(doc.status,'light') }}">{{ doc.status_label }}</span></h1>
     <div class="small text-muted">{{ doc.filename }} · {{ (doc.fmt or '?')|upper }} · dostawca: {{ doc.supplier.name if doc.supplier else 'nierozpoznany' }}
-      {% if doc.template_version %} · szablon „{{ doc.template.name }}” v{{ doc.template_version.version }}{% elif doc.draft_rules %} · reguły robocze (szablon powstanie po rozpoznaniu dostawcy){% endif %}</div>
+      {% if doc.template_version %} · szablon „{{ doc.template.name }}” v{{ doc.template_version.version }}{% elif doc.draft_rules %} · reguły robocze ({% if doc.supplier_id %}szablon powstanie przy pierwszym zapisie mapowania{% else %}szablon powstanie po rozpoznaniu dostawcy i zapisie mapowania{% endif %}){% endif %}</div>
   </div>
   <div class="d-flex gap-2">
     <form method="post" action="{{ url_for('docs.reprocess', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">Przetwórz ponownie</button></form>

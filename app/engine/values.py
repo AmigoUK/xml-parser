@@ -7,6 +7,9 @@ from .gs1 import is_valid_gtin
 _DATE_FORMATS = ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%Y%m%d", "%d-%m-%Y", "%Y.%m.%d")
 
 
+MAX_INTEGER_DIGITS = 18
+
+
 def to_decimal(raw) -> Decimal:
     if raw is None:
         raise ValueError("Brak wartości liczbowej.")
@@ -26,9 +29,12 @@ def to_decimal(raw) -> Decimal:
     elif s.count(".") > 1:
         s = s.replace(".", "")
     try:
-        return Decimal(s)
+        d = Decimal(s)
     except InvalidOperation:
         raise ValueError(f"Nieprawidłowa liczba: {raw!r}") from None
+    if not d.is_finite() or (d != 0 and d.adjusted() >= MAX_INTEGER_DIGITS):
+        raise ValueError(f"Liczba poza dopuszczalnym zakresem (maks. {MAX_INTEGER_DIGITS} cyfr całkowitych).")
+    return d
 
 
 def fmt_money(d: Decimal) -> str:

@@ -154,6 +154,13 @@ def _enrich(issues: list[Issue], tree: SourceTree, rules: dict, inv: dict, synon
             issue.suggestions = [conversion_guess(line.get("name"), issue.source_value or "")]
 
 
+def _fit(column, value):
+    """Obcina wartość do długości kolumny (MariaDB w trybie strict odrzuca dłuższe)."""
+    if value is None:
+        return None
+    return str(value)[:column.type.length]
+
+
 def process(doc: Document) -> Document:
     synonyms = load_synonyms()
     try:
@@ -194,7 +201,9 @@ def process(doc: Document) -> Document:
     _enrich(issues, tree, rules, inv, synonyms, ident, lookups)
     doc.result = inv
     doc.issues = [i.to_dict() for i in issues]
-    doc.number, doc.issue_date, doc.doc_type = inv.get("number"), inv.get("issue_date"), inv.get("doc_type")
+    doc.number = _fit(Document.number, inv.get("number"))
+    doc.issue_date = _fit(Document.issue_date, inv.get("issue_date"))
+    doc.doc_type = _fit(Document.doc_type, inv.get("doc_type"))
     doc.status = STATUS_DUPLICATE if dup else (STATUS_NEEDS_REVIEW if has_blocking(issues) else STATUS_APPROVED)
     return doc
 
@@ -204,7 +213,8 @@ def ingest(data: bytes, filename: str | None, source: str = "upload", api_key_id
     if len(data) > limit:
         raise DocumentTooLarge(f"Plik przekracza limit {limit // (1024 * 1024)} MB.")
     sha = get_storage().save(data)
-    doc = Document(source=source, filename=(filename or "dokument")[:255], sha256=sha, status=STATUS_RECEIVED,
+    doc = Document(source=_fit(Document.source, source), filename=_fit(Document.filename, filename or "dokument"),
+                   sha256=sha, status=STATUS_RECEIVED,
                    overrides={}, issues=[], api_key_id=api_key_id)
     db.session.add(doc)
     db.session.flush()

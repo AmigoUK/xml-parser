@@ -12,6 +12,11 @@ docker compose up -d --build
 # panel: http://<host>:5010
 ```
 
+Serwer: gunicorn z workerami wątkowymi (`-k gthread -w 2 --threads 8 --timeout 60`), dzięki czemu
+bezczynne połączenia przeglądarki nie blokują aplikacji. Ustawienia można nadpisać zmienną
+`GUNICORN_CMD_ARGS` (np. w `.env`: `GUNICORN_CMD_ARGS=-k gthread -w 4 --threads 16 --timeout 90`);
+gdy zmienna jest ustawiona, zastępuje całe powyższe domyślne zestawienie flag.
+
 ## Rozwój lokalny
 
 ```bash

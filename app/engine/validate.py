@@ -11,12 +11,15 @@ def _d(v):
         return None
     try:
         return to_decimal(v)
-    except ValueError:
+    except (ValueError, ArithmeticError):
         return None
 
 
 def _r(d: Decimal) -> Decimal:
-    return d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    try:
+        return d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except ArithmeticError:  # wynik przekracza precyzję kontekstu — porównujemy bez zaokrąglenia
+        return d
 
 
 def validate_invoice(invoice: dict) -> list[Issue]:

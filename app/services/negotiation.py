@@ -32,11 +32,27 @@ def _set_override(doc: Document, section: str | None, key: str, value) -> None:
     doc.overrides = ov
 
 
-def _save_rules(doc: Document, rules: dict, user: str | None, comment: str) -> None:
+def ensure_template(doc: Document, rules: dict, user: str | None) -> Template:
+    """Tworzy szablon dla rozpoznanego dostawcy z podanych reguł i podpina go do dokumentu."""
+    supplier = db.session.get(Supplier, doc.supplier_id)
+    tree = load_tree(doc)
+    tpl = create_template(supplier, tree.leaf_paths(), tree.fingerprint(), tree.fmt, rules, user)
+    doc.template_id = tpl.id
+    doc.draft_rules = None
+    return tpl
+
+
+def save_rules(doc: Document, rules: dict, user: str | None, comment: str):
+    """Zapisuje reguły: nowa wersja szablonu; bez szablonu — szablon (gdy dostawca znany) albo reguły robocze."""
     if doc.template_id:
-        new_version(db.session.get(Template, doc.template_id), rules, user, comment)
-    else:
-        doc.draft_rules = rules
+        return new_version(db.session.get(Template, doc.template_id), rules, user, comment)
+    if doc.supplier_id:
+        return ensure_template(doc, rules, user).active_version
+    doc.draft_rules = rules
+    return None
+
+
+_save_rules = save_rules
 
 
 def _require_supplier(doc: Document) -> None:
@@ -62,17 +78,15 @@ def _attach_supplier(doc: Document, supplier: Supplier, user: str | None) -> Non
     doc.supplier_id = supplier.id
     tree = load_tree(doc)
     if best_template_for(supplier.id, tree.path_set()) is None:
-        rules = doc.draft_rules or current_rules(doc)
-        tpl = create_template(supplier, tree.leaf_paths(), tree.fingerprint(), tree.fmt, rules, user)
-        doc.template_id = tpl.id
-        doc.draft_rules = None
+        ensure_template(doc, doc.draft_rules or current_rules(doc), user)
 
 
 def a_create_supplier(doc, data, remember, user):
     name = (data.get("name") or "").strip()
     if not name:
         raise NegotiationError("Podaj nazwę dostawcy.")
-    s = Supplier(name=name, tax_id=(data.get("tax_id") or "").strip() or None)
+    tax_id = (data.get("tax_id") or "").strip()[:64] or None
+    s = Supplier(name=name[:255], tax_id=tax_id)
     db.session.add(s)
     db.session.flush()
     _attach_supplier(doc, s, user)
@@ -143,6 +157,8 @@ def a_add_conversion(doc, data, remember, user):
         raise NegotiationError(f"Przelicznik: {exc}") from None
     if factor <= 0:
         raise NegotiationError("Przelicznik musi być większy od zera.")
+    if factor >= Decimal(10) ** 12:
+        raise NegotiationError("Przelicznik jest zbyt duży (maks. 12 cyfr całkowitych).")
     product_id = None
     if data.get("scope") == "product":
         code = _line(doc, data.get("line_no")).get("product_index")
@@ -234,4 +250,7 @@ def resolve(doc: Document, action: str, data: dict, remember: bool = True, user:
     except ValueError as exc:  # np. walidator modelu (przelicznik)
         db.session.rollback()
         raise NegotiationError(str(exc)) from None
+    except Exception:
+        db.session.rollback()
+        raise
     return doc

@@ -8,7 +8,7 @@ from flask_login import current_user, login_required
 from app.engine.canonical import FIELD_LABELS, HEADER_FIELDS, LINE_FIELDS
 from app.extensions import db
 from app.ingest import ReaderError
-from app.models import STATUS_LABELS, STATUS_NEEDS_REVIEW, Document, Product, Supplier, Unit
+from app.models import STATUS_LABELS, STATUS_NEEDS_REVIEW, STATUS_REJECTED, Document, Product, Supplier, Unit
 from app.services.negotiation import NegotiationError, resolve
 from app.services.pipeline import DocumentTooLarge, ingest, load_tree, process
 from app.services.storage import get_storage
@@ -139,6 +139,9 @@ def resolve_issue(doc_id):
 @login_required
 def reprocess(doc_id):
     doc = _get(doc_id)
+    if doc.status == STATUS_REJECTED and not any(i.get("code") == "unreadable" for i in doc.issues or []):
+        flash("Dokument został odrzucony — przetwarzanie ponowne nie cofa odrzucenia.", "info")
+        return redirect(url_for("docs.detail", doc_id=doc_id))
     process(doc)
     db.session.commit()
     flash("Przetworzono ponownie aktywną wersją szablonu.", "success")

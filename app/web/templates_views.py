@@ -17,6 +17,7 @@ from app.models import Document, Template, TemplateVersion
 from app.services.audit import audit
 from app.services.lookups_db import DbLookups
 from app.services.pipeline import current_rules, load_tree, process
+from app.services.negotiation import save_rules
 from app.services.templates import active_rule_sets, new_version
 
 bp = Blueprint("templates_views", __name__, url_prefix="/szablony")
@@ -259,8 +260,8 @@ def save(doc_id):
         return jsonify(error="Nie można odczytać pliku źródłowego dokumentu."), 400
     except Exception:  # noqa: BLE001
         return jsonify(error="Reguły nie dają się zastosować do tego dokumentu."), 400
-    if doc.template_id:
-        v = new_version(db.session.get(Template, doc.template_id), rules, current_user.email, comment)
+    if doc.template_id or doc.supplier_id:
+        v = save_rules(doc, rules, current_user.email, comment)
         audit("edit", "template", doc.template_id, {"version": v.version, "comment": comment})
     else:
         doc.draft_rules = rules

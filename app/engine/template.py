@@ -62,7 +62,7 @@ def _coerce(f: FieldDef, raw, issues: list[Issue], line_no: int | None, src: str
             return fmt_qty(to_decimal(raw))
         if f.kind == GTIN:
             return normalize_gtin(str(raw))
-    except ValueError as exc:
+    except (ValueError, ArithmeticError) as exc:
         issues.append(Issue("invalid_value", BLOCKING if f.required else WARNING,
                             f"{f.label}: {exc}", field=f.key, line_no=line_no, source_path=src,
                             source_value=str(raw)))

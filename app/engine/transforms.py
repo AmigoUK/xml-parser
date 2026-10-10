@@ -186,6 +186,6 @@ def apply_chain(value: str | None, chain: list, ctx: TransformContext | None = N
             value = fn(value, arg, ctx)
         except TransformError:
             raise
-        except (ValueError, AttributeError, TypeError, IndexError, KeyError) as exc:
+        except (ValueError, AttributeError, TypeError, IndexError, KeyError, ArithmeticError) as exc:
             raise TransformError(f"Niepoprawny argument transformacji {name!r}.") from exc
     return value
