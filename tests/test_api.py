@@ -71,3 +71,37 @@ def test_too_large_http_limit_json(seeded, app, client):
 
 def test_bad_limit_400(seeded, client):
     assert client.get("/api/v1/documents?limit=abc", headers=KEY).status_code == 400
+
+
+def _second_key(app):
+    from app.extensions import db
+    from app.services.apikeys import create_key
+    create_key("B", "xp_other_key_b")
+    db.session.commit()
+    return {"X-API-Key": "xp_other_key_b"}
+
+
+def test_keys_are_isolated(seeded, app, client):
+    b = _second_key(app)
+    doc = client.post("/api/v1/documents", headers=KEY, data=sample_bytes("alfa-1.xml")).get_json()
+    assert client.get(f"/api/v1/documents/{doc['id']}", headers=b).status_code == 404
+    r = client.post(f"/api/v1/documents/{doc['id']}/reprocess", headers=b)
+    assert r.status_code == 404 and r.get_json()["error"]["code"] == "not_found"
+    assert client.get("/api/v1/documents", headers=b).get_json() == {"items": []}
+    assert len(client.get("/api/v1/documents", headers=KEY).get_json()["items"]) == 1
+
+
+def test_panel_document_invisible_to_api(seeded, app, client):
+    from app.services.pipeline import ingest
+    with app.app_context():
+        doc = ingest(sample_bytes("alfa-1.xml"), "a.xml", source="upload")
+        doc_id = doc.id
+    assert client.get(f"/api/v1/documents/{doc_id}", headers=KEY).status_code == 404
+    assert client.get("/api/v1/documents", headers=KEY).get_json() == {"items": []}
+
+
+def test_json_404_405(seeded, client):
+    r = client.get("/api/v1/nic", headers=KEY)
+    assert r.status_code == 404 and r.get_json()["error"]["code"] == "not_found"
+    r = client.delete("/api/v1/suppliers", headers=KEY)
+    assert r.status_code == 405 and r.get_json()["error"]["code"] == "method_not_allowed"

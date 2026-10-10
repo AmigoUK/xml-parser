@@ -62,7 +62,7 @@ def create_document():
 @bp.get("/documents")
 @require_api_key
 def list_documents():
-    q = Document.query.order_by(Document.id.desc())
+    q = Document.query.filter_by(api_key_id=g.api_key.id).order_by(Document.id.desc())
     status = request.args.get("status")
     if status:
         if status not in STATUS_LABELS:
@@ -82,7 +82,8 @@ def list_documents():
 
 
 def _get_doc(doc_id: int):
-    return db.session.get(Document, doc_id)
+    doc = db.session.get(Document, doc_id)
+    return doc if doc is not None and doc.api_key_id == g.api_key.id else None
 
 
 @bp.get("/documents/<int:doc_id>")
@@ -118,3 +119,26 @@ def too_large(exc):
         return exc
     limit = current_app.config["MAX_DOCUMENT_BYTES"] // (1024 * 1024)
     return api_error("too_large", f"Plik przekracza limit {limit} MB.", 413)
+
+
+def _json_or_default(exc, code, message):
+    if not request.path.startswith("/api/"):
+        return exc
+    return api_error(code, message, exc.code if hasattr(exc, "code") and exc.code else 500)
+
+
+@bp.app_errorhandler(404)
+def _not_found(exc):
+    return _json_or_default(exc, "not_found", "Nie znaleziono zasobu.")
+
+
+@bp.app_errorhandler(405)
+def _method_not_allowed(exc):
+    return _json_or_default(exc, "method_not_allowed", "Metoda niedozwolona dla tego adresu.")
+
+
+@bp.app_errorhandler(500)
+def _server_error(exc):
+    if not request.path.startswith("/api/"):
+        return exc
+    return api_error("internal_error", "Wewnętrzny błąd serwera.", 500)

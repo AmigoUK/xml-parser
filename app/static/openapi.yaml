@@ -6,6 +6,9 @@ info:
     Wysyłasz fakturę (XML / JSON / CSV), dostajesz znormalizowany JSON.
     Status `needs_review` oznacza, że operator musi rozwiązać problemy w panelu,
     a `approved` — że faktura została odczytana automatycznie.
+
+    Dokumenty są ograniczone do klucza API: widzisz, pobierasz i przetwarzasz ponownie
+    tylko dokumenty wysłane tym samym kluczem (cudze zwracają 404).
 servers: [{ url: /api/v1 }]
 security: [{ ApiKey: [] }]
 components:
