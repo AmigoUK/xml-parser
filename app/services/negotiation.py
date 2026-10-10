@@ -16,7 +16,8 @@ from app.models import (STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, 
                         STATUS_REJECTED, Document, Product, ProductMapping, Supplier, Template, Unit,
                         UnitAlias, UnitConversion)
 from app.services.audit import audit
-from app.services.pipeline import best_template_for, current_rules, load_tree, next_product_code, process
+from app.services.pipeline import (best_template_for, current_rules, load_tree, next_product_code, process,
+                                   same_scope)
 from app.services.templates import create_template, new_version
 
 NEED_SUPPLIER = "Najpierw rozpoznaj dostawcę — to pierwszy problem na liście."
@@ -305,9 +306,10 @@ def a_allow_duplicate(doc, data, remember, user):
 def _copies(doc: Document):
     """Inne dokumenty tej samej faktury (ten sam plik albo dostawca + numer), od najstarszego."""
     cond = Document.sha256 == doc.sha256
-    if doc.dedupe_hash:  # ten sam dostawca, rodzaj i znormalizowany pełny numer (BE-1)
+    if doc.dedupe_hash:  # ten sam zakres, dostawca, rodzaj i znormalizowany pełny numer (BE-1)
         cond = cond | (Document.dedupe_hash == doc.dedupe_hash)
-    return Document.query.filter(Document.id != doc.id, cond).order_by(Document.id).all()
+    # tylko ten sam zakres (klucz API / panel) — nigdy nie zmieniamy statusu dokumentów innego klucza
+    return Document.query.filter(Document.id != doc.id, cond, same_scope(doc)).order_by(Document.id).all()
 
 
 def _points_to(other: Document, doc: Document) -> bool:

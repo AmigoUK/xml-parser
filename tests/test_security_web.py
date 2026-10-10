@@ -1,5 +1,6 @@
 """Pakiet F: nagłówki bezpieczeństwa, sesja, limit logowania, demo, izolacja kluczy API, ProxyFix."""
 import inspect
+import json
 import re
 from datetime import timedelta
 from pathlib import Path
@@ -283,8 +284,25 @@ def _second_key():
 def test_duplicate_from_other_key_does_not_leak_id(seeded, client):
     first = client.post("/api/v1/documents", headers=KEY, data=sample_bytes("epsilon.json")).get_json()
     other = client.post("/api/v1/documents", headers=_second_key(), data=sample_bytes("epsilon.json")).get_json()
-    assert other["status"] == "duplicate"
-    dup = [i for i in other["issues"] if i["code"] == "duplicate"][0]
+    # od pakietu E zakresem duplikatów jest klucz API — dokument innego klucza nie jest duplikatem
+    # i niczego o nim nie ujawniamy
+    assert other["status"] != "duplicate"
+    assert not [i for i in other["issues"] if i["code"] == "duplicate"]
+    assert f"#{first['id']}" not in json.dumps(other)
+
+
+def test_legacy_cross_key_duplicate_is_sanitized(seeded, client):
+    # dokumenty sprzed izolacji zakresów mogą wskazywać dokument innego klucza — API nadal to maskuje
+    first = client.post("/api/v1/documents", headers=KEY, data=sample_bytes("epsilon.json")).get_json()
+    hdr = _second_key()
+    other = client.post("/api/v1/documents", headers=hdr, data=sample_bytes("epsilon.json")).get_json()
+    doc = db.session.get(Document, other["id"])
+    doc.status = "duplicate"
+    doc.issues = [{"code": "duplicate", "severity": "blocking", "source_value": str(first["id"]),
+                   "message": f"Ta faktura była już przetworzona (dokument #{first['id']})."}] + list(doc.issues)
+    db.session.commit()
+    js = client.get(f"/api/v1/documents/{other['id']}", headers=hdr).get_json()
+    dup = [i for i in js["issues"] if i["code"] == "duplicate"][0]
     assert f"#{first['id']}" not in dup["message"] and not dup.get("source_value")
     assert "duplikat istniejącego dokumentu" in dup["message"]
 

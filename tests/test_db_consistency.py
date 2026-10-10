@@ -432,3 +432,104 @@ def test_api_key_without_documents_can_be_deleted(seeded, auth_client):
     db.session.commit()
     auth_client.post(f"/klucze-api/{key.id}/usun")
     assert db.session.get(ApiKey, key.id) is None
+
+
+# ------------------------------------------------------------------ izolacja zakresów duplikatów (klucze API)
+
+
+def _key(name):
+    from app.services.apikeys import create_key
+    key, plain = create_key(name)
+    db.session.commit()
+    return key, {"X-API-Key": plain}
+
+
+def test_same_invoice_from_two_api_keys_both_approved_and_isolated(supplier, client):
+    from app.services.negotiation import restore
+    _, ha = _key("System A")
+    _, hb = _key("System B")
+    ra = client.post("/api/v1/documents", headers={**ha, "X-Filename": "x.json"}, data=inv("ISO/1")).get_json()
+    rb = client.post("/api/v1/documents", headers={**hb, "X-Filename": "x.json"}, data=inv("ISO/1")).get_json()
+    assert ra["status"] == "approved" and rb["status"] == "approved"
+    # kopia w zakresie A — duplikat oryginału A, nie B
+    ra2 = client.post("/api/v1/documents", headers={**ha, "X-Filename": "x.json"}, data=inv("ISO/1")).get_json()
+    assert ra2["status"] == "duplicate" and ra2["issues"][0]["source_value"] == str(ra["id"])
+    # panel („web”) to osobny zakres
+    web = ingest(inv("ISO/1"), "w.json")
+    assert web.status == "approved"
+    b_status = lambda: db.session.get(Document, rb["id"]).status  # noqa: E731
+    a = db.session.get(Document, ra["id"])
+    assert client.post(f"/api/v1/documents/{a.id}/reprocess", headers=ha).status_code == 200
+    assert b_status() == "approved"
+    resolve(a, "reject", {}, True, "qa")
+    assert b_status() == "approved"
+    assert db.session.get(Document, ra2["id"]).status == "approved"  # zwolniony duplikat w zakresie A
+    restore(db.session.get(Document, a.id), "qa")
+    assert db.session.get(Document, a.id).status == "approved"
+    assert db.session.get(Document, ra2["id"]).status == "duplicate"
+    assert b_status() == "approved" and db.session.get(Document, web.id).status == "approved"
+
+
+def test_later_copy_in_other_scope_not_demoted_by_earlier_reprocess(seeded):
+    """Wcześniejszy dokument klucza A przetworzony po zatwierdzeniu kopii klucza B nie degraduje B."""
+    from app.services.apikeys import create_key
+    ka, _ = create_key("A")
+    kb, _ = create_key("B")
+    db.session.commit()
+    a = ingest(inv("ISO/2", tax=OTHER_TAX), "a.json", source="api", api_key_id=ka.id)
+    b = ingest(inv("ISO/2", tax=OTHER_TAX) + b"\n", "b.json", source="api", api_key_id=kb.id)
+    resolve(b, "create_supplier", {"name": "Izolacja", "tax_id": OTHER_TAX}, True, "qa")
+    assert b.status == "approved"
+    process(a)
+    db.session.commit()
+    assert db.session.get(Document, a.id).status == "approved"
+    assert db.session.get(Document, b.id).status == "approved"
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("TEST_MARIADB_URL"),
+                    reason="wyścig na prawdziwej MariaDB — ustaw TEST_MARIADB_URL (pusta baza testowa)")
+def test_parallel_ingest_race_on_mariadb(tmp_path):
+    """Równoległe przyjęcie tej samej faktury (wątki, osobne transakcje, REPEATABLE READ): jeden żywy."""
+    import os
+    import threading
+
+    from app import create_app
+    url = os.environ["TEST_MARIADB_URL"]
+    app = create_app({"TESTING": True, "SECRET_KEY": "x", "SQLALCHEMY_DATABASE_URI": url,
+                      "STORAGE_DIR": str(tmp_path / "s"), "DEMO_MODE": True, "ADMIN_PASSWORD": ""})
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+        from app.services.seed import seed_base, seed_demo
+        seed_base()
+        seed_demo()
+        d = ingest(inv("T/1"), "t1.json")
+        resolve(d, "create_supplier", {"name": "Testowy Dostawca", "tax_id": TAX}, True, "qa")
+    n = 4
+    barrier = threading.Barrier(n)
+    real = pipeline._resolve_duplicate
+
+    def gated(doc, invoice):  # wszyscy po odczytach, przed zapisem klucza — maksymalne nakładanie
+        try:
+            barrier.wait(timeout=20)
+        except threading.BrokenBarrierError:
+            pass
+        return real(doc, invoice)
+    statuses = []
+
+    def worker(i):
+        with app.app_context():
+            try:
+                statuses.append(ingest(inv("RACE/1") + b" " * (i + 1), f"r{i}.json").status)
+            finally:
+                db.session.remove()
+    pipeline._resolve_duplicate = gated
+    try:
+        ts = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+    finally:
+        pipeline._resolve_duplicate = real
+    assert sorted(statuses) == ["approved"] + ["duplicate"] * (n - 1)
+    with app.app_context():
+        db.drop_all()

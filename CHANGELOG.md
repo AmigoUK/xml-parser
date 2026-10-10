@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Limit prób logowania liczony w bazie (tabela `login_attempts`, działa przy wielu workerach): 5 nieudanych prób w 15 min dla pary (e-mail, IP) → blokada tej pary na 15 min; 20 prób z jednego IP na dowolne konta; 50 prób na jedno konto z dowolnych IP w 5 min → krótka blokada konta. Obcy bez hasła nie zablokuje admina logującego się z innego adresu. Próba zapisywana przed sprawdzeniem hasła (równoległe żądania nie omijają limitu), próby zablokowane nie przedłużają blokady. Progi konfigurowalne `LOGIN_*` (SEC-2).
 - Nieudane i zablokowane logowania zapisywane w historii (`login_failed`, `login_blocked`) (SEC-2).
 - `TRUSTED_PROXY_COUNT` — ProxyFix włączany tylko dla jawnie zaufanych proxy (domyślnie 0) (OPS-8).
-- Unikalność w bazie (migracja `e4a1d7c03b52`, najpierw bezpiecznie deduplikuje istniejące dane): klucz faktury `documents.dedupe_key` (sha256 z dostawcy, rodzaju dokumentu i znormalizowanego pełnego numeru) — najwyżej jeden „żywy” dokument na fakturę także przy równoległych uploadach; NIP dostawcy; przelicznik na (dostawca, towar, z jednostki) i alias jednostki z obsługą „wszyscy”/globalny (kolumny zakresu zamiast NULL); mapowanie towaru po kodzie / GTIN / nazwie (`product_mappings.match_key`); indeks listy dokumentów API (klucz, status, data) (BE-1/EDGE-17, BE-17).
+- Unikalność w bazie (migracja `e4a1d7c03b52`, najpierw bezpiecznie deduplikuje istniejące dane): klucz faktury `documents.dedupe_key` (sha256 z zakresu — klucz API albo panel — dostawcy, rodzaju dokumentu i znormalizowanego pełnego numeru) — najwyżej jeden „żywy” dokument na fakturę także przy równoległych uploadach; NIP dostawcy; przelicznik na (dostawca, towar, z jednostki) i alias jednostki z obsługą „wszyscy”/globalny (kolumny zakresu zamiast NULL); mapowanie towaru po kodzie / GTIN / nazwie (`product_mappings.match_key`); indeks listy dokumentów API (klucz, status, data) (BE-1/EDGE-17, BE-17).
 - Blokada optymistyczna w edytorze szablonów: zapis wysyła wersję bazową, a gdy w międzyczasie ktoś zapisał nowszą — komunikat konfliktu (409) zamiast nadpisania (BE-7).
 - Problemy `file_missing` (brak pliku źródłowego w magazynie) i `internal_error` (nieoczekiwany błąd przetwarzania) — dokument zostaje zapisany do wyjaśnienia zamiast błędu 500 (BE-9, BE-10).
 
@@ -46,11 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Potwierdzenia usuwania przez atrybut `data-confirm` i `static/app.js`, inicjalizacja Swagger UI w `static/api_docs.js` — bez skryptów inline (SEC-3).
 - Po wdrożeniu wszyscy użytkownicy muszą zalogować się ponownie (nowy format identyfikatora sesji) (SEC-4).
 - Wykrywanie duplikatów porównuje znormalizowany pełny numer (wielkość liter, akcenty, białe znaki, spacje wokół „/” i „-”) tak samo na SQLite i MariaDB; rodzaj dokumentu (`doc_type`) jest częścią klucza — korekta o numerze faktury nie jest jej duplikatem (EDGE-31, EDGE-23).
-- Oryginałem faktury jest zawsze żywy dokument o najniższym id: ponowne przetworzenie wcześniejszej kopii, gdy późniejsza jest już zatwierdzona, przenosi na nią status duplikatu (BE-1, BE-5).
+- Oryginałem faktury jest zawsze żywy dokument o najniższym id w tym samym zakresie (klucz API albo panel): ponowne przetworzenie wcześniejszej kopii, gdy późniejsza jest już zatwierdzona, przenosi na nią status duplikatu (BE-1, BE-5).
 - Straż „ręcznie odrzucony zostaje odrzucony” działa w samym `process()` — żadna ścieżka (API, panel, negocjacja, edytor, przyszłe wywołania) jej nie omija; odrzucenia automatyczne nadal można przetworzyć ponownie (BE-2).
 - Klucza API z dokumentami nie można usunąć — tylko dezaktywować; dokumenty zachowują powiązanie i pozostają dostępne przez API (BE-18).
 - Towaru i jednostki użytych w wynikach lub ręcznych przypisaniach dokumentów nie można usunąć ani zmienić im kodu (BE-14).
-- Migracja `e4a1d7c03b52` porządkuje istniejące dane przed założeniem unikatów: późniejsze żywe kopie tej samej faktury dostają status `duplicate` (z problemem wskazującym oryginał); zduplikowany NIP zostaje u najstarszego dostawcy, u pozostałych jest czyszczony z notatką; z powtórzonych aliasów, przeliczników i mapowań zostaje wiersz, który i tak wybierało wyszukiwanie (alias/mapowanie — najstarszy, przelicznik — najnowszy), reszta jest usuwana.
+- Migracja `e4a1d7c03b52` porządkuje istniejące dane przed założeniem unikatów: późniejsze żywe kopie tej samej faktury w tym samym zakresie dostają status `duplicate` (z problemem wskazującym oryginał); zduplikowany NIP zostaje u najstarszego dostawcy, u pozostałych jest czyszczony z notatką; z powtórzonych aliasów, przeliczników i mapowań zostaje wiersz, który i tak wybierało wyszukiwanie (alias/mapowanie — najstarszy, przelicznik — najnowszy), reszta jest usuwana.
 - Reset danych demo w jednej transakcji (błąd = dane nietknięte) razem z wpisem w historii; po udanym resecie usuwane są pliki dokumentów z magazynu (BE-15, SEC-6).
 
 ### Fixed
@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API: komunikat o duplikacie dokumentu innego klucza API nie zdradza jego id („duplikat istniejącego dokumentu”) (K-2).
 - API `/api/v1/suppliers` zwraca tylko dostawców z dokumentów danego klucza; w odpowiedziach API usuwane są podpowiedzi z kartoteki (towary, inni dostawcy, szablony do sklonowania) (SEC-5).
 - ReDoS w parsowaniu liczb: długi tekst z literami przed/po liczbie miał koszt kwadratowy; wartość liczbowa ograniczona do 100 znaków.
+- Izolacja kluczy API przy wykrywaniu duplikatów: zakresem jest klucz API dokumentu (dokumenty z panelu mają wspólny zakres „web”). Dokument innego klucza nie może już stać się oryginałem cudzej faktury, zablokować jej jako duplikat ani — przez ponowne przetworzenie, odrzucenie czy „Przywróć” — zmienić statusu dokumentu innego klucza; ta sama faktura wgrana dwoma kluczami jest przyjmowana w obu (zakres jest częścią `dedupe_key`) (BE-1).
 
 ## [0.1.1] — 2026-10-10
 

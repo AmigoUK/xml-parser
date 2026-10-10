@@ -17,7 +17,7 @@ from app.engine.tree import SourceTree, jaccard
 from app.engine.validate import validate_invoice
 from app.extensions import db
 from app.ingest import ReaderError, read_document
-from app.engine.keys import document_key
+from app.engine.keys import dedupe_scope, document_key
 from app.models import (LIVE_STATUSES, STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
                         STATUS_REJECTED, Document, Product, Supplier, Template)
 from app.services.audit import audit
@@ -116,10 +116,16 @@ def _stored_number(invoice: dict) -> str | None:
 _CONCURRENT = object()
 
 
+def same_scope(doc: Document):
+    """Warunek SQL: ten sam zakres duplikatów co `doc` (ten sam klucz API albo panel)."""
+    return (Document.api_key_id.is_(None) if doc.api_key_id is None
+            else Document.api_key_id == doc.api_key_id)
+
+
 def _earlier_same_file(doc: Document) -> Document | None:
-    """Wcześniej przyjęty (niższe id), żywy dokument z tym samym plikiem."""
+    """Wcześniej przyjęty (niższe id), żywy dokument z tym samym plikiem — w tym samym zakresie."""
     return (Document.query.filter(Document.id < doc.id, Document.status.in_(LIVE_STATUSES),
-                                  Document.sha256 == doc.sha256).order_by(Document.id).first())
+                                  Document.sha256 == doc.sha256, same_scope(doc)).order_by(Document.id).first())
 
 
 def _key_holder(doc: Document, key: str, lock: bool = False) -> Document | None:
@@ -159,7 +165,9 @@ def _claim_key(doc: Document, key: str):
 
 def _resolve_duplicate(doc: Document, invoice: dict):
     """Ustala oryginał (duplikat) i klucz faktury dokumentu. Zwraca (oryginał | _CONCURRENT | None, zdegradowany)."""
-    doc.dedupe_hash = document_key(doc.supplier_id, invoice.get("doc_type"), invoice.get("number"))
+    # zakres = klucz API dokumentu albo panel: cudzy klucz nie może zablokować ani zdegradować dokumentu
+    doc.dedupe_hash = document_key(doc.supplier_id, invoice.get("doc_type"), invoice.get("number"),
+                                   dedupe_scope(doc.api_key_id))
     if (doc.overrides or {}).get("allow_duplicate"):  # jawna zgoda operatora — dokument nie trzyma klucza
         doc.dedupe_key = None
         return None, None

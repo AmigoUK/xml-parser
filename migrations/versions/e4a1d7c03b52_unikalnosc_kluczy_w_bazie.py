@@ -12,8 +12,9 @@ Przed założeniem indeksów UNIQUE migracja deduplikuje istniejące dane:
   zostaje najnowszy (tak wybierał lookup);
 - mapowania towarów: kolumna match_key (sha256: dostawca + kod / GTIN / nazwa); powtórzenia → zostaje
   najstarsze (tak wybierał lookup);
-- dokumenty: dedupe_hash dla wszystkich, dedupe_key dla żywego oryginału (najniższe id); późniejsze żywe
-  kopie tej samej faktury dostają status duplicate z problemem „duplicate”.
+- dokumenty: dedupe_hash dla wszystkich, dedupe_key dla żywego oryginału (najniższe id) w zakresie
+  (klucz API albo panel „web”); późniejsze żywe kopie tej samej faktury w tym samym zakresie dostają
+  status duplicate z problemem „duplicate”. Dokumenty różnych zakresów nie są dla siebie duplikatami.
 
 Funkcje normalizujące są tu skopiowane (zamrożone) z app/engine/keys.py — migracja nie może zależeć od
 przyszłych zmian kodu aplikacji.
@@ -55,11 +56,15 @@ def _norm_doc_number(number):
     return s or None
 
 
-def _document_key(supplier_id, doc_type, number):
+def _scope(api_key_id):
+    return f"api:{int(api_key_id)}" if api_key_id else "web"
+
+
+def _document_key(supplier_id, doc_type, number, scope):
     num = _norm_doc_number(number)
     if not supplier_id or not num:
         return None
-    return _digest("doc", int(supplier_id), _fold(doc_type or ""), num)
+    return _digest("doc", scope, int(supplier_id), _fold(doc_type or ""), num)
 
 
 def _mapping_key(supplier_id, code, gtin, name):
@@ -104,6 +109,7 @@ mappings = sa.table('product_mappings', sa.column('id', sa.Integer), sa.column('
                     sa.column('supplier_code', sa.String), sa.column('supplier_gtin', sa.String),
                     sa.column('supplier_name_norm', sa.String), sa.column('match_key', sa.String))
 documents = sa.table('documents', sa.column('id', sa.Integer), sa.column('supplier_id', sa.Integer),
+                     sa.column('api_key_id', sa.Integer),
                      sa.column('status', sa.String), sa.column('number', sa.String),
                      sa.column('doc_type', sa.String), sa.column('result', sa.Text),
                      sa.column('overrides', sa.Text), sa.column('issues', sa.Text),
@@ -182,17 +188,18 @@ def _dedupe_mappings(bind):
 
 def _dedupe_documents(bind):
     holders = {}
-    rows = bind.execute(sa.select(documents.c.id, documents.c.supplier_id, documents.c.status, documents.c.number,
+    rows = bind.execute(sa.select(documents.c.id, documents.c.supplier_id, documents.c.api_key_id,
+                                  documents.c.status, documents.c.number,
                                   documents.c.doc_type, documents.c.result, documents.c.overrides,
                                   documents.c.issues).order_by(documents.c.id)).fetchall()
-    for did, sid, status, number, doc_type, result, overrides, issues in rows:
+    for did, sid, key_id, status, number, doc_type, result, overrides, issues in rows:
         result = _json(result, {}) or {}
         if not isinstance(result, dict):
             result = {}
         overrides = _json(overrides, {}) or {}
         full_number = result.get("number", number) if result else number
         dtype = result.get("doc_type", doc_type) if result else doc_type
-        h = _document_key(sid, dtype, full_number)
+        h = _document_key(sid, dtype, full_number, _scope(key_id))  # zakres: klucz API albo panel
         values = {"dedupe_hash": h}
         live = status in LIVE and not (isinstance(overrides, dict) and overrides.get("allow_duplicate"))
         if h and live:

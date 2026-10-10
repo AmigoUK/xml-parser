@@ -32,12 +32,18 @@ def norm_doc_number(number) -> str | None:
     return s or None
 
 
-def document_key(supplier_id, doc_type, number) -> str | None:
-    """Klucz faktury: (dostawca, rodzaj dokumentu, znormalizowany pełny numer) → sha256 hex (64 znaki)."""
+def dedupe_scope(api_key_id) -> str:
+    """Zakres wykrywania duplikatów: dokumenty jednego klucza API albo wspólny zakres panelu „web”.
+    Dokumenty z różnych zakresów nigdy nie są dla siebie duplikatami (izolacja kluczy API)."""
+    return f"api:{int(api_key_id)}" if api_key_id else "web"
+
+
+def document_key(supplier_id, doc_type, number, scope: str = "web") -> str | None:
+    """Klucz faktury: (zakres, dostawca, rodzaj dokumentu, znormalizowany pełny numer) → sha256 hex (64 znaki)."""
     num = norm_doc_number(number)
     if not supplier_id or not num:
         return None
-    return _digest("doc", int(supplier_id), fold(doc_type or ""), num)
+    return _digest("doc", scope, int(supplier_id), fold(doc_type or ""), num)
 
 
 def mapping_key(supplier_id, supplier_code, supplier_gtin, supplier_name_norm) -> str | None:
