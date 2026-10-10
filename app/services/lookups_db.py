@@ -1,7 +1,7 @@
 import unicodedata
 from decimal import Decimal
 
-from app.engine.lookups import norm_alias
+from app.engine.lookups import norm_alias, norm_product_name
 from app.extensions import db
 from app.models import Product, ProductMapping, Supplier, Unit, UnitAlias, UnitConversion
 
@@ -60,37 +60,43 @@ class DbLookups:
             q = UnitConversion.query.filter_by(from_unit_id=u.id)
             q = q.filter(UnitConversion.supplier_id.is_(None)) if sid is None else q.filter_by(supplier_id=sid)
             q = q.filter(UnitConversion.product_id.is_(None)) if prid is None else q.filter_by(product_id=prid)
-            row = q.first()
+            row = q.order_by(UnitConversion.id.desc()).first()  # najnowszy wygrywa (stare duplikaty — BE-4)
             if row:
                 return self._units_by_id[row.to_unit_id].code, Decimal(row.factor)
         return None
 
-    def _mapping_keys(self, supplier_id) -> tuple[set, set]:
+    def _mapping_keys(self, supplier_id) -> tuple[set, set, set]:
         """Złożone (fold) klucze mapowań dostawcy z jednego zapytania — szybkie odrzucenie pozycji bez
         mapowania. Trafienie i tak idzie zapytaniem do bazy, więc zachowana jest semantyka kolacji DB."""
         def load():
-            codes, gtins = set(), set()
-            for code, g in ProductMapping.query.filter_by(supplier_id=supplier_id).with_entities(
-                    ProductMapping.supplier_code, ProductMapping.supplier_gtin):
+            codes, gtins, names = set(), set(), set()
+            for code, g, name in ProductMapping.query.filter_by(supplier_id=supplier_id).with_entities(
+                    ProductMapping.supplier_code, ProductMapping.supplier_gtin, ProductMapping.supplier_name_norm):
                 if code is not None:
                     codes.add(_fold(code))
                 if g is not None:
                     gtins.add(_fold(g))
-            return codes, gtins
+                if name is not None and code is None and g is None:
+                    names.add(name)
+            return codes, gtins, names
         return self._cached(("mapping-keys", supplier_id), load)
 
-    def product_for(self, supplier_id, supplier_code, gtin):
-        return self._cached(("product", supplier_id, supplier_code, gtin),
-                            lambda: self._product_for(supplier_id, supplier_code, gtin))
+    def product_for(self, supplier_id, supplier_code, gtin, name=None):
+        return self._cached(("product", supplier_id, supplier_code, gtin, name),
+                            lambda: self._product_for(supplier_id, supplier_code, gtin, name))
 
-    def _product_for(self, supplier_id, supplier_code, gtin):
+    def _product_for(self, supplier_id, supplier_code, gtin, name=None):
         if supplier_id:
-            codes, gtins = self._mapping_keys(supplier_id)
+            codes, gtins, names = self._mapping_keys(supplier_id)
             q = ProductMapping.query.filter_by(supplier_id=supplier_id)
             row = (q.filter_by(supplier_code=supplier_code).first()
                    if supplier_code and _fold(supplier_code) in codes else None)
             if row is None and gtin and _fold(gtin.zfill(14)) in gtins:
                 row = q.filter_by(supplier_gtin=gtin.zfill(14)).first()
+            name_key = norm_product_name(name) if not supplier_code and not gtin else None
+            if row is None and name_key and name_key in names:  # pozycja bez kodu i GTIN (BE-3)
+                row = q.filter(ProductMapping.supplier_code.is_(None), ProductMapping.supplier_gtin.is_(None),
+                               ProductMapping.supplier_name_norm == name_key).order_by(ProductMapping.id).first()
             if row:
                 return db.session.get(Product, row.product_id).code
         if gtin:
@@ -100,6 +106,13 @@ class DbLookups:
                     self._gtin_index.setdefault(p.gtin.zfill(14), p.code)
             return self._gtin_index.get(gtin.zfill(14))
         return None
+
+    def product_exists(self, code) -> bool:
+        return self._cached(("product-exists", code),
+                            lambda: Product.query.filter_by(code=code).first() is not None)
+
+    def unit_exists(self, code) -> bool:
+        return code in self._units
 
     def products_brief(self) -> list[dict]:
         return [{"code": p.code, "name": p.name, "gtin": p.gtin} for p in Product.query.order_by(Product.code)]

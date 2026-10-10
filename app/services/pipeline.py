@@ -70,7 +70,7 @@ def identify(tree: SourceTree, doc: Document, synonyms: dict) -> Identification:
     if doc.supplier_id:
         ident.supplier = db.session.get(Supplier, doc.supplier_id)
     else:
-        suppliers = Supplier.query.filter(Supplier.tax_id.isnot(None)).all()
+        suppliers = Supplier.query.filter(Supplier.tax_id.isnot(None)).order_by(Supplier.id).all()  # BE-11
         for p in _tax_paths(tree, synonyms):
             val = tree.first(p)
             if not val:
@@ -111,7 +111,9 @@ def _stored_number(invoice: dict) -> str | None:
 
 
 def _find_duplicate(doc: Document, invoice: dict) -> Document | None:
-    q = Document.query.filter(Document.id != doc.id,
+    # oryginałem jest wcześniej przyjęty dokument — późniejsza kopia (np. zatwierdzona przez
+    # allow_duplicate) nigdy nie czyni oryginału duplikatem (BE-5); odrzucone się nie liczą (EDGE-24)
+    q = Document.query.filter(Document.id < doc.id,
                               Document.status.in_([STATUS_APPROVED, STATUS_NEEDS_REVIEW]))
     same = q.filter(Document.sha256 == doc.sha256).order_by(Document.id).first()
     if same:

@@ -5,12 +5,13 @@ import copy
 from decimal import Decimal
 
 from app.engine.canonical import FIELD_LABELS, LINE_KEYS
-from app.engine.lookups import norm_alias
-from app.engine.suggest import FIELDS_BY_KEY
+from app.engine.lookups import norm_alias, norm_product_name
+from app.engine.suggest import FIELDS_BY_KEY, norm_tax_id, tax_ids_match
 from app.engine.tree import relative_path
-from app.engine.values import normalize_gtin, to_decimal
+from app.engine.values import AmbiguousNumberError, normalize_gtin, to_decimal
 from app.extensions import db
-from app.models import (STATUS_REJECTED, Document, Product, ProductMapping, Supplier, Template, Unit,
+from app.models import (STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
+                        STATUS_REJECTED, Document, Product, ProductMapping, Supplier, Template, Unit,
                         UnitAlias, UnitConversion)
 from app.services.audit import audit
 from app.services.pipeline import best_template_for, current_rules, load_tree, next_product_code, process
@@ -68,10 +69,36 @@ def _unit(code: str) -> Unit:
 
 
 def _line(doc: Document, line_no) -> dict:
+    lines = (doc.result or {}).get("lines") or []
     try:
-        return (doc.result or {})["lines"][int(line_no) - 1]
-    except (KeyError, IndexError, TypeError, ValueError):
-        raise NegotiationError(f"Brak pozycji nr {line_no}.") from None
+        n = int(line_no)
+    except (TypeError, ValueError):
+        n = 0
+    if not 1 <= n <= len(lines):  # bez tego 0 / -1 trafiałyby w ostatnią pozycję (EDGE-25)
+        raise NegotiationError(f"Brak pozycji nr {line_no}.")
+    return lines[n - 1]
+
+
+def parse_factor_input(raw) -> Decimal:
+    """Przelicznik z formularza (negocjacja, CRUD): liczba > 0; „1,000” / „1.000” → błąd, nie 1,0."""
+    try:
+        factor = to_decimal(raw, reject_ambiguous=True)
+    except AmbiguousNumberError:
+        raise ValueError(f"Niejednoznaczna liczba „{raw}” — wpisz przelicznik bez separatora tysięcy, "
+                         "np. 1000 albo 1,5.") from None
+    if factor <= 0:
+        raise ValueError("Przelicznik musi być większy od zera.")
+    if factor >= Decimal(10) ** 12:
+        raise ValueError("Przelicznik jest zbyt duży (maks. 12 cyfr całkowitych).")
+    return factor
+
+
+def find_supplier_by_tax_id(tax_id: str | None, exclude_id: int | None = None) -> Supplier | None:
+    """Dostawca o tym samym NIP/VAT (po normalizacji, z regułą prefiksu kraju); najstarszy — deterministycznie."""
+    if not norm_tax_id(tax_id):
+        return None
+    q = Supplier.query.filter(Supplier.tax_id.isnot(None)).order_by(Supplier.id)
+    return next((s for s in q if s.id != exclude_id and tax_ids_match(tax_id, s.tax_id)), None)
 
 
 def _attach_supplier(doc: Document, supplier: Supplier, user: str | None) -> None:
@@ -85,7 +112,11 @@ def a_create_supplier(doc, data, remember, user):
     name = (data.get("name") or "").strip()
     if not name:
         raise NegotiationError("Podaj nazwę dostawcy.")
-    tax_id = (data.get("tax_id") or "").strip()[:64] or None
+    tax_id = norm_tax_id(data.get("tax_id"))[:64] or None
+    existing = find_supplier_by_tax_id(tax_id)
+    if existing:  # ten sam NIP — podpinamy istniejącego zamiast tworzyć duplikat (BE-11/EDGE-9)
+        _attach_supplier(doc, existing, user)
+        return
     s = Supplier(name=name[:255], tax_id=tax_id)
     db.session.add(s)
     db.session.flush()
@@ -96,8 +127,8 @@ def a_use_supplier(doc, data, remember, user):
     s = db.session.get(Supplier, int(data.get("supplier_id") or 0))
     if not s:
         raise NegotiationError("Nie znaleziono dostawcy.")
-    inv_tax = ((doc.result or {}).get("supplier") or {}).get("tax_id")
-    if not s.tax_id and inv_tax:
+    inv_tax = norm_tax_id(((doc.result or {}).get("supplier") or {}).get("tax_id"))[:64]
+    if not s.tax_id and inv_tax and not find_supplier_by_tax_id(inv_tax, exclude_id=s.id):
         s.tax_id = inv_tax
     _attach_supplier(doc, s, user)
 
@@ -152,13 +183,9 @@ def a_add_conversion(doc, data, remember, user):
     _require_supplier(doc)
     src, dst = _unit(data.get("from_unit")), _unit(data.get("to_unit"))
     try:
-        factor = to_decimal(data.get("factor"))
+        factor = parse_factor_input(data.get("factor"))
     except ValueError as exc:
         raise NegotiationError(f"Przelicznik: {exc}") from None
-    if factor <= 0:
-        raise NegotiationError("Przelicznik musi być większy od zera.")
-    if factor >= Decimal(10) ** 12:
-        raise NegotiationError("Przelicznik jest zbyt duży (maks. 12 cyfr całkowitych).")
     product_id = None
     if data.get("scope") == "product":
         code = _line(doc, data.get("line_no")).get("product_index")
@@ -166,26 +193,64 @@ def a_add_conversion(doc, data, remember, user):
         if not product:
             raise NegotiationError("Przelicznik dla towaru wymaga najpierw przypisania towaru do pozycji.")
         product_id = product.id
+    # ta sama para (dostawca, towar, z jednostki) → aktualizacja zamiast duplikatu (BE-4)
+    row = conversion_for_key(doc.supplier_id, product_id, src.id)
     try:
-        db.session.add(UnitConversion(supplier_id=doc.supplier_id, product_id=product_id, from_unit_id=src.id,
-                                      to_unit_id=dst.id, factor=factor))
+        if row:
+            row.to_unit_id, row.factor = dst.id, factor
+        else:
+            db.session.add(UnitConversion(supplier_id=doc.supplier_id, product_id=product_id,
+                                          from_unit_id=src.id, to_unit_id=dst.id, factor=factor))
     except ValueError as exc:
         raise NegotiationError(str(exc)) from None
 
 
+def conversion_for_key(supplier_id, product_id, from_unit_id, exclude_id=None) -> UnitConversion | None:
+    """Istniejący przelicznik dla klucza (dostawca, towar, z jednostki); NULL = „wszyscy”. Najnowszy."""
+    q = UnitConversion.query.filter_by(from_unit_id=from_unit_id)
+    q = q.filter(UnitConversion.supplier_id.is_(None)) if supplier_id is None else q.filter_by(supplier_id=supplier_id)
+    q = q.filter(UnitConversion.product_id.is_(None)) if product_id is None else q.filter_by(product_id=product_id)
+    if exclude_id is not None:
+        q = q.filter(UnitConversion.id != exclude_id)
+    with db.session.no_autoflush:
+        return q.order_by(UnitConversion.id.desc()).first()
+
+
+def _line_key(line: dict) -> tuple:
+    return line.get("supplier_code"), line.get("gtin"), norm_product_name(line.get("name"))
+
+
 def _map_line_to_product(doc, line_no, product: Product, remember: bool) -> None:
+    line = _line(doc, line_no)
     if not remember:
-        _set_override(doc, "products", str(int(line_no)), product.code)
+        # problem zagregowany (ten sam towar w wielu pozycjach) — przypisanie dotyczy wszystkich jego pozycji
+        key = _line_key(line)
+        ov = copy.deepcopy(doc.overrides or {})
+        products = ov.setdefault("products", {})
+        for other in (doc.result or {}).get("lines") or []:
+            if other is line or (not other.get("product_index") and _line_key(other) == key):
+                products[str(other["line_no"])] = product.code
+        doc.overrides = ov
         return
     _require_supplier(doc)
-    line = _line(doc, line_no)
-    code, gtin = line.get("supplier_code"), line.get("gtin")
+    code, gtin, name = line.get("supplier_code"), line.get("gtin"), norm_product_name(line.get("name"))
     q = ProductMapping.query.filter_by(supplier_id=doc.supplier_id)
-    row = q.filter_by(supplier_code=code).first() if code else q.filter_by(supplier_gtin=gtin).first()
+    # szukamy wyłącznie po kolumnie, której używamy — nigdy po NULL (BE-3/EDGE-3)
+    if code:
+        row = q.filter_by(supplier_code=code).first()
+    elif gtin:
+        row = q.filter(ProductMapping.supplier_code.is_(None), ProductMapping.supplier_gtin == gtin).first()
+    elif name:
+        row = q.filter(ProductMapping.supplier_code.is_(None), ProductMapping.supplier_gtin.is_(None),
+                       ProductMapping.supplier_name_norm == name).first()
+    else:
+        raise NegotiationError("Pozycja nie ma kodu, GTIN ani nazwy towaru — nie da się tego zapamiętać. "
+                               "Przypisz towar tylko dla tej faktury (bez „zapamiętaj”).")
     if row:
         row.product_id = product.id
     else:
         db.session.add(ProductMapping(supplier_id=doc.supplier_id, supplier_code=code, supplier_gtin=gtin,
+                                      supplier_name_norm=None if (code or gtin) else name,
                                       product_id=product.id))
 
 
@@ -222,8 +287,56 @@ def a_allow_duplicate(doc, data, remember, user):
     _set_override(doc, None, "allow_duplicate", True)
 
 
+def _copies(doc: Document):
+    """Inne dokumenty tej samej faktury (ten sam plik albo dostawca + numer), od najstarszego."""
+    cond = Document.sha256 == doc.sha256
+    if doc.supplier_id and doc.number:
+        cond = cond | ((Document.supplier_id == doc.supplier_id) & (Document.number == doc.number))
+    return Document.query.filter(Document.id != doc.id, cond).order_by(Document.id).all()
+
+
+def _points_to(other: Document, doc: Document) -> bool:
+    return any(i.get("code") == "duplicate" and i.get("source_value") == str(doc.id) for i in other.issues or [])
+
+
 def a_reject(doc, data, remember, user):
     doc.status = STATUS_REJECTED
+    doc.rejected_by = (user or "operator")[:255]
+    db.session.flush()
+    # duplikaty odrzuconego dokumentu nie mogą wskazywać na odrzucony — przelicz je (EDGE-24)
+    for other in _copies(doc):
+        if other.status == STATUS_DUPLICATE and _points_to(other, doc):
+            process(other)
+            db.session.flush()
+
+
+def restore(doc: Document, user: str | None = None) -> Document:
+    """Jawne „Przywróć” operatora: cofa ręczne odrzucenie i przetwarza dokument ponownie (BE-2).
+
+    Oryginałem jest zawsze najstarszy dokument — późniejsze kopie, które po odrzuceniu stały się
+    aktywne, wracają do statusu duplikatu (nigdy dwie zatwierdzone kopie tej samej faktury)."""
+    if not doc.is_manually_rejected:
+        raise NegotiationError("Dokument nie jest odrzucony przez operatora.")
+    try:
+        doc.rejected_by = None
+        doc.status = STATUS_RECEIVED
+        audit("restore", "document", doc.id, {}, user)
+        process(doc)
+        db.session.flush()
+        if doc.status != STATUS_DUPLICATE:
+            for other in _copies(doc):
+                if (other.id > doc.id and other.status in (STATUS_APPROVED, STATUS_NEEDS_REVIEW)
+                        and not (other.overrides or {}).get("allow_duplicate")):
+                    process(other)
+                    db.session.flush()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return doc
+
+
+REJECTED_MSG = "Dokument został odrzucony przez operatora — najpierw użyj „Przywróć”."
 
 
 ACTIONS = {
@@ -237,6 +350,8 @@ def resolve(doc: Document, action: str, data: dict, remember: bool = True, user:
     handler = ACTIONS.get(action)
     if handler is None:
         raise NegotiationError(f"Nieznana akcja „{action}”.")
+    if doc.is_manually_rejected and action != "reject":  # BE-2: tylko jawne „Przywróć”
+        raise NegotiationError(REJECTED_MSG)
     try:
         handler(doc, data or {}, remember, user)
         db.session.flush()

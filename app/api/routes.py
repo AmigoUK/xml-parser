@@ -101,6 +101,9 @@ def reprocess_document(doc_id):
     doc = _get_doc(doc_id)
     if not doc:
         return api_error("not_found", "Nie znaleziono dokumentu.", 404)
+    if doc.is_manually_rejected:  # BE-2/EDGE-6: odrzucenie operatora cofa tylko „Przywróć” w panelu
+        return api_error("rejected", "Dokument został odrzucony przez operatora — ponowne przetworzenie "
+                                     "nie cofa odrzucenia.", 409)
     process(doc)
     db.session.commit()
     return jsonify(doc_to_json(doc))

@@ -55,7 +55,7 @@ function editor(cfg) {
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
                                    body: JSON.stringify(body) });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Błąd serwera');
+      if (!r.ok) { const err = new Error(data.error || 'Błąd serwera'); err.data = data; throw err; }
       return data;
     },
     async runPreview() {
@@ -65,7 +65,14 @@ function editor(cfg) {
     async save() {
       this.saving = true;
       try {
-        const res = await this.post(cfg.saveUrl, { rules: this.rules, comment: this.comment });
+        const body = { rules: this.rules, comment: this.comment };
+        let res;
+        try { res = await this.post(cfg.saveUrl, body); }
+        catch (e) {
+          // usunięcie mapowania pól wymaganych wymaga jawnego potwierdzenia (EDGE-15)
+          if (!(e.data && e.data.needs_confirm && window.confirm(e.message))) throw e;
+          res = await this.post(cfg.saveUrl, { ...body, confirm_incomplete: true });
+        }
         window.location = res.redirect;
       } catch (e) { this.error = e.message; } finally { this.saving = false; }
     },

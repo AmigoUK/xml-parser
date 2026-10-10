@@ -6,11 +6,13 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy.exc import IntegrityError
 
-from app.engine.lookups import norm_alias
+from app.engine.lookups import norm_alias, norm_product_name
+from app.engine.suggest import norm_tax_id
 from app.engine.values import normalize_gtin
 from app.extensions import db
 from app.models import Document, Product, ProductMapping, Supplier, Template, Unit, UnitAlias, UnitConversion
 from app.services.audit import audit
+from app.services.negotiation import conversion_for_key, find_supplier_by_tax_id
 
 from .crud import CrudField, CrudSpec, register_crud
 
@@ -55,11 +57,24 @@ def _conversion_before_save(c: UnitConversion):
         raise ValueError("Przelicznik musi być większy od zera.")
     if c.factor >= Decimal("1e12"):
         raise ValueError("Przelicznik jest zbyt duży.")
+    if conversion_for_key(c.supplier_id, c.product_id, c.from_unit_id, exclude_id=c.id):  # BE-4
+        raise ValueError("Przelicznik z tej jednostki dla tego dostawcy i towaru już istnieje — "
+                         "edytuj istniejący zamiast dodawać kolejny.")
+
+
+def _supplier_before_save(s: Supplier):
+    s.tax_id = norm_tax_id(s.tax_id)[:64] or None  # bez spacji, myślników i kropek (BE-11/EDGE-9)
+    other = find_supplier_by_tax_id(s.tax_id, exclude_id=s.id)
+    if other:
+        raise ValueError(f"Dostawca z tym NIP/VAT już istnieje: „{other.name}”.")
 
 
 def _mapping_before_save(m: ProductMapping):
-    if not m.supplier_code and not m.supplier_gtin:
-        raise ValueError("Podaj kod lub GTIN towaru u dostawcy.")
+    m.supplier_name_norm = norm_product_name(m.supplier_name_norm)
+    if not m.supplier_code and not m.supplier_gtin and not m.supplier_name_norm:
+        raise ValueError("Podaj kod, GTIN albo nazwę towaru u dostawcy.")
+    if m.supplier_code or m.supplier_gtin:
+        m.supplier_name_norm = None  # nazwa jest kluczem tylko dla pozycji bez kodu i GTIN (BE-3)
     if m.supplier_gtin:
         m.supplier_gtin = normalize_gtin(m.supplier_gtin)
 
@@ -96,7 +111,7 @@ SPECS = [
               CrudField("notes", "Notatki", "textarea")],
              [("Nazwa", lambda s: s.name), ("NIP / VAT", lambda s: s.tax_id or "—"),
               ("Szablony", lambda s: len(s.templates))],
-             lambda: Supplier.name, delete_blocker=_supplier_blocker),
+             lambda: Supplier.name, before_save=_supplier_before_save, delete_blocker=_supplier_blocker),
     CrudSpec("products", Product, "Kartoteka towarów", "/towary",
              [CrudField("code", "Indeks", required=True), CrudField("name", "Nazwa", required=True),
               CrudField("gtin", "GTIN / EAN"),
@@ -109,10 +124,12 @@ SPECS = [
              [CrudField("supplier_id", "Dostawca", "select", True,
                         lambda: [(s.id, s.name) for s in Supplier.query.order_by(Supplier.name)]),
               CrudField("supplier_code", "Kod u dostawcy"), CrudField("supplier_gtin", "GTIN u dostawcy"),
+              CrudField("supplier_name_norm", "Nazwa towaru u dostawcy (tylko gdy brak kodu i GTIN)"),
               CrudField("product_id", "Nasz towar", "select", True,
                         lambda: [(p.id, f"{p.code} — {p.name}") for p in Product.query.order_by(Product.code)])],
              [("Dostawca", lambda m: m.supplier.name), ("Kod", lambda m: m.supplier_code or "—"),
-              ("GTIN", lambda m: m.supplier_gtin or "—"), ("Nasz towar", lambda m: f"{m.product.code} — {m.product.name}")],
+              ("GTIN", lambda m: m.supplier_gtin or "—"), ("Nazwa", lambda m: m.supplier_name_norm or "—"),
+              ("Nasz towar", lambda m: f"{m.product.code} — {m.product.name}")],
              lambda: ProductMapping.id, before_save=_mapping_before_save),
     CrudSpec("units", Unit, "Jednostki miary", "/jednostki",
              [CrudField("code", "Kod", required=True), CrudField("name", "Nazwa", required=True),

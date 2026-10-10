@@ -9,12 +9,19 @@
       {% if doc.template_version %} · szablon „{{ doc.template.name }}” v{{ doc.template_version.version }}{% elif doc.draft_rules %} · reguły robocze ({% if doc.supplier_id %}szablon powstanie przy pierwszym zapisie mapowania{% else %}szablon powstanie po rozpoznaniu dostawcy i zapisie mapowania{% endif %}){% endif %}</div>
   </div>
   <div class="d-flex gap-2">
+    {% if doc.is_manually_rejected %}
+    <form method="post" action="{{ url_for('docs.restore_document', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Przywróć</button></form>
+    {% else %}
     <form method="post" action="{{ url_for('docs.reprocess', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">Przetwórz ponownie</button></form>
+    {% endif %}
     <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('docs.as_json', doc_id=doc.id) }}">JSON</a>
     <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('docs.raw', doc_id=doc.id) }}">Plik źródłowy</a>
   </div>
 </div>
 
+{% if doc.is_manually_rejected %}
+<div class="alert alert-danger small">Dokument odrzucony ręcznie ({{ doc.rejected_by }}). Ponowne przetwarzanie i rozwiązywanie problemów są zablokowane — aby wrócić do pracy z dokumentem, użyj „Przywróć”.</div>
+{% endif %}
 {% set ctx = {'field_labels': field_labels, 'leaf_paths': leaf_paths, 'units': units, 'products': products, 'suppliers': suppliers} %}
 {% if doc.issues %}
 <h2 class="h6">Problemy ({{ doc.issues|length }}) — rozwiąż je po kolei, od góry</h2>

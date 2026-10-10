@@ -131,6 +131,8 @@ class ProductMapping(db.Model):
     supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"), nullable=False, index=True)
     supplier_code = db.Column(db.String(64))
     supplier_gtin = db.Column(db.String(14))
+    # pozycje bez kodu i GTIN zapamiętujemy po znormalizowanej nazwie towaru (BE-3/EDGE-3)
+    supplier_name_norm = db.Column(db.String(255))
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
     supplier = db.relationship("Supplier")
     product = db.relationship("Product")
@@ -155,6 +157,9 @@ class Document(db.Model):
     overrides = db.Column(db.JSON, default=dict)
     draft_rules = db.Column(db.JSON)
     error = db.Column(db.Text)
+    # ręczne odrzucenie przez operatora (kto) — trwałe do jawnego „Przywróć”; automatyczne
+    # odrzucenia (unreadable, too_many_lines) mają tu NULL i można je przetworzyć ponownie (BE-2)
+    rejected_by = db.Column(db.String(255))
     corrects_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
     api_key_id = db.Column(db.Integer, db.ForeignKey("api_keys.id"))
     created_at = db.Column(db.DateTime, default=utcnow, index=True)
@@ -162,6 +167,10 @@ class Document(db.Model):
     supplier = db.relationship("Supplier")
     template = db.relationship("Template")
     template_version = db.relationship("TemplateVersion")
+
+    @property
+    def is_manually_rejected(self) -> bool:
+        return self.status == STATUS_REJECTED and self.rejected_by is not None
 
     @property
     def status_label(self) -> str:

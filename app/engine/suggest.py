@@ -326,12 +326,20 @@ def norm_tax_id(value: str | None) -> str:
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())
 
 
+def split_tax_id(value: str | None) -> tuple[str | None, str]:
+    """NIP/VAT → (prefiks kraju albo None, część bez prefiksu); bez spacji, myślników i kropek."""
+    s = norm_tax_id(value)
+    if len(s) > 2 and s[:2].isalpha():
+        return s[:2], s[2:]
+    return None, s
+
+
 def tax_ids_match(a: str | None, b: str | None) -> bool:
-    x, y = norm_tax_id(a), norm_tax_id(b)
-    if not x or not y:
+    """Prefiks kraju pomijamy tylko, gdy po jednej stronie go brak — FR123 ≠ DE123 (EDGE-8)."""
+    (pa, x), (pb, y) = split_tax_id(a), split_tax_id(b)
+    if not x or not y or x != y:
         return False
-    strip = lambda s: s[2:] if len(s) > 2 and s[:2].isalpha() else s  # noqa: E731
-    return x == y or strip(x) == strip(y)
+    return pa is None or pb is None or pa == pb
 
 
 def supplier_candidates(name: str | None, tax_id: str | None, suppliers: list[dict],

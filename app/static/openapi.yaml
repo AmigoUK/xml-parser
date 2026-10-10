@@ -29,8 +29,58 @@ components:
         message: { type: string }
         field: { type: string, nullable: true }
         line_no: { type: integer, nullable: true }
+        source_path: { type: string, nullable: true }
         source_value: { type: string, nullable: true }
         suggestions: { type: array, items: { type: object } }
+        count:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Liczba pozycji, których dotyczy problem (problemy pozycji są agregowane).
+        line_nos:
+          type: array
+          items: { type: integer }
+          maxItems: 20
+          description: Pierwsze numery pozycji objętych problemem (maks. 20).
+    InvoiceLine:
+      type: object
+      description: Pozycja dokumentu kanonicznego. Kwoty i ilości jako stringi z kropką dziesiętną.
+      properties:
+        line_no: { type: integer }
+        supplier_code: { type: string, nullable: true }
+        gtin: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+        qty: { type: string, nullable: true, example: "2" }
+        unit: { type: string, nullable: true, example: szt }
+        unit_source: { type: string, nullable: true }
+        unit_price_net: { type: string, nullable: true, example: "10.0000" }
+        net: { type: string, nullable: true, example: "20.00" }
+        vat_rate:
+          nullable: true
+          description: Stawka VAT w procentach jako liczba-tekst (np. "23", "8", "0") albo kod
+            zwolnienia/wyłączenia — "zw" (zwolniona), "np" (nie podlega), "oo" (odwrotne obciążenie).
+          oneOf:
+            - { type: string, pattern: '^-?\d+(\.\d+)?$', example: "23" }
+            - { type: string, enum: [zw, np, oo] }
+        vat: { type: string, nullable: true }
+        gross: { type: string, nullable: true }
+        batch: { type: string, nullable: true }
+        expiry_date: { type: string, format: date, nullable: true }
+        product_index: { type: string, nullable: true, description: Indeks towaru z naszej kartoteki }
+        conversion_factor: { type: string, example: "1" }
+    Invoice:
+      type: object
+      description: Dokument kanoniczny (kwoty jako stringi).
+      properties:
+        doc_type: { type: string, example: invoice }
+        number: { type: string, nullable: true }
+        issue_date: { type: string, format: date, nullable: true }
+        currency: { type: string, nullable: true, example: PLN }
+        supplier: { type: object }
+        buyer: { type: object }
+        totals: { type: object }
+        lines: { type: array, items: { $ref: "#/components/schemas/InvoiceLine" } }
+      additionalProperties: true
     Document:
       type: object
       properties:
@@ -41,7 +91,7 @@ components:
         number: { type: string, nullable: true }
         supplier: { type: object, nullable: true }
         template_version: { type: integer, nullable: true }
-        invoice: { type: object, description: Dokument kanoniczny (kwoty jako stringi) }
+        invoice: { allOf: [{ $ref: "#/components/schemas/Invoice" }], nullable: true }
         issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
 paths:
   /documents:
@@ -76,8 +126,15 @@ paths:
   /documents/{id}/reprocess:
     post:
       summary: Przetwórz ponownie aktywną wersją szablonu
+      description: |
+        Dokument odrzucony ręcznie przez operatora pozostaje odrzucony — zwracamy 409 (`rejected`);
+        przywrócić go można tylko w panelu. Odrzucenia automatyczne (plik nieczytelny, zbyt wiele
+        pozycji) można przetworzyć ponownie.
       parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
-      responses: { "200": { description: OK } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Document" } } } }
+        "404": { description: Nie znaleziono }
+        "409": { description: Dokument odrzucony przez operatora, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /suppliers:
     get:
       summary: Lista dostawców

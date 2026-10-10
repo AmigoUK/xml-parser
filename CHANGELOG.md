@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `requirements.lock` z przypiętymi zależnościami przechodnimi, używany w obrazie (OPS-6).
 - Transformacja `decimal` przyjmuje separator dziesiętny jako argument (`{"decimal": ","}` / `{"decimal": "."}`); problem „niejednoznaczna liczba” ma w panelu gotowe podpowiedzi z podglądem obu wariantów (EDGE-11).
 - Stawki VAT `zw`, `np` (także `np I` / `np II` z KSeF) i `oo` są zachowywane w `vat_rate` jako kod stawki; stawka w postaci ułamka (`0,23`) daje ostrzeżenie „prawdopodobnie ułamek, nie procent” (EDGE-10).
+- Akcja „Przywróć” w panelu (POST z CSRF) dla dokumentu odrzuconego ręcznie; kto odrzucił, zapisywane jest w nowej kolumnie `documents.rejected_by` (migracja `3c7d2a91e5b4`) (BE-2).
+- Mapowanie towaru po znormalizowanej nazwie dla pozycji bez kodu i GTIN (kolumna `product_mappings.supplier_name_norm`, także w CRUD mapowań); pozycja bez kodu, GTIN i nazwy może dostać towar tylko „dla tej faktury” (BE-3/EDGE-3).
+- OpenAPI: schematy `Invoice`/`InvoiceLine` (`vat_rate` jako liczba-tekst albo kod `zw`/`np`/`oo`), pola `count` i `line_nos` w `Issue`, odpowiedź 409 dla `reprocess`.
 
 ### Changed
 - Widok szczegółów dokumentu pokazuje maks. 50 kart problemów, 3 000 wierszy drzewa pliku i 500 pozycji wyniku (pełne dane w JSON) — strona dużej faktury nie ma już dziesiątek MB (EDGE-5).
@@ -27,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Liczba w formie niejednoznacznej (jeden separator i dokładnie 3 cyfry po nim, np. `1,234` / `1.234`) blokuje dokument problemem `ambiguous_number`, chyba że separator jest ustawiony w transformacji `decimal` albo jednoznacznie wynika z innych wartości tego samego dokumentu; liczby z JSON-a (typ number) są zawsze jednoznaczne (EDGE-11).
 - Waluta normalizowana do kodu ISO 4217 (`zł`/`zl` → PLN, `EURO`/`€` → EUR, `£` → GBP, wielkość liter, spacje); nieznana waluta to problem blokujący (EDGE-21).
 - Litery wewnątrz liczby (np. `12a3`, `0.1+0.2`) są błędem zamiast być po cichu usuwane; dopiski waluty/procentu przed lub po liczbie (`£80.50`, `12,50 zł`, `23%`) działają jak dotąd (EDGE-1).
+- Dokument jest duplikatem tylko względem wcześniej przyjętego (niższe id), nie-odrzuconego dokumentu; odrzucenie oryginału przelicza wskazujące na niego duplikaty, a „Przywróć” oryginału przywraca późniejszym kopiom status duplikatu (BE-5, EDGE-24).
+- NIP/VAT dostawcy zapisywany w postaci znormalizowanej (bez spacji, myślników, kropek); „Utwórz dostawcę” z NIP istniejącego dostawcy podpina istniejącego, a CRUD odrzuca duplikat NIP; identyfikacja wybiera deterministycznie najstarszego dostawcę (BE-11/EDGE-9).
+- Faktura korygująca / zaliczkowa (`doc_type` correction, advance, KOR, ZAL…) bez pozycji dostaje ostrzeżenie zamiast problemu blokującego; zwykła faktura bez pozycji nadal jest blokowana (EDGE-19).
+- Edytor szablonów wymaga elementu z pozycjami (`line_path`) i prosi o potwierdzenie, gdy nowa wersja usuwa mapowanie pól wymaganych (EDGE-15).
+- Przypisanie towaru „tylko dla tej faktury” do zagregowanego problemu obejmuje wszystkie pozycje z tym samym kodem/GTIN/nazwą.
 
 ### Fixed
 - Faktura z jedną pozycją i inną powtarzalną grupą (raty `TerminPlatnosci`, `AdditionalDocumentReference`, `payments`) nie dostaje już rat jako pozycji; pojedyncza pozycja pod kluczem spoza listy podpowiedzi (np. `products`) jest rozpoznawana (EDGE-4).
@@ -36,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dokument kanoniczny nie zawiera „-0” / „-0.00” (EDGE-28).
 - Edytor szablonów odrzuca transformację `convert` ze współczynnikiem ≤ 0 lub niejednoznacznym, spójnie z CRUD i negocjacją; transformacja odrzuca taki współczynnik także przy przetwarzaniu (do zmiany znaku służy `negate`) (EDGE-16).
 - Przetwarzanie dużych faktur: wyniki słowników (jednostki, przeliczniki, mapowania towarów) zapamiętywane na czas przetworzenia, wolny indeks nowego towaru liczony raz — 4 000 pozycji: ingest 11,3 s → 0,7 s (EDGE-5).
+- Ręcznie odrzucony dokument pozostaje odrzucony po `POST /api/v1/documents/{id}/reprocess` (409 `rejected`), po zapisie z edytora, po „Przetwórz ponownie” i po próbie rozwiązania problemu; odrzucenia automatyczne (nieczytelny plik, zbyt wiele pozycji) można przetworzyć ponownie (BE-2/EDGE-6).
+- „Zapamiętaj” towar dla pozycji bez kodu i GTIN nie przepina już cudzego mapowania tego dostawcy; pozycja z samym GTIN nie nadpisuje mapowania po kodzie (BE-3/EDGE-3).
+- Ponowne dodanie przelicznika dla tego samego dostawcy, towaru i jednostki aktualizuje istniejący zamiast tworzyć duplikat; CRUD odrzuca duplikat, a wyszukiwanie wybiera najnowszy przelicznik (BE-4).
+- Przelicznik `1,000` / `1.000` w CRUD i negocjacji to błąd formularza zamiast cichego 1,0.
+- Ponowne przetworzenie oryginału nie oznacza go jako duplikatu kopii zatwierdzonej przez „Dopuść duplikat” (BE-5).
+- Ręczne przypisanie usuniętego towaru (lub jednostki) nie daje już statusu zatwierdzonego — pozycja dostaje problem blokujący (EDGE-7).
+- Porównanie NIP/VAT uwzględnia prefiks kraju: `FR123456789` ≠ `DE123456789`; prefiks pomijany tylko, gdy po jednej stronie go brak (EDGE-8).
+- Edytor nie zapisuje pustych reguł `{}` jako aktywnej wersji szablonu (EDGE-15).
+- Numer pozycji `0`, ujemny lub większy niż liczba pozycji daje komunikat „Brak pozycji” zamiast trafiać w ostatnią pozycję (EDGE-25).
 
 ### Security
 - DoS przez złożoność kwadratową: wykrywanie grupy pozycji działa w jednym przejściu drzewa, a podpowiedzi mapowań korzystają z indeksu sufiksów ścieżek (rozpoznawanie po samym typie wartości tylko dla pierwszych 1 000 ścieżek). Szeroki JSON 1,15 MB: 35,6 s → 1,0 s; XML 1,5 MB: 162 s → 1,5 s (SEC-1).

@@ -204,6 +204,22 @@ def validate_rules(rules: dict) -> str | None:
     return None
 
 
+def _mapped(rules: dict, section: str, key: str) -> bool:
+    rule = (rules.get(section) or {}).get(key)
+    has_rule = isinstance(rule, dict) and bool(rule.get("path") or "constant" in rule)
+    defaults = rules.get("line_defaults" if section == "lines" else "defaults") or {}
+    return has_rule or defaults.get(key) not in (None, "")
+
+
+def _lost_required(old: dict, new: dict) -> list[str]:
+    """Etykiety pól wymaganych zmapowanych w poprzednich regułach, a brakujących w nowych (EDGE-15)."""
+    out = []
+    for section, fields in (("header", HEADER_FIELDS), ("lines", LINE_FIELDS)):
+        out += [f.label for f in fields
+                if f.required and _mapped(old or {}, section, f.key) and not _mapped(new, section, f.key)]
+    return out
+
+
 def _rules_from_request():
     """Zwraca (rules, payload, error_response)."""
     payload = request.get_json(silent=True)
@@ -243,6 +259,14 @@ def save(doc_id):
     rules, payload, err = _rules_from_request()
     if err:
         return err
+    if not (isinstance(rules.get("line_path"), str) and rules["line_path"].strip()):  # EDGE-15
+        return jsonify(error="Wskaż element z pozycjami faktury (line_path) — bez niego szablon "
+                             "nie odczyta żadnej pozycji."), 400
+    lost = _lost_required(current_rules(doc), rules)
+    if lost and payload.get("confirm_incomplete") is not True:
+        return jsonify(error="Nowa wersja usuwa mapowanie pól wymaganych: " + ", ".join(lost)
+                             + ". Kolejne faktury dostawcy trafią do wyjaśnienia. Zapisać mimo to?",
+                       needs_confirm=True), 400
     raw_comment = payload.get("comment")
     comment = (raw_comment.strip() if isinstance(raw_comment, str) else "") or "Zmiana w edytorze mapowań"
     comment = comment[:500]
@@ -258,6 +282,7 @@ def save(doc_id):
     else:
         doc.draft_rules = rules
         audit("edit_draft", "document", doc.id, {"comment": comment})
-    process(doc)
+    if not doc.is_manually_rejected:  # zapis szablonu nie cofa ręcznego odrzucenia (BE-2)
+        process(doc)
     db.session.commit()
     return jsonify(ok=True, status=doc.status, redirect=url_for("docs.detail", doc_id=doc.id))

@@ -13,6 +13,10 @@ from .values import (AmbiguousNumberError, PlainNumber, fmt_money, fmt_price, fm
                      normalize_currency, normalize_gtin, parse_date, to_decimal, vat_code)
 
 
+# typy dokumentów, które mogą nie mieć pozycji (EDGE-19); porównanie bez wielkości liter
+ZERO_LINE_DOC_TYPES = {"correction", "advance", "korekta", "zaliczka", "zaliczkowa", "kor", "zal", "kor_zal"}
+
+
 @dataclass
 class ApplyResult:
     invoice: dict
@@ -151,13 +155,16 @@ def apply_template(tree: SourceTree, rules: dict, lookups: Lookups, supplier_id:
     # --- pozycje ---
     line_path = rules.get("line_path")
     nodes: list[Node] = []
+    # korekta / zaliczka bez pozycji to poprawny dokument nagłówkowy — tylko ostrzeżenie (EDGE-19)
+    no_lines_ok = str(invoice.get("doc_type") or "").strip().lower() in ZERO_LINE_DOC_TYPES
+    no_lines_sev = WARNING if no_lines_ok else BLOCKING
     if not line_path:
-        issues.append(Issue("unmapped_field", BLOCKING, "Nie wskazano elementu zawierającego pozycje faktury.",
+        issues.append(Issue("unmapped_field", no_lines_sev, "Nie wskazano elementu zawierającego pozycje faktury.",
                             field="line_path"))
     else:
         nodes = tree.nodes_at(line_path)
         if not nodes:
-            issues.append(Issue("unmapped_field", BLOCKING,
+            issues.append(Issue("unmapped_field", no_lines_sev,
                                 f"Nie znaleziono pozycji pod ścieżką „{line_path}”.", field="line_path"))
 
     seen_units: set[str] = set()
@@ -177,7 +184,10 @@ def apply_template(tree: SourceTree, rules: dict, lookups: Lookups, supplier_id:
                 line["unit_source"] = alias
                 unit = None
                 if alias:
-                    unit = unit_over.get(alias.lower()) or lookups.unit_for_alias(alias, supplier_id)
+                    over = unit_over.get(alias.lower())
+                    if over and not lookups.unit_exists(over):
+                        over = None  # jednostka z ręcznego przypisania usunięta ze słownika (EDGE-7)
+                    unit = over or lookups.unit_for_alias(alias, supplier_id)
                     if unit is None and alias.lower() not in seen_units:
                         seen_units.add(alias.lower())
                         issues.append(Issue("unknown_unit", BLOCKING,
@@ -192,10 +202,19 @@ def apply_template(tree: SourceTree, rules: dict, lookups: Lookups, supplier_id:
                 failed_line.add(f.key)
 
         # towar
-        code = product_over.get(str(line_no)) or lookups.product_for(supplier_id, line.get("supplier_code"),
-                                                                     line.get("gtin"))
+        over = product_over.get(str(line_no))
+        if over and not lookups.product_exists(over):
+            # ręcznie przypisany towar usunięto z kartoteki — nie zatwierdzamy po cichu (EDGE-7)
+            code = None
+            issues.append(Issue("unmapped_product", BLOCKING,
+                                f"Pozycja {line_no}: ręcznie przypisany towar „{over}” nie istnieje już w kartotece "
+                                "— przypisz towar ponownie.",
+                                field="product_index", line_no=line_no, source_value=over))
+        else:
+            code = over or lookups.product_for(supplier_id, line.get("supplier_code"), line.get("gtin"),
+                                               line.get("name"))
         line["product_index"] = code
-        if not code:
+        if not code and not over:
             label = " ".join(x for x in (line.get("supplier_code"), line.get("name")) if x)
             issues.append(Issue("unmapped_product", BLOCKING,
                                 f"Pozycja {line_no}: nie przypisano towaru z naszej kartoteki ({label}).",
