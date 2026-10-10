@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 m-0">{{ spec.title }}</h1>
+  <div class="d-flex gap-2">
+    {% for label, endpoint in spec.extra_actions %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for(endpoint) }}">{{ label }}</a>{% endfor %}
+    <a class="btn btn-sm btn-primary" href="{{ url_for('catalog.new_' ~ spec.key) }}">Dodaj</a>
+  </div>
+</div>
+<table class="table table-sm table-hover bg-white">
+  <thead><tr>{% for label, _ in spec.columns %}<th>{{ label }}</th>{% endfor %}<th class="text-end">Akcje</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>
+      {% for _, getter in spec.columns %}<td>{{ getter(row) }}</td>{% endfor %}
+      <td class="text-end text-nowrap">
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('catalog.edit_' ~ spec.key, obj_id=row.id) }}">Edytuj</a>
+        <form method="post" action="{{ url_for('catalog.delete_' ~ spec.key, obj_id=row.id) }}" class="d-inline" onsubmit="return confirm('Usunąć?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-danger">Usuń</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="{{ spec.columns|length + 1 }}" class="text-muted">Brak rekordów.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

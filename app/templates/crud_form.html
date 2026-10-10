@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }}{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">{{ spec.title }} — {{ 'nowy rekord' if is_new else 'edycja' }}</h1>
+<form method="post" class="card card-body" style="max-width: 640px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for f in spec.fields %}
+    {% set val = form.get(f.name) if form is not none and f.type != 'checkbox' else (form.get(f.name) in ('1', 'on', 'true') if form is not none else obj|attr(f.name)) %}
+    <div class="mb-2">
+      {% if f.type == 'checkbox' %}
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="{{ f.name }}" value="1" id="f-{{ f.name }}" {% if val %}checked{% endif %}><label class="form-check-label" for="f-{{ f.name }}">{{ f.label }}</label></div>
+      {% else %}
+        <label class="form-label small mb-0" for="f-{{ f.name }}">{{ f.label }}{% if f.required %} *{% endif %}</label>
+        {% if f.type == 'select' %}
+          <select class="form-select form-select-sm" name="{{ f.name }}" id="f-{{ f.name }}" {% if f.required %}required{% endif %}>
+            {% for value, label in f.choices() %}<option value="{{ value }}" {% if value|string == val|string or (val is none and value == '') %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        {% elif f.type == 'textarea' %}
+          <textarea class="form-control form-control-sm" name="{{ f.name }}" id="f-{{ f.name }}" rows="3">{{ val or '' }}</textarea>
+        {% else %}
+          <input class="form-control form-control-sm" name="{{ f.name }}" id="f-{{ f.name }}" value="{{ val if val is not none else '' }}" {% if f.required %}required{% endif %}>
+        {% endif %}
+      {% endif %}
+    </div>
+  {% endfor %}
+  <div class="d-flex gap-2"><button class="btn btn-primary btn-sm">Zapisz</button>
+    <a class="btn btn-link btn-sm" href="{{ url_for('catalog.list_' ~ spec.key) }}">Anuluj</a></div>
+</form>
+{% endblock %}

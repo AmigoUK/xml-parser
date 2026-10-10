@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Import towarów{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Import kartoteki towarów (CSV)</h1>
+<p class="small text-muted">Nagłówek: <code>indeks;nazwa;gtin;jednostka</code> (separator <code>;</code> lub <code>,</code>, UTF-8 lub Windows-1250). Istniejące indeksy są aktualizowane.</p>
+<form method="post" enctype="multipart/form-data" class="card card-body mb-3" style="max-width: 640px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input class="form-control mb-2" type="file" name="file" accept=".csv,.txt" required>
+  <button class="btn btn-primary btn-sm">Importuj</button>
+</form>
+{% if report and report.errors %}<div class="alert alert-warning small"><strong>Błędy:</strong><ul class="mb-0">{% for e in report.errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<a href="{{ url_for('catalog.list_products') }}">← Kartoteka towarów</a>
+{% endblock %}

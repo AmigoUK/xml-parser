@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Klucze API{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Klucze API</h1>
+{% if new_key %}
+<div class="alert alert-success"><strong>Nowy klucz — Skopiuj teraz, nie pokażemy go ponownie:</strong><br><code class="user-select-all">{{ new_key }}</code></div>
+{% endif %}
+<form method="post" action="{{ url_for('apikeys.create') }}" class="d-flex gap-2 mb-3" style="max-width: 520px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input class="form-control form-control-sm" name="name" placeholder="Nazwa (np. ERP, magazyn)" required>
+  <button class="btn btn-primary btn-sm text-nowrap">Utwórz klucz</button>
+</form>
+<table class="table table-sm bg-white">
+  <thead><tr><th>Nazwa</th><th>Prefiks</th><th>Aktywny</th><th>Ostatnio użyty</th><th class="text-end">Akcje</th></tr></thead>
+  <tbody>{% for k in keys %}
+  <tr>
+    <td><form method="post" action="{{ url_for('apikeys.rename', key_id=k.id) }}" class="d-flex gap-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm" name="name" value="{{ k.name }}"><button class="btn btn-sm btn-outline-primary">Edytuj</button></form></td>
+    <td><code>{{ k.prefix }}…</code></td><td>{{ 'tak' if k.active else 'nie' }}</td>
+    <td class="small">{{ k.last_used_at.strftime('%Y-%m-%d %H:%M') if k.last_used_at else '—' }}</td>
+    <td class="text-end text-nowrap">
+      <form method="post" action="{{ url_for('apikeys.toggle', key_id=k.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">{{ 'Wyłącz' if k.active else 'Włącz' }}</button></form>
+      <form method="post" action="{{ url_for('apikeys.delete', key_id=k.id) }}" class="d-inline" onsubmit="return confirm('Usunąć klucz?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Usuń</button></form>
+    </td>
+  </tr>{% endfor %}</tbody>
+</table>
+{% endblock %}
