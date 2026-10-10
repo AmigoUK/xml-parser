@@ -1,0 +1,64 @@
+# Synonimy tagów: dopasowanie po KOŃCOWYCH segmentach ścieżki, bez rozróżniania wielkości liter.
+# Kolejność ma znaczenie — wcześniejszy synonim = wyższa pewność.
+header:
+  number: [FakturaNumer, NumerFaktury, NrFaktury, InvoiceNumber, Fa/P_2, Invoice/ID, invoice/number]
+  issue_date: [FakturaDataWystawienia, DataWystawienia, IssueDate, Fa/P_1, invoice/issue_date, InvoiceDate]
+  sale_date: [DataSprzedazy, Fa/P_6, TaxPointDate, invoice/sale_date]
+  due_date: [FakturaDataPlatnosci, DataPlatnosci, TerminPlatnosci/Termin, TerminPlatnosci, DueDate, PaymentDueDate, invoice/due_date]
+  payment_method: [FakturaTypPlatnosci, FormaPlatnosci, PaymentMeansCode, invoice/payment_method]
+  currency: [FakturaWaluta, Waluta, KodWaluty, DocumentCurrencyCode, invoice/currency, Currency]
+  supplier.name: [DostawcaNazwa, SprzedawcaNazwa, NazwaSprzedawcy, Podmiot1/DaneIdentyfikacyjne/Nazwa, AccountingSupplierParty/Party/PartyName/Name, AccountingSupplierParty/Party/PartyLegalEntity/RegistrationName, seller/name, supplier/name, SellerName, SupplierName]
+  supplier.tax_id: [DostawcaNIP, SprzedawcaNIP, NIPSprzedawcy, Podmiot1/DaneIdentyfikacyjne/NIP, AccountingSupplierParty/Party/PartyTaxScheme/CompanyID, seller/vat_number, seller/vat_id, supplier/vat_number, SellerVAT, SupplierVAT]
+  supplier.address.street: [DostawcaAdresUlica, SprzedawcaUlica, Podmiot1/Adres/AdresL1, AccountingSupplierParty/Party/PostalAddress/StreetName, seller/address/street]
+  supplier.address.postcode: [DostawcaAdresKodPocztowy, SprzedawcaKodPocztowy, AccountingSupplierParty/Party/PostalAddress/PostalZone, seller/address/postcode]
+  supplier.address.city: [DostawcaAdresMiejscowosc, SprzedawcaMiejscowosc, Podmiot1/Adres/AdresL2, AccountingSupplierParty/Party/PostalAddress/CityName, seller/address/city]
+  supplier.address.country: [DostawcaKraj, Podmiot1/Adres/KodKraju, AccountingSupplierParty/Party/PostalAddress/Country/IdentificationCode, seller/address/country]
+  buyer.name: [NabywcaNazwa, NazwaNabywcy, Podmiot2/DaneIdentyfikacyjne/Nazwa, AccountingCustomerParty/Party/PartyName/Name, buyer/name, BuyerName]
+  buyer.tax_id: [NabywcaNIP, NIPNabywcy, Podmiot2/DaneIdentyfikacyjne/NIP, AccountingCustomerParty/Party/PartyTaxScheme/CompanyID, buyer/vat_number, buyer/vat_id, BuyerVAT]
+  buyer.address.street: [NabywcaAdresUlica, Podmiot2/Adres/AdresL1, AccountingCustomerParty/Party/PostalAddress/StreetName, buyer/address/street]
+  buyer.address.postcode: [NabywcaAdresKodPocztowy, AccountingCustomerParty/Party/PostalAddress/PostalZone, buyer/address/postcode]
+  buyer.address.city: [NabywcaAdresMiejscowosc, Podmiot2/Adres/AdresL2, AccountingCustomerParty/Party/PostalAddress/CityName, buyer/address/city]
+  buyer.address.country: [NabywcaKraj, Podmiot2/Adres/KodKraju, AccountingCustomerParty/Party/PostalAddress/Country/IdentificationCode, buyer/address/country]
+  totals.net: [FakturaWartoscNetto, RazemNetto, SumaNetto, Fa/P_13_1, LegalMonetaryTotal/TaxExclusiveAmount, totals/net]
+  totals.vat: [FakturaWartoscVat, RazemVAT, SumaVAT, Fa/P_14_1, Invoice/TaxTotal/TaxAmount, totals/vat]
+  totals.gross: [FakturaWartoscBrutto, RazemBrutto, SumaBrutto, Fa/P_15, LegalMonetaryTotal/TaxInclusiveAmount, LegalMonetaryTotal/PayableAmount, totals/gross]
+  delivery_notes: [FakturaNumeryWZ, NumeryWZ, NumerWZ, Fa/WZ, DespatchDocumentReference/ID, invoice/delivery_notes]
+  corrected_invoice_number: [NumerFakturyKorygowanej, NrFaKorygowanej, BillingReference/InvoiceDocumentReference/ID]
+lines:
+  supplier_code: [TowarKod, KodTowaru, Indeks, Kod, SellersItemIdentification/ID, sku, ProductCode]
+  gtin: [TowarKodEan, KodEAN, EAN, GTIN, StandardItemIdentification/ID, ean, gtin]
+  name: [TowarNazwa, NazwaTowaru, Nazwa, P_7, Item/Name, description, ProductName]
+  qty: [Ilosc, P_8B, InvoicedQuantity, quantity, Quantity]
+  unit: [TowarJm, JM, Jm, JednostkaMiary, P_8A, InvoicedQuantity/@unitCode, uom, unit]
+  unit_price_net: [CenaNetto, P_9A, Price/PriceAmount, unit_price, UnitPrice]
+  net: [WartoscNetto, P_11, LineExtensionAmount, net_amount, NetAmount]
+  vat_rate: [StawkaVat, P_12, ClassifiedTaxCategory/Percent, vat_rate, VatRate]
+  vat: [WartoscVat, KwotaVat, vat_amount]
+  gross: [WartoscBrutto, P_11A, gross_amount]
+  batch: [TowarDostawaNumerSerii, NumerSerii, NumerPartii, Partia, LotNumberID, batch]
+  expiry_date: [TowarDostawaDataWaznosci, DataWaznosci, BestBeforeDate, ExpiryDate, expiry_date]
+# Znane kody jednostek (UN/ECE Rec. 20 i popularne skróty) -> nasz kod jednostki.
+# To są TYLKO podpowiedzi — nie są aliasami, operator zatwierdza.
+units:
+  pcs: szt
+  pc: szt
+  "szt.": szt
+  sztuk: szt
+  c62: szt
+  h87: szt
+  ea: szt
+  pce: szt
+  kgm: kg
+  kilogram: kg
+  ltr: l
+  litr: l
+  mtr: m
+  "kart.": karton
+  ct: karton
+  ctn: karton
+  bx: karton
+  bg: worek
+  sack: worek
+  pk: opak
+  pa: opak
+  "op.": opak
