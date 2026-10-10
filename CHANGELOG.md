@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Uwagi do aktualizacji
+Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejność:
+1. **Kopia zapasowa przed migracją** — `tools/backup.sh` (kończy się błędem, gdy zrzut bazy lub archiwum storage są puste/niekompletne). Migracja `e4a1d7c03b52` zmienia statusy dokumentów i usuwa zduplikowane aliasy, przeliczniki i mapowania — jedyną drogą powrotu jest kopia.
+2. **`.env`:** `DEMO_MODE` ma domyślnie `0` — instancja demo musi ustawić `DEMO_MODE=1`. Port aplikacji jest domyślnie wiązany tylko do `127.0.0.1` — dostęp przez Tailscale wymaga `APP_BIND=<IP tailscale0>`. Wymagane są `MARIADB_PASSWORD` i `MARIADB_ROOT_PASSWORD`.
+3. **Migracja** uruchamia się w entrypoincie (`flask db upgrade`); po częściowej awarii na MariaDB ponowny start ją dokańcza.
+4. **Ponowne logowanie** — po wdrożeniu wszyscy użytkownicy muszą zalogować się ponownie (nowy token sesji).
+5. **Integratorzy API:** dokumenty z problemem `reprocess_required` (dawne duplikaty dokumentu innego klucza API lub panelu) i dokumenty z `ambiguous_number` wymagają `POST /api/v1/documents/{id}/reprocess` (po ewentualnym ustawieniu separatora w szablonie); sprawdź obsługę `vat_rate` jako tekstu (`zw`/`np`/`oo`) i statusu `duplicate` dla wcześniej zatwierdzonych dokumentów.
+
 ### Added
 - Limity wczytywania konfigurowane z env: `MAX_TREE_NODES` (domyślnie 200 000 węzłów drzewa — elementy, atrybuty, komórki CSV) i `MAX_LINES` (domyślnie 5 000 pozycji). Przekroczenie odrzuca dokument z czytelnym komunikatem po polsku zamiast przeciążać serwer; XML jest parsowany przyrostowo, więc limit przerywa wczytywanie przed załadowaniem całego pliku (SEC-1).
 - Problemy z pozycji tego samego rodzaju są łączone w jeden z licznikiem i listą pierwszych 20 numerów pozycji (np. 10 000 × „brak przelicznika dla worek” → 1 problem „dotyczy 10 000 pozycji”); dotyczy braków przelicznika, nieprzypisanych towarów (ten sam kod/nazwa), błędów wartości i niezgodności sum pozycji (EDGE-5).
@@ -16,7 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Limity zasobów kontenerów (`APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS`) i rotacja logów dockera (OPS-12, OPS-18).
 - `requirements.lock` z przypiętymi zależnościami przechodnimi, używany w obrazie (OPS-6).
 - Transformacja `decimal` przyjmuje separator dziesiętny jako argument (`{"decimal": ","}` / `{"decimal": "."}`); problem „niejednoznaczna liczba” ma w panelu gotowe podpowiedzi z podglądem obu wariantów (EDGE-11).
-- Stawki VAT `zw`, `np` (także `np I` / `np II` z KSeF) i `oo` są zachowywane w `vat_rate` jako kod stawki; stawka w postaci ułamka (`0,23`) daje ostrzeżenie „prawdopodobnie ułamek, nie procent” (EDGE-10).
 - Akcja „Przywróć” w panelu (POST z CSRF) dla dokumentu odrzuconego ręcznie; kto odrzucił, zapisywane jest w nowej kolumnie `documents.rejected_by` (migracja `3c7d2a91e5b4`) (BE-2).
 - Mapowanie towaru po znormalizowanej nazwie dla pozycji bez kodu i GTIN (kolumna `product_mappings.supplier_name_norm`, także w CRUD mapowań); pozycja bez kodu, GTIN i nazwy może dostać towar tylko „dla tej faktury” (BE-3/EDGE-3).
 - OpenAPI: schematy `Invoice`/`InvoiceLine` (`vat_rate` jako liczba-tekst albo kod `zw`/`np`/`oo`), pola `count` i `line_nos` w `Issue`, odpowiedź 409 dla `reprocess`.
@@ -28,12 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Problemy `file_missing` (brak pliku źródłowego w magazynie) i `internal_error` (nieoczekiwany błąd przetwarzania) — dokument zostaje zapisany do wyjaśnienia zamiast błędu 500 (BE-9, BE-10).
 
 ### Changed
+- **BREAKING:** stawki VAT `zw`, `np` (także `np I` / `np II` z KSeF) i `oo` są zachowywane w `invoice.lines[].vat_rate` jako kod stawki — pole nie jest już zawsze liczbą (dawniej `null`); stawka w postaci ułamka (`0,23`) daje ostrzeżenie „prawdopodobnie ułamek, nie procent” (EDGE-10). *Integrator:* parsuj `vat_rate` jako liczbę albo kod tekstowy.
+- **BREAKING:** faktura z liczbą pozycji ponad `MAX_LINES` (domyślnie 5 000) lub drzewem ponad `MAX_TREE_NODES` jest odrzucana (`rejected`, problem `too_many_lines` / błąd wczytywania) zamiast przetwarzana (SEC-1). *Integrator:* bardzo duże faktury dziel albo podnieś limity w `.env`.
+- **BREAKING:** `issues[].message` problemów zagregowanych dostaje sufiks „Dotyczy N pozycji (nr …)”, a `issues[]` ma nowe pola `count` i `line_nos`; zamiast N osobnych problemów pozycji przychodzi jeden (EDGE-5). *Integrator:* nie porównuj komunikatów dosłownie, licz pozycje z `count`.
+- **BREAKING:** `GET /api/v1/suppliers` zwraca tylko dostawców z dokumentów danego klucza, a z `issues[].suggestions` w API usunięto rodzaje `product`, `use_supplier` i `clone_template` (szczegóły w „Security”, SEC-5). *Integrator:* nie polegaj na pełnej kartotece ani tych podpowiedziach.
+- **BREAKING:** ta sama faktura wysłana dwoma kluczami API albo kluczem i z panelu nie jest już duplikatem — każdy zakres ma własny oryginał (szczegóły w „Security”, BE-1). *Integrator:* deduplikację między kluczami prowadź po swojej stronie.
 - Widok szczegółów dokumentu pokazuje maks. 50 kart problemów, 3 000 wierszy drzewa pliku i 500 pozycji wyniku (pełne dane w JSON) — strona dużej faktury nie ma już dziesiątek MB (EDGE-5).
 - Wybór elementu z pozycjami: najpierw ścieżka pozycji z wyuczonych szablonów, potem grupa zawierająca typowe pola pozycji (ilość/cena + inne wg synonimów), dopiero potem najliczniejsza powtarzalna grupa. Synonim `qty` dla ilości (EDGE-4).
 - Domyślny `APP_PORT` 18506 w compose (OPS-16).
 - Obrazy bazowe przypięte do wersji (python 3.12.15-slim-trixie, mariadb 11.4.13) (OPS-5).
 - Entrypoint: migracje z ponawianiem i backoffem; gunicorn z `--max-requests` (restart workerów) (OPS-10, OPS-12).
-- Liczba w formie niejednoznacznej (jeden separator i dokładnie 3 cyfry po nim, np. `1,234` / `1.234`) blokuje dokument problemem `ambiguous_number`, chyba że separator jest ustawiony w transformacji `decimal` albo jednoznacznie wynika z innych wartości tego samego dokumentu; liczby z JSON-a (typ number) są zawsze jednoznaczne (EDGE-11).
+- **BREAKING:** liczba w formie niejednoznacznej (jeden separator i dokładnie 3 cyfry po nim, np. `1,234` / `1.234`) blokuje dokument problemem `ambiguous_number`, chyba że separator jest ustawiony w transformacji `decimal` albo jednoznacznie wynika z innych wartości tego samego dokumentu; liczby z JSON-a (typ number) są zawsze jednoznaczne (EDGE-11). *Integrator:* dokumenty, które wcześniej przechodziły (np. `1,234` czytane jako 1,234), mogą trafić do `needs_review` — także przy `reprocess` starych dokumentów.
 - Waluta normalizowana do kodu ISO 4217 (`zł`/`zl` → PLN, `EURO`/`€` → EUR, `£` → GBP, wielkość liter, spacje); nieznana waluta to problem blokujący (EDGE-21).
 - Litery wewnątrz liczby (np. `12a3`, `0.1+0.2`) są błędem zamiast być po cichu usuwane; dopiski waluty/procentu przed lub po liczbie (`£80.50`, `12,50 zł`, `23%`) działają jak dotąd (EDGE-1).
 - Dokument jest duplikatem tylko względem wcześniej przyjętego (niższe id), nie-odrzuconego dokumentu; odrzucenie oryginału przelicza wskazujące na niego duplikaty, a „Przywróć” oryginału przywraca późniejszym kopiom status duplikatu (BE-5, EDGE-24).
@@ -44,13 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING:** `DEMO_MODE` domyślnie `0` (config i `.env.example`); instancje demo muszą ustawić `DEMO_MODE=1` jawnie (BE-15, OPS-11).
 - Strona „O demo” nie pokazuje hasła admina (tylko informację o `ADMIN_PASSWORD`); klucz API demo widoczny tylko dla zalogowanych; reset danych demo tylko dla roli admin (K-1).
 - Potwierdzenia usuwania przez atrybut `data-confirm` i `static/app.js`, inicjalizacja Swagger UI w `static/api_docs.js` — bez skryptów inline (SEC-3).
-- Po wdrożeniu wszyscy użytkownicy muszą zalogować się ponownie (nowy format identyfikatora sesji) (SEC-4).
+- **BREAKING:** po wdrożeniu wszyscy użytkownicy muszą zalogować się ponownie (nowy format identyfikatora sesji) (SEC-4).
 - Wykrywanie duplikatów porównuje znormalizowany pełny numer (wielkość liter, akcenty, białe znaki, spacje wokół „/” i „-”) tak samo na SQLite i MariaDB; rodzaj dokumentu (`doc_type`) jest częścią klucza — korekta o numerze faktury nie jest jej duplikatem (EDGE-31, EDGE-23).
-- Oryginałem faktury jest zawsze żywy dokument o najniższym id w tym samym zakresie (klucz API albo panel): ponowne przetworzenie wcześniejszej kopii, gdy późniejsza jest już zatwierdzona, przenosi na nią status duplikatu (BE-1, BE-5).
+- **BREAKING:** oryginałem faktury jest zawsze żywy dokument o najniższym id w tym samym zakresie (klucz API albo panel): ponowne przetworzenie wcześniejszej kopii, gdy późniejsza jest już zatwierdzona, przenosi na nią status duplikatu (BE-1, BE-5). *Integrator:* wcześniej zatwierdzony dokument klucza może zmienić status na `duplicate` po przetworzeniu wcześniejszej kopii — odświeżaj status przed użyciem.
 - Straż „ręcznie odrzucony zostaje odrzucony” działa w samym `process()` — żadna ścieżka (API, panel, negocjacja, edytor, przyszłe wywołania) jej nie omija; odrzucenia automatyczne nadal można przetworzyć ponownie (BE-2).
-- Klucza API z dokumentami nie można usunąć — tylko dezaktywować; dokumenty zachowują powiązanie i pozostają dostępne przez API (BE-18).
+- **BREAKING:** klucza API z dokumentami nie można usunąć — tylko dezaktywować; dokumenty zachowują powiązanie i pozostają dostępne przez API (BE-18).
 - Towaru i jednostki użytych w wynikach lub ręcznych przypisaniach dokumentów nie można usunąć ani zmienić im kodu (BE-14).
-- Migracja `e4a1d7c03b52` porządkuje istniejące dane przed założeniem unikatów: późniejsze żywe kopie tej samej faktury w tym samym zakresie dostają status `duplicate` (z problemem wskazującym oryginał); zduplikowany NIP zostaje u najstarszego dostawcy, u pozostałych jest czyszczony z notatką; z powtórzonych aliasów, przeliczników i mapowań zostaje wiersz, który i tak wybierało wyszukiwanie (alias/mapowanie — najstarszy, przelicznik — najnowszy), reszta jest usuwana. Dokumenty, które v0.1.1 oznaczył jako `duplicate` względem dokumentu z innego zakresu (inny klucz API albo panel), przestają być duplikatami: dostają `needs_review` z blokującym problemem `reprocess_required` („przetwórz ponownie”) — ich status sprzed oznaczenia nie jest odtwarzalny bez ponownego przetworzenia nowymi regułami (FR-8).
+- **BREAKING:** migracja `e4a1d7c03b52` porządkuje istniejące dane przed założeniem unikatów: późniejsze żywe kopie tej samej faktury w tym samym zakresie dostają status `duplicate` (z problemem wskazującym oryginał); zduplikowany NIP zostaje u najstarszego dostawcy, u pozostałych jest czyszczony z notatką; z powtórzonych aliasów, przeliczników i mapowań zostaje wiersz, który i tak wybierało wyszukiwanie (alias/mapowanie — najstarszy, przelicznik — najnowszy), reszta jest usuwana. Dokumenty, które v0.1.1 oznaczył jako `duplicate` względem dokumentu z innego zakresu (inny klucz API albo panel), przestają być duplikatami: dostają `needs_review` z blokującym problemem `reprocess_required` („przetwórz ponownie”) — ich status sprzed oznaczenia nie jest odtwarzalny bez ponownego przetworzenia nowymi regułami (FR-8). *Integrator:* po wdrożeniu część dokumentów `approved`/`needs_review` może mieć status `duplicate`, a dawne duplikaty między kluczami — `needs_review` z `reprocess_required`; zsynchronizuj statusy (`GET /api/v1/documents`).
 - Reset danych demo w jednej transakcji (błąd = dane nietknięte) razem z wpisem w historii; po udanym resecie usuwane są pliki dokumentów z magazynu (BE-15, SEC-6).
 
 ### Fixed
@@ -83,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - DoS przez złożoność kwadratową: wykrywanie grupy pozycji działa w jednym przejściu drzewa, a podpowiedzi mapowań korzystają z indeksu sufiksów ścieżek (rozpoznawanie po samym typie wartości tylko dla pierwszych 1 000 ścieżek). Szeroki JSON 1,15 MB: 35,6 s → 1,0 s; XML 1,5 MB: 162 s → 1,5 s (SEC-1).
-- Port aplikacji domyślnie wiązany tylko do 127.0.0.1 (`APP_BIND`); dostęp przez Tailscale wymaga ustawienia IP w `.env` (OPS-1).
+- **BREAKING:** port aplikacji domyślnie wiązany tylko do 127.0.0.1 (`APP_BIND`); dostęp przez Tailscale wymaga ustawienia IP w `.env` (OPS-1).
 - Kontener aplikacji działa jako użytkownik nie-root (uid 10001); entrypoint naprawia właściciela wolumenu storage (OPS-2).
 - Wymagane `MARIADB_PASSWORD` i `MARIADB_ROOT_PASSWORD` w docker-compose (OPS-13).
 - Rozszerzony `.dockerignore` (sekrety, testy, dokumentacja, narzędzia poza obrazem) (OPS-14).
