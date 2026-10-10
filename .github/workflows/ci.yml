@@ -1,0 +1,33 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pytest -q
+
+  no-private-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Brak private/ i .env w repozytorium
+        run: |
+          bad=$(git ls-files | grep -E '^(private/|\.env$|\.env\.[^e]|\.env\.(local|prod|production)$)' || true)
+          if [ -n "$bad" ]; then
+            echo "Zabronione pliki w repozytorium:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi

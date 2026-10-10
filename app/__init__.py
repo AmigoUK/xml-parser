@@ -37,7 +37,12 @@ def create_app(config_overrides: dict | None = None) -> Flask:
 
     @app.get("/healthz")
     def healthz():
-        return jsonify(status="ok", version=__version__)
+        try:
+            db.session.execute(db.text("SELECT 1"))
+        except Exception:  # noqa: BLE001 - nie ujawniamy szczegółów błędu w odpowiedzi
+            app.logger.exception("healthz: brak połączenia z bazą")
+            return jsonify(status="error", version=__version__, db="error"), 503
+        return jsonify(status="ok", version=__version__, db="ok")
 
     from . import models  # noqa: F401  (rejestracja modeli dla Alembic)
     from .services.seed import reset_demo, seed_base, seed_demo
