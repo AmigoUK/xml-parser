@@ -44,3 +44,21 @@ def test_dates():
     assert gs1_date("270709") == "2027-07-09"
     assert gs1_date("270200") == "2027-02-28"
     assert gs1_date("991231") == "1999-12-31"
+
+
+def test_invalid_day_of_month():
+    with pytest.raises(GS1Error):
+        gs1_date("270231")
+    with pytest.raises(GS1Error):
+        gs1_date("270199")
+
+
+def test_invalid_month():
+    with pytest.raises(GS1Error):
+        gs1_date("271301")
+
+
+def test_non_ascii_digits_rejected():
+    assert not is_valid_gtin("²" * 8)
+    with pytest.raises(GS1Error):
+        gs1_date("²70709")

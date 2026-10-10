@@ -6,7 +6,7 @@ FIXED = {"00": 18, "01": 14, "02": 14, "11": 6, "12": 6, "13": 6, "15": 6, "16":
 VARIABLE = {"10": 20, "21": 20, "22": 20, "30": 8, "37": 8, "240": 30, "241": 30}
 DATE_AIS = {"11", "12", "13", "15", "16", "17"}
 GS = "\x1d"
-_PAREN = re.compile(r"\((\d{2,4})\)([^(]*)")
+_PAREN = re.compile(r"\(([0-9]{2,4})\)([^(]*)")
 
 
 class GS1Error(ValueError):
@@ -20,7 +20,7 @@ def gtin_check_digit(body: str) -> str:
 
 def is_valid_gtin(code: str) -> bool:
     code = (code or "").strip()
-    if not code.isdigit() or len(code) not in (8, 12, 13, 14):
+    if not (code.isascii() and code.isdigit()) or len(code) not in (8, 12, 13, 14):
         return False
     return gtin_check_digit(code[:-1]) == code[-1]
 
@@ -35,12 +35,12 @@ def parse_gs1(code: str) -> dict[str, str]:
     s = (code or "").strip()
     if not s:
         raise GS1Error("Pusty kod GS1.")
+    out: dict[str, str] = {}
     if "(" in s:
         out = {ai: val for ai, val in _PAREN.findall(s)}
         if not out:
             raise GS1Error(f"Nie rozpoznano kodu GS1: {code}")
         return _validate(out)
-    out: dict[str, str] = {}
     i = 0
     while i < len(s):
         if s[i] == GS:
@@ -60,7 +60,8 @@ def parse_gs1(code: str) -> dict[str, str]:
             raise GS1Error(f"Nieznany identyfikator AI '{ai2}' na pozycji {i} w kodzie GS1.")
         start = i + len(ai)
         end = s.find(GS, start)
-        end = len(s) if end == -1 else end
+        if end == -1:
+            end = len(s)
         val = s[start:min(end, start + max_len)]
         out[ai] = val
         i = start + len(val)
@@ -68,12 +69,15 @@ def parse_gs1(code: str) -> dict[str, str]:
 
 
 def gs1_date(yymmdd: str) -> str:
-    if not re.fullmatch(r"\d{6}", yymmdd or ""):
+    if not re.fullmatch(r"[0-9]{6}", yymmdd or ""):
         raise GS1Error(f"Niepoprawna data GS1: {yymmdd}")
     yy, mm, dd = int(yymmdd[:2]), int(yymmdd[2:4]), int(yymmdd[4:])
     year = 2000 + yy if yy <= 49 else 1900 + yy
     if not 1 <= mm <= 12:
         raise GS1Error(f"Niepoprawny miesiąc w dacie GS1: {yymmdd}")
+    last = calendar.monthrange(year, mm)[1]
     if dd == 0:
-        dd = calendar.monthrange(year, mm)[1]
+        dd = last
+    elif dd > last:
+        raise GS1Error(f"Niepoprawny dzień w dacie GS1: {yymmdd}")
     return f"{year:04d}-{mm:02d}-{dd:02d}"
