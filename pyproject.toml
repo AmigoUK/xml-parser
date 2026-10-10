@@ -1,6 +1,6 @@
 [project]
 name = "xml-parser"
-version = "0.1.0"
+version = "0.1.1"
 description = "Uczący się parser faktur strukturalnych (XML/JSON/CSV) z REST API i panelem po polsku"
 requires-python = ">=3.12"
 authors = [{ name = "Tomasz 'Amigo' Lewandowski", email = "dev@attv.uk" }]

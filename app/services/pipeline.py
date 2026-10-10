@@ -102,15 +102,24 @@ def next_product_code() -> str:
     return f"TOW-{n:04d}"
 
 
+def _stored_number(invoice: dict) -> str | None:
+    """Numer w postaci zapisywanej w bazie (bez białych znaków na brzegach, obcięty do kolumny)."""
+    raw = invoice.get("number")
+    if raw is None:
+        return None
+    return _fit(Document.number, str(raw).strip()) or None
+
+
 def _find_duplicate(doc: Document, invoice: dict) -> Document | None:
     q = Document.query.filter(Document.id != doc.id,
                               Document.status.in_([STATUS_APPROVED, STATUS_NEEDS_REVIEW]))
     same = q.filter(Document.sha256 == doc.sha256).order_by(Document.id).first()
     if same:
         return same
-    if doc.supplier_id and invoice.get("number"):
+    num = _stored_number(invoice)
+    if doc.supplier_id and num:
         return q.filter(Document.supplier_id == doc.supplier_id,
-                        Document.number == invoice["number"]).order_by(Document.id).first()
+                        Document.number == num).order_by(Document.id).first()
     return None
 
 
@@ -201,7 +210,7 @@ def process(doc: Document) -> Document:
     _enrich(issues, tree, rules, inv, synonyms, ident, lookups)
     doc.result = inv
     doc.issues = [i.to_dict() for i in issues]
-    doc.number = _fit(Document.number, inv.get("number"))
+    doc.number = _stored_number(inv)
     doc.issue_date = _fit(Document.issue_date, inv.get("issue_date"))
     doc.doc_type = _fit(Document.doc_type, inv.get("doc_type"))
     doc.status = STATUS_DUPLICATE if dup else (STATUS_NEEDS_REVIEW if has_blocking(issues) else STATUS_APPROVED)

@@ -119,3 +119,26 @@ def test_reprocess_unreadable_allowed(auth_client):
     auth_client.post(f"/dokumenty/{d.id}/ponownie")
     db.session.refresh(d)
     assert d.status == "rejected" and d.issues[0]["code"] == "unreadable"
+
+
+def _alfa_with_number(number: str, suffix: bytes = b"") -> bytes:
+    return sample_bytes("alfa-1.xml").replace(b"FA/2026/10/001", number.encode()) + suffix
+
+
+def test_duplicate_detected_for_number_longer_than_column(seeded):
+    db.session.add(Supplier(name="Hurtownia Alfa", tax_id="PL9990000011"))
+    db.session.commit()
+    number = "N" * 300
+    d1 = ingest(_alfa_with_number(number), "a.xml")
+    assert d1.status in ("approved", "needs_review") and d1.number == "N" * 128
+    d2 = ingest(_alfa_with_number(number, b"\n"), "b.xml")
+    assert d2.status == "duplicate"
+
+
+def test_duplicate_detected_despite_surrounding_whitespace(seeded):
+    db.session.add(Supplier(name="Hurtownia Alfa", tax_id="PL9990000011"))
+    db.session.commit()
+    d1 = ingest(_alfa_with_number("FA/77/2026"), "a.xml")
+    assert d1.status in ("approved", "needs_review") and d1.number == "FA/77/2026"
+    d2 = ingest(_alfa_with_number("  FA/77/2026 \t", b"\n"), "b.xml")
+    assert d2.status == "duplicate"

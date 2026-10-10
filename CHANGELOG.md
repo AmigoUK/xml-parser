@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [0.1.1] — 2026-10-10
+
+### Security
+- Naprawiono obejście wykrywania duplikatów: numer faktury dłuższy niż 128 znaków był zapisywany w postaci obciętej, ale porównywany w pełnej, więc ponowne wgranie tej samej faktury (innych bajtów) nie było rozpoznawane jako duplikat i dokument można było zatwierdzić dwukrotnie. Numer jest teraz normalizowany (usuwanie białych znaków na brzegach, obcięcie do długości kolumny) jednakowo przy zapisie i przy porównaniu.
+
 ## [0.1.0] — 2026-10-10
 
 ### Added
@@ -46,6 +51,7 @@ _Nothing yet._
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/AmigoUK/xml-parser/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/AmigoUK/xml-parser/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/AmigoUK/xml-parser/releases/tag/v0.0.1
