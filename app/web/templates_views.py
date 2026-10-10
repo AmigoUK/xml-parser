@@ -2,6 +2,7 @@ import difflib
 import json
 
 import regex
+import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
@@ -146,6 +147,29 @@ def editor_for_document(doc_id):
 def _active_version_id(doc: Document) -> int | None:
     tpl = db.session.get(Template, doc.template_id) if doc.template_id else None
     return tpl.active_version_id if tpl else None
+
+
+STALE_BASE_MSG = ("Szablon zmienił się w międzyczasie (ktoś zapisał nowszą wersję) — odśwież edytor "
+                  "i nanieś zmiany ponownie, żeby nie nadpisać cudzej pracy.")
+
+
+class _StaleBaseVersion(Exception):
+    """Aktywna wersja szablonu różni się od wersji bazowej edytora — 409, bez ponawiania."""
+
+
+def _locked_active_version_id(doc: Document) -> int | None:
+    """Aktywna wersja szablonu dokumentu odczytana z bazy pod blokadą wiersza do końca transakcji (FR-5)."""
+    if not doc.template_id:
+        return None
+    stmt = sa.select(Template.active_version_id).where(Template.id == doc.template_id)
+    if db.session.get_bind().dialect.name == "sqlite":
+        # SQLite nie zna FOR UPDATE: zapis no-op bierze blokadę zapisu bazy do końca transakcji
+        db.session.execute(sa.update(Template).where(Template.id == doc.template_id)
+                           .values(active_version_id=Template.active_version_id)
+                           .execution_options(synchronize_session=False))
+    else:
+        stmt = stmt.with_for_update()  # odczyt blokujący widzi najnowszą zatwierdzoną wartość (InnoDB)
+    return db.session.execute(stmt).scalar()
 
 
 def _check_arg(name: str, arg, key: str) -> str | None:
@@ -293,11 +317,14 @@ def save(doc_id):
         return jsonify(error="Nie można odczytać pliku źródłowego dokumentu."), 400
     except Exception:  # noqa: BLE001
         return jsonify(error="Reguły nie dają się zastosować do tego dokumentu."), 400
-    if "base_version_id" in payload and payload["base_version_id"] != _active_version_id(doc):
-        return jsonify(error="Szablon zmienił się w międzyczasie (ktoś zapisał nowszą wersję) — odśwież edytor "
-                             "i nanieś zmiany ponownie, żeby nie nadpisać cudzej pracy.", conflict=True), 409
+    check_base = "base_version_id" in payload
+    base = payload.get("base_version_id")
 
     def apply():
+        # FR-5: kontrola wersji bazowej w każdej próbie, pod blokadą wiersza szablonu — zapis innego
+        # operatora między kontrolą a commitem (albo przed ponowieniem po IntegrityError) daje 409
+        if check_base and base != _locked_active_version_id(doc):
+            raise _StaleBaseVersion()
         if doc.template_id or doc.supplier_id:
             v = save_rules(doc, rules, current_user.email, comment)
             audit("edit", "template", doc.template_id, {"version": v.version, "comment": comment})
@@ -307,6 +334,8 @@ def save(doc_id):
         process(doc)  # process() sam pomija dokument odrzucony ręcznie (BE-2)
     try:
         commit_with_retry(apply)
+    except _StaleBaseVersion:
+        return jsonify(error=STALE_BASE_MSG, conflict=True), 409
     except IntegrityError:
         return jsonify(error=CONFLICT_MSG, conflict=True), 409
     return jsonify(ok=True, status=doc.status, redirect=url_for("docs.detail", doc_id=doc.id))

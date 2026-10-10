@@ -96,3 +96,100 @@ def test_editor_convert_comma_three_digits_rejected_with_hint(auth_client):
     _, r = _editor_save(auth_client, [{"convert": "1,125"}])
     assert r.status_code == 400
     assert "1125" in r.get_data(as_text=True)
+
+
+# ------------------------------------------------------------------ FR-5: blokada optymistyczna edytora
+@pytest.fixture
+def file_app(tmp_path):
+    """Aplikacja na pliku SQLite — drugie połączenie widzi tylko zatwierdzone dane (jak drugi operator)."""
+    from app import create_app
+    from app.services.seed import seed_base, seed_demo
+    app = create_app({"TESTING": True, "SECRET_KEY": "t", "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path}/r.db",
+                      "STORAGE_DIR": str(tmp_path / "s"), "WTF_CSRF_ENABLED": False, "DEMO_MODE": True,
+                      "ADMIN_EMAIL": "admin@example.com", "ADMIN_PASSWORD": "haslo12345"})
+    with app.app_context():
+        db.create_all()
+        seed_base()
+        seed_demo()
+        yield app
+        db.session.remove()
+        db.drop_all()
+
+
+def _other_operator_saves(tid, rules):
+    from sqlalchemy.orm import Session
+    from app.models import TemplateVersion
+    with Session(db.engine) as s2:
+        t = s2.get(Template, tid)
+        last = max(v.version for v in t.versions)
+        v = TemplateVersion(template_id=tid, version=last + 1, rules=dict(rules), author="operator-A", comment="praca A")
+        s2.add(v)
+        s2.flush()
+        t.active_version_id = v.id
+        s2.commit()
+
+
+def _race_setup(file_app):
+    from tests.test_learning import resolve_with_top_suggestions
+    d = ingest(sample_bytes("alfa-1.xml"), "a.xml")
+    resolve_with_top_suggestions(d)
+    t = db.session.get(Template, d.template_id)
+    return d.id, t.id, t.active_version_id, t.active_version.rules
+
+
+def _login(app):
+    c = app.test_client()
+    c.post("/login", data={"email": "admin@example.com", "password": "haslo12345"})
+    return c
+
+
+def test_editor_conflict_detected_inside_commit(file_app, monkeypatch):
+    import app.web.templates_views as tv
+    doc_id, tid, base, rules = _race_setup(file_app)
+    orig = tv.commit_with_retry
+
+    def racing(fn, *a, **kw):  # drugi operator zatwierdza wersję po kontroli wstępnej, przed zapisem
+        _other_operator_saves(tid, rules)
+        return orig(fn, *a, **kw)
+    monkeypatch.setattr(tv, "commit_with_retry", racing)
+    r = _login(file_app).post(f"/szablony/dokument/{doc_id}/zapisz",
+                              json={"rules": rules, "comment": "praca B", "base_version_id": base})
+    assert r.status_code == 409, r.get_data(as_text=True)
+    db.session.expire_all()
+    t = db.session.get(Template, tid)
+    assert t.active_version.comment == "praca A"
+    assert [v.comment for v in t.versions].count("praca B") == 0
+
+
+def test_editor_conflict_rechecked_on_retry(file_app, monkeypatch):
+    import app.web.templates_views as tv
+    from sqlalchemy.exc import IntegrityError
+    doc_id, tid, base, rules = _race_setup(file_app)
+    orig = tv.commit_with_retry
+    calls = {"n": 0}
+
+    def wrapped(fn, *a, **kw):
+        def attempt():
+            calls["n"] += 1
+            if calls["n"] == 1:  # pierwsza próba: wyścig o numer wersji → IntegrityError, w tym czasie A zapisał
+                db.session.rollback()
+                _other_operator_saves(tid, rules)
+                raise IntegrityError("INSERT", {}, Exception("uq_template_version"))
+            return fn()
+        return orig(attempt, *a, **kw)
+    monkeypatch.setattr(tv, "commit_with_retry", wrapped)
+    r = _login(file_app).post(f"/szablony/dokument/{doc_id}/zapisz",
+                              json={"rules": rules, "comment": "praca B", "base_version_id": base})
+    assert r.status_code == 409, r.get_data(as_text=True)
+    assert calls["n"] == 2
+    db.session.expire_all()
+    assert db.session.get(Template, tid).active_version.comment == "praca A"
+
+
+def test_editor_save_with_current_base_still_ok(file_app):
+    doc_id, tid, base, rules = _race_setup(file_app)
+    r = _login(file_app).post(f"/szablony/dokument/{doc_id}/zapisz",
+                              json={"rules": rules, "comment": "praca B", "base_version_id": base})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    db.session.expire_all()
+    assert db.session.get(Template, tid).active_version.comment == "praca B"
