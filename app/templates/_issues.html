@@ -1,0 +1,148 @@
+{% macro form_open(doc, action) -%}
+<form method="post" action="{{ url_for('docs.resolve_issue', doc_id=doc.id) }}" class="mt-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="{{ action }}">
+{%- endmacro %}
+
+{% macro remember(default=True) -%}
+<div class="form-check form-switch my-2">
+  <input class="form-check-input" type="checkbox" name="remember" value="1" {% if default %}checked{% endif %}>
+  <label class="form-check-label small">Zapamiętaj w szablonie / słowniku dostawcy (inaczej — tylko ta faktura)</label>
+</div>
+{%- endmacro %}
+
+{% macro pct(c) %}<span class="conf">{{ (c * 100)|round|int }}%</span>{% endmacro %}
+
+{% macro issue_card(doc, idx, i, ctx) %}
+<div class="card mb-3 issue-{{ i.severity }}">
+  <div class="card-body">
+    <div class="d-flex justify-content-between">
+      <strong>{{ i.message }}</strong>
+      <span class="badge text-bg-{{ 'danger' if i.severity == 'blocking' else 'warning' }}">{{ 'blokuje' if i.severity == 'blocking' else 'ostrzeżenie' }}</span>
+    </div>
+    {% if i.source_path %}<div class="small text-muted">Źródło: <code>{{ i.source_path }}</code>{% if i.source_value %} = „{{ i.source_value }}”{% endif %}</div>{% endif %}
+
+    {% if i.code == 'unknown_supplier' %}
+      {% set create = (i.suggestions | selectattr('kind', 'equalto', 'create_supplier') | first) %}
+      {% for s in i.suggestions if s.kind == 'clone_template' %}<div class="alert alert-info small my-2">Struktura pliku pasuje do szablonu „{{ s.name }}” — jego reguły zostaną użyte dla nowego dostawcy.</div>{% endfor %}
+      <div class="row g-3">
+        <div class="col-md-6">
+          {{ form_open(doc, 'create_supplier') }}
+            <div class="small fw-semibold">Utwórz nowego dostawcę</div>
+            <input class="form-control form-control-sm my-1" name="name" placeholder="Nazwa" value="{{ create.name if create else '' }}" required>
+            <input class="form-control form-control-sm my-1" name="tax_id" placeholder="NIP / VAT" value="{{ create.tax_id if create and create.tax_id else '' }}">
+            <button class="btn btn-sm btn-primary">Utwórz i zapamiętaj</button>
+          </form>
+        </div>
+        <div class="col-md-6">
+          {{ form_open(doc, 'use_supplier') }}
+            <div class="small fw-semibold">…albo wskaż istniejącego</div>
+            <select class="form-select form-select-sm my-1" name="supplier_id" required>
+              {% for s in i.suggestions if s.kind == 'use_supplier' %}<option value="{{ s.supplier_id }}">★ {{ s.name }} ({{ (s.confidence*100)|round|int }}%)</option>{% endfor %}
+              {% for s in ctx.suppliers %}<option value="{{ s.id }}">{{ s.name }}{% if s.tax_id %} — {{ s.tax_id }}{% endif %}</option>{% endfor %}
+            </select>
+            <button class="btn btn-sm btn-outline-primary" {% if not ctx.suppliers %}disabled{% endif %}>Przypisz</button>
+          </form>
+        </div>
+      </div>
+
+    {% elif i.code in ('unmapped_field', 'transform_error', 'invalid_value') and i.field %}
+      {{ form_open(doc, 'map_field') }}
+        <input type="hidden" name="issue" value="{{ idx }}">
+        <div class="small fw-semibold">Pole: {{ ctx.field_labels.get(i.field, i.field) }}{% if i.line_no %} (pozycje){% endif %}</div>
+        {% for s in i.suggestions %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="choice" value="s{{ loop.index0 }}" id="c{{ idx }}-{{ loop.index0 }}" {% if loop.first %}checked{% endif %}>
+            <label class="form-check-label small" for="c{{ idx }}-{{ loop.index0 }}">
+              {% if s.kind in ('path', 'line_path') %}<code>{{ s.path }}</code>{% if s.transforms %} → {{ s.transforms|tojson }}{% endif %}{% if s.preview %} = „{{ s.preview }}”{% endif %}
+              {% else %}wartość domyślna: <strong>{{ s.value }}</strong>{% endif %}
+              {{ pct(s.confidence) }} <span class="text-muted">· {{ s.reason }}</span>
+            </label>
+          </div>
+        {% endfor %}
+        <div class="form-check d-flex gap-2 align-items-center">
+          <input class="form-check-input" type="radio" name="choice" value="manual_path" {% if not i.suggestions %}checked{% endif %}>
+          <select class="form-select form-select-sm" name="manual_path">
+            {% for p in ctx.leaf_paths %}<option>{{ p }}</option>{% endfor %}
+          </select>
+        </div>
+        {% if not i.line_no and i.field != 'line_path' %}
+        <div class="form-check d-flex gap-2 align-items-center">
+          <input class="form-check-input" type="radio" name="choice" value="value">
+          <input class="form-control form-control-sm" name="value" placeholder="stała wartość (np. PLN)">
+        </div>
+        {% endif %}
+        {{ remember() }}
+        <button class="btn btn-sm btn-primary">Zastosuj</button>
+        <a class="btn btn-sm btn-link" href="{{ url_for('templates_views.editor_for_document', doc_id=doc.id) if 'templates_views' in nav_blueprints else '#' }}">Otwórz edytor mapowań</a>
+      </form>
+
+    {% elif i.code == 'unknown_unit' %}
+      {{ form_open(doc, 'map_unit') }}
+        <input type="hidden" name="alias" value="{{ i.source_value }}">
+        <div class="d-flex gap-2 align-items-center">
+          <span class="small">„{{ i.source_value }}” to u nas:</span>
+          <select class="form-select form-select-sm w-auto" name="unit">
+            {% for s in i.suggestions %}<option value="{{ s.unit }}">★ {{ s.unit }} ({{ (s.confidence*100)|round|int }}% · {{ s.reason }})</option>{% endfor %}
+            {% for u in ctx.units %}<option value="{{ u.code }}">{{ u.code }} — {{ u.name }}</option>{% endfor %}
+          </select>
+        </div>
+        {{ remember() }}
+        <button class="btn btn-sm btn-primary">Zastosuj</button>
+      </form>
+
+    {% elif i.code == 'missing_conversion' %}
+      {% set g = i.suggestions[0] if i.suggestions else {} %}
+      {{ form_open(doc, 'add_conversion') }}
+        <input type="hidden" name="from_unit" value="{{ i.source_value }}">
+        <input type="hidden" name="line_no" value="{{ i.line_no }}">
+        <div class="d-flex gap-2 align-items-center flex-wrap small">
+          1 {{ i.source_value }} =
+          <input class="form-control form-control-sm w-auto" name="factor" value="{{ g.factor or '' }}" placeholder="np. 12" required>
+          <select class="form-select form-select-sm w-auto" name="to_unit">
+            {% for u in ctx.units if u.is_base %}<option value="{{ u.code }}" {% if u.code == g.to_unit %}selected{% endif %}>{{ u.code }}</option>{% endfor %}
+          </select>
+          <select class="form-select form-select-sm w-auto" name="scope">
+            <option value="supplier">dla wszystkich towarów dostawcy</option>
+            <option value="product">tylko dla tego towaru</option>
+          </select>
+        </div>
+        <button class="btn btn-sm btn-primary mt-2">Zapisz przelicznik</button>
+      </form>
+
+    {% elif i.code == 'unmapped_product' %}
+      {% set create = (i.suggestions | selectattr('kind', 'equalto', 'create_product') | first) %}
+      <div class="row g-3">
+        <div class="col-md-6">
+          {{ form_open(doc, 'map_product') }}
+            <input type="hidden" name="line_no" value="{{ i.line_no }}">
+            <select class="form-select form-select-sm" name="product_code">
+              {% for s in i.suggestions if s.kind == 'product' %}<option value="{{ s.code }}">★ {{ s.code }} — {{ s.name }} ({{ (s.confidence*100)|round|int }}%)</option>{% endfor %}
+              {% for p in ctx.products %}<option value="{{ p.code }}">{{ p.code }} — {{ p.name }}</option>{% endfor %}
+            </select>
+            {{ remember() }}
+            <button class="btn btn-sm btn-primary">Przypisz towar</button>
+          </form>
+        </div>
+        <div class="col-md-6">
+          {{ form_open(doc, 'create_product') }}
+            <input type="hidden" name="line_no" value="{{ i.line_no }}">
+            <div class="small fw-semibold">…albo dodaj nowy towar do kartoteki</div>
+            <input class="form-control form-control-sm my-1" name="code" value="{{ create.code if create else '' }}" required>
+            <input class="form-control form-control-sm my-1" name="name" value="{{ create.name if create else '' }}" required>
+            <select class="form-select form-select-sm my-1" name="unit">{% for u in ctx.units %}<option {% if create and u.code == create.unit %}selected{% endif %}>{{ u.code }}</option>{% endfor %}</select>
+            {{ remember() }}
+            <button class="btn btn-sm btn-outline-primary">Dodaj i przypisz</button>
+          </form>
+        </div>
+      </div>
+
+    {% elif i.code == 'duplicate' %}
+      <div class="d-flex gap-2">
+        {{ form_open(doc, 'allow_duplicate') }}<button class="btn btn-sm btn-outline-warning">To nie duplikat — przetwórz</button></form>
+        {{ form_open(doc, 'reject') }}<button class="btn btn-sm btn-outline-danger">Odrzuć</button></form>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

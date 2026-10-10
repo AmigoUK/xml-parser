@@ -44,3 +44,9 @@ def seeded(app):
     seed_base()
     seed_demo()
     return app
+
+
+@pytest.fixture
+def auth_client(seeded, client):
+    client.post("/login", data={"email": "admin@example.com", "password": "haslo123"})
+    return client

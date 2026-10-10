@@ -32,6 +32,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "APP_VERSION": __version__,
             "REPO_URL": app.config["REPO_URL"],
             "DEMO_MODE": app.config["DEMO_MODE"],
+            "nav_blueprints": set(app.blueprints),
         }
 
     @app.get("/healthz")
@@ -71,5 +72,8 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @app.get("/api/docs")
     def api_docs():
         return render_template("api_docs.html")
+
+    from .web import register_web
+    register_web(app)
 
     return app

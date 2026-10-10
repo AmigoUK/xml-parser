@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Pulpit{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Pulpit</h1>
+<div class="row g-3 mb-4">
+  {% for status, label in labels.items() %}
+  <div class="col-6 col-md">
+    <a class="card card-body text-decoration-none" href="{{ url_for('docs.documents', status=status) }}">
+      <div class="small text-muted">{{ label }}</div><div class="fs-3">{{ counts[status] }}</div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h2 class="h6 m-0">Ostatnie dokumenty</h2>
+  <a class="btn btn-sm btn-primary" href="{{ url_for('docs.upload') }}">Wgraj fakturę</a>
+</div>
+{% include "_doc_table.html" %}
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">{{ title }}</h1>
+{% if not queue %}
+<div class="btn-group btn-group-sm mb-3">
+  <a class="btn btn-outline-secondary {% if not current %}active{% endif %}" href="{{ url_for('docs.documents') }}">Wszystkie</a>
+  {% for s, l in labels.items() %}<a class="btn btn-outline-secondary {% if current == s %}active{% endif %}" href="{{ url_for('docs.documents', status=s) }}">{{ l }}</a>{% endfor %}
+</div>
+{% endif %}
+{% include "_doc_table.html" %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_issues.html" import issue_card with context %}
+{% block title %}Dokument #{{ doc.id }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+  <div>
+    <h1 class="h4 m-0">Dokument #{{ doc.id }} <span class="badge text-bg-{{ {'approved':'success','needs_review':'warning','duplicate':'secondary','rejected':'danger'}.get(doc.status,'light') }}">{{ doc.status_label }}</span></h1>
+    <div class="small text-muted">{{ doc.filename }} · {{ (doc.fmt or '?')|upper }} · dostawca: {{ doc.supplier.name if doc.supplier else 'nierozpoznany' }}
+      {% if doc.template_version %} · szablon „{{ doc.template.name }}” v{{ doc.template_version.version }}{% elif doc.draft_rules %} · reguły robocze (szablon powstanie po rozpoznaniu dostawcy){% endif %}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('docs.reprocess', doc_id=doc.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">Przetwórz ponownie</button></form>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('docs.as_json', doc_id=doc.id) }}">JSON</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('docs.raw', doc_id=doc.id) }}">Plik źródłowy</a>
+  </div>
+</div>
+
+{% set ctx = {'field_labels': field_labels, 'leaf_paths': leaf_paths, 'units': units, 'products': products, 'suppliers': suppliers} %}
+{% if doc.issues %}
+<h2 class="h6">Problemy ({{ doc.issues|length }}) — rozwiąż je po kolei, od góry</h2>
+{% for i in doc.issues %}{{ issue_card(doc, loop.index0, i, ctx) }}{% endfor %}
+{% else %}
+<div class="alert alert-success">Faktura odczytana bez problemów.</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <h2 class="h6">Plik źródłowy</h2>
+    <div class="card card-body p-2" style="max-height: 70vh; overflow: auto">
+      {% for r in rows %}<div class="tree-row" style="padding-left: {{ r.depth * 12 }}px" title="{{ r.path }}">{{ r.name }}{% if r.value %}: <span class="val">{{ r.value }}</span>{% endif %}</div>{% endfor %}
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <h2 class="h6">Wynik (format kanoniczny)</h2>
+    {% if doc.result %}
+    <table class="table table-sm bg-white small">
+      {% for f in header_fields %}{% set parts = f.key.split('.') %}{% set ns = namespace(v=doc.result) %}{% for p in parts %}{% set ns.v = ns.v[p] if ns.v is mapping and p in ns.v else none %}{% endfor %}
+      <tr><th class="w-50">{{ f.label }}</th><td>{% if ns.v is iterable and ns.v is not string %}{{ ns.v|join(', ') }}{% else %}{{ ns.v if ns.v is not none else '—' }}{% endif %}</td></tr>{% endfor %}
+    </table>
+    <div class="table-responsive">
+    <table class="table table-sm bg-white small">
+      <thead><tr><th>#</th><th>Indeks</th>{% for f in line_fields %}<th>{{ f.label }}</th>{% endfor %}<th>JM źródłowa</th><th>Przelicznik</th></tr></thead>
+      <tbody>{% for l in doc.result.lines %}<tr><td>{{ l.line_no }}</td><td>{{ l.product_index or '—' }}</td>{% for f in line_fields %}<td>{{ l[f.key] if l[f.key] is not none else '—' }}</td>{% endfor %}<td>{{ l.unit_source or '—' }}</td><td>{{ l.conversion_factor }}</td></tr>{% endfor %}</tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

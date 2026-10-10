@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body class="{% if full_screen %}full-screen{% endif %}">
-  {% if not full_screen %}{% block nav %}{% endblock %}{% endif %}
+  {% if not full_screen %}{% include "_nav.html" %}{% endif %}
   <main class="{% if full_screen %}editor-main{% else %}container py-4{% endif %}">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
