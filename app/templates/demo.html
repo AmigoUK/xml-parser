@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}O demo{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-7">
+    <h1 class="h3">Parser faktur, który uczy się od operatora</h1>
+    <p class="lead">Każdy dostawca przysyła faktury w innym formacie. Zamiast pisać integrację dla każdego z nich,
+      system czyta <strong>dowolny plik strukturalny</strong> (XML, JSON, CSV). Przy <strong>pierwszej</strong>
+      fakturze nowego dostawcy pyta o to, czego nie rozumie, i zapamiętuje odpowiedzi jako
+      <strong>szablon dostawcy</strong>. Kolejne faktury czyta już sam.</p>
+
+    <h2 class="h5 mt-4">Jak to działa</h2>
+    <ol class="list-group list-group-numbered mb-3">
+      <li class="list-group-item"><strong>Odczyt</strong> — plik zamieniany jest na drzewo ścieżek (np. <code>Faktura/Naglowek/DostawcaNIP</code>), niezależnie od formatu. Pliki XML z DOCTYPE/ENTITY są odrzucane (bezpieczeństwo).</li>
+      <li class="list-group-item"><strong>Rozpoznanie dostawcy</strong> — po NIP/VAT; gdy go nie ma — po „odcisku” struktury pliku.</li>
+      <li class="list-group-item"><strong>Szablon</strong> — reguły: <em>pole docelowe ← ścieżka w pliku → transformacje</em> (np. usuń „%”, wytnij partię z kodu GS1-128). Dla nowego dostawcy system proponuje reguły sam, na podstawie słownika synonimów (PL/EN/KSeF/UBL) i typów wartości.</li>
+      <li class="list-group-item"><strong>Słowniki</strong> — jednostki miary (<code>pcs</code> → <code>szt</code>), przeliczniki (<code>1 karton = 12 szt</code>), przypisanie towarów dostawcy do naszych indeksów.</li>
+      <li class="list-group-item"><strong>Walidacja</strong> — ilość × cena = wartość, suma pozycji = suma faktury, netto + VAT = brutto, wykrywanie duplikatów.</li>
+      <li class="list-group-item"><strong>Negocjacja</strong> — gdy czegoś brakuje, faktura trafia do kolejki „do wyjaśnienia”. Operator wybiera podpowiedź i decyduje: <em>tylko ta faktura</em> albo <em>zapamiętaj</em>. Zapamiętanie tworzy nową wersję szablonu.</li>
+      <li class="list-group-item"><strong>Wynik</strong> — znormalizowany JSON dostępny przez REST API dla innych systemów.</li>
+    </ol>
+
+    <h2 class="h5 mt-4">Scenariusz demo (5 minut)</h2>
+    <ol class="small">
+      <li>Zaloguj się i wczytaj <strong>alfa-1.xml</strong> — faktura trafi do kolejki z problemami.</li>
+      <li>Rozwiąż problemy od góry: utwórz dostawcę, ustaw domyślną walutę, wskaż, że <code>pcs</code> to <code>szt</code>, przypisz „Masę marcepanową” do towaru z kartoteki.</li>
+      <li>Wczytaj <strong>alfa-2.xml</strong> — zostanie zatwierdzona automatycznie, bez pytań.</li>
+      <li>Spróbuj innych formatów: KSeF, UBL, CSV, JSON — ten sam mechanizm.</li>
+      <li>Zajrzyj do <em>Szablony</em> → wersje i różnice, oraz do <em>Edytora mapowań</em>.</li>
+    </ol>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3"><div class="card-body small">
+      <h2 class="h6">Dostęp demo</h2>
+      <div>E-mail: <code>{{ admin_email }}</code></div>
+      <div>Hasło: <code>{{ admin_password }}</code></div>
+      {% if not current_user.is_authenticated %}<a class="btn btn-sm btn-primary mt-2" href="{{ url_for('auth.login') }}">Zaloguj</a>{% endif %}
+    </div></div>
+
+    <div class="card mb-3"><div class="card-body">
+      <h2 class="h6">Przykładowe faktury (fikcyjne dane)</h2>
+      <table class="table table-sm small mb-2">
+        {% for s in samples %}
+        <tr><td><strong>{{ s.file }}</strong><br><span class="text-muted">{{ s.format }} — {{ s.shows }}</span></td>
+          <td class="text-end">{% if current_user.is_authenticated %}
+            <form method="post" action="{{ url_for('demo.load_sample', name=s.file) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Wczytaj</button></form>
+          {% endif %}</td></tr>
+        {% endfor %}
+      </table>
+      {% if current_user.is_authenticated %}
+      <form method="post" action="{{ url_for('demo.reset') }}" onsubmit="return confirm('Wyczyścić wszystkie dane demo?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Wyczyść dane demo</button>
+      </form>
+      {% endif %}
+    </div></div>
+
+    <div class="card"><div class="card-body small">
+      <h2 class="h6">API</h2>
+      <p class="mb-1">Wyślij fakturę z dowolnego systemu:</p>
+      <pre class="bg-light p-2 small mb-1">curl -H "X-API-Key: {{ demo_key }}" \
+  -F file=@faktura.xml \
+  {{ api_base }}/api/v1/documents</pre>
+      <a href="{{ url_for('api_docs') }}">Dokumentacja API (Swagger) →</a>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
