@@ -56,6 +56,7 @@ class Template(db.Model):
 
 class TemplateVersion(db.Model):
     __tablename__ = "template_versions"
+    __table_args__ = (db.UniqueConstraint("template_id", "version", name="uq_template_version"),)
     id = db.Column(db.Integer, primary_key=True)
     template_id = db.Column(db.Integer, db.ForeignKey("templates.id"), nullable=False, index=True)
     version = db.Column(db.Integer, nullable=False)
@@ -105,11 +106,12 @@ class UnitConversion(db.Model):
     @validates("factor")
     def _validate_factor(self, key, value):
         try:
-            ok = Decimal(str(value)) > 0
+            d = Decimal(str(value))
+            ok = d.is_finite() and d >= Decimal("0.000001")
         except (InvalidOperation, ValueError):
             ok = False
         if not ok:
-            raise ValueError("Przelicznik musi być liczbą większą od zera.")
+            raise ValueError("Przelicznik musi być liczbą większą od zera (min. 0,000001).")
         return value
 
 

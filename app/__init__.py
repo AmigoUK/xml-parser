@@ -1,3 +1,4 @@
+import click
 from flask import Flask, jsonify
 
 from .config import PLACEHOLDER_SECRET_KEYS, Config
@@ -50,12 +51,16 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         seed_base()
         if app.config["DEMO_MODE"]:
             seed_demo()
-        print("Seed OK")
+        click.echo("Seed OK")
 
     @app.cli.command("reset-demo")
     def reset_demo_cmd():
         """Czyści dane i przywraca stan demo."""
-        reset_demo()
-        print("Demo zresetowane")
+        try:
+            reset_demo()
+        except RuntimeError as e:
+            click.echo(str(e), err=True)
+            raise SystemExit(1)
+        click.echo("Demo zresetowane")
 
     return app

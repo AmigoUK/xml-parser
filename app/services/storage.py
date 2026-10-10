@@ -1,4 +1,6 @@
 import hashlib
+import os
+import tempfile
 from pathlib import Path
 
 from flask import current_app
@@ -13,7 +15,15 @@ class Storage:
         sha = hashlib.sha256(data).hexdigest()
         path = self.base / sha
         if not path.exists():
-            path.write_bytes(data)
+            fd, tmp = tempfile.mkstemp(dir=self.base, prefix=".tmp-")
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(data)
+                os.replace(tmp, path)
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
         return sha
 
     def load(self, sha: str) -> bytes:

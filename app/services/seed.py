@@ -1,3 +1,4 @@
+import click
 from flask import current_app
 
 from app.extensions import db
@@ -10,6 +11,8 @@ BASE_UNITS = [
     ("karton", "karton", False), ("worek", "worek", False), ("opak", "opakowanie", False),
 ]
 GLOBAL_ALIASES = [("szt.", "szt"), ("sztuk", "szt"), ("kilogram", "kg"), ("litr", "l")]
+PLACEHOLDER_PASSWORDS = {"zmien-mnie", "change-me", "admin", "password"}
+DEMO_KEY_NAME = "Klucz demo"
 DEMO_PRODUCTS = [
     ("TOW-0001", "Posypka czekoladowa 1 kg", "5909999000013", "szt"),
     ("TOW-0002", "Mak niebieski 500 g", "5909999000020", "szt"),
@@ -37,13 +40,22 @@ def seed_base() -> None:
             db.session.add(UnitAlias(alias=alias, unit_id=units[code].id, supplier_id=None))
     cfg = current_app.config
     admin_email = (cfg.get("ADMIN_EMAIL") or "").strip().lower()
-    if cfg.get("ADMIN_PASSWORD") and admin_email and not User.query.filter_by(email=admin_email).first():
+    pw = cfg.get("ADMIN_PASSWORD") or ""
+    weak = pw.lower() in PLACEHOLDER_PASSWORDS or len(pw) < 10
+    if pw and weak and not cfg.get("TESTING"):
+        click.echo("OSTRZEŻENIE: ADMIN_PASSWORD jest hasłem przykładowym lub krótszym niż 10 znaków. "
+                   "Konto administratora NIE zostało utworzone. Ustaw własne hasło w .env.", err=True)
+    elif pw and admin_email and not User.query.filter_by(email=admin_email).first():
         u = User(email=admin_email, role="admin")
-        u.set_password(cfg["ADMIN_PASSWORD"])
+        u.set_password(pw)
         db.session.add(u)
     demo_key = cfg.get("DEMO_API_KEY")
-    if cfg.get("DEMO_MODE") and demo_key and not ApiKey.query.filter_by(key_hash=hash_key(demo_key)).first():
-        create_key("Klucz demo", demo_key)
+    demo_on = bool(cfg.get("DEMO_MODE") and demo_key)
+    current_hash = hash_key(demo_key) if demo_on else None
+    for k in ApiKey.query.filter_by(name=DEMO_KEY_NAME).all():
+        k.active = bool(demo_on and k.key_hash == current_hash)
+    if demo_on and not ApiKey.query.filter_by(key_hash=current_hash).first():
+        create_key(DEMO_KEY_NAME, demo_key)
     db.session.commit()
 
 
@@ -56,6 +68,8 @@ def seed_demo() -> None:
 
 
 def reset_demo() -> None:
+    if not current_app.config.get("DEMO_MODE"):
+        raise RuntimeError("reset-demo jest dozwolone tylko przy DEMO_MODE=1 (usuwa wszystkie dane).")
     db.session.query(Document).update({Document.template_version_id: None, Document.template_id: None,
                                        Document.corrects_document_id: None})
     for model in (Document, ProductMapping, UnitConversion, TemplateVersion, Template, Product, AuditLog):

@@ -135,7 +135,8 @@ def upgrade():
     sa.Column('comment', sa.String(length=500), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['template_id'], ['templates.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('template_id', 'version', name='uq_template_version')
     )
     with op.batch_alter_table('template_versions', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_template_versions_template_id'), ['template_id'], unique=False)

@@ -1,7 +1,9 @@
 from decimal import Decimal
 
+import pytest
+
 from app.extensions import db
-from app.models import (ApiKey, AuditLog, Product, ProductMapping, Supplier, Template, Unit, UnitAlias,
+from app.models import (ApiKey, AuditLog, Document, Product, ProductMapping, Supplier, Template, Unit, UnitAlias,
                         UnitConversion, User)
 from app.services.apikeys import create_key, verify_key
 from app.services.audit import audit
@@ -81,19 +83,66 @@ def test_api_keys_and_audit(app):
 
 def test_reset_demo_clears_data(app):
     seed_base()
-    db.session.add(Supplier(name="X"))
+    s = Supplier(name="X")
+    db.session.add(s)
+    db.session.flush()
+    db.session.add(Document(sha256="a" * 64, supplier_id=s.id))
     db.session.commit()
     reset_demo()
-    assert Supplier.query.count() == 0
+    assert Supplier.query.count() == 0 and Document.query.count() == 0
     assert Product.query.filter_by(code="TOW-0001").count() == 1
-    assert ApiKey.query.count() == 1
+    assert ApiKey.query.count() == 1 and verify_key("xp_test_demo_key") is not None
+
+
+def test_reset_demo_refused_outside_demo(app):
+    seed_base()
+    db.session.add(Supplier(name="X"))
+    db.session.commit()
+    app.config["DEMO_MODE"] = False
+    with pytest.raises(RuntimeError, match="DEMO_MODE"):
+        reset_demo()
+    assert Supplier.query.count() == 1
+
+
+def test_reset_demo_cli_refused(app):
+    app.config["DEMO_MODE"] = False
+    res = app.test_cli_runner().invoke(args=["reset-demo"])
+    assert res.exit_code != 0 and "DEMO_MODE" in res.output
+
+
+def test_weak_admin_password_skipped(app):
+    app.config["TESTING"] = False
+    app.config["ADMIN_PASSWORD"] = "zmien-mnie"
+    seed_base()
+    assert User.query.count() == 0
+    app.config["ADMIN_PASSWORD"] = "krotkie"
+    seed_base()
+    assert User.query.count() == 0
+    app.config["ADMIN_PASSWORD"] = "dlugie-haslo-123"
+    seed_base()
+    assert User.query.count() == 1
+
+
+def test_demo_key_drift(app):
+    seed_base()
+    assert verify_key("xp_test_demo_key") is not None
+    app.config["DEMO_API_KEY"] = "xp_other_key"
+    seed_base()
+    assert verify_key("xp_test_demo_key") is None and verify_key("xp_other_key") is not None
+    app.config["DEMO_MODE"] = False
+    seed_base()
+    assert verify_key("xp_other_key") is None
+    app.config["DEMO_MODE"] = True
+    app.config["DEMO_API_KEY"] = "xp_test_demo_key"
+    seed_base()
+    assert verify_key("xp_test_demo_key") is not None and verify_key("xp_other_key") is None
 
 
 def test_conversion_factor_must_be_positive(app):
-    import pytest
     seed_base()
     szt = Unit.query.filter_by(code="szt").one()
     karton = Unit.query.filter_by(code="karton").one()
-    for bad in (Decimal("0"), Decimal("-2")):
+    UnitConversion(from_unit_id=karton.id, to_unit_id=szt.id, factor=Decimal("0.5"))
+    for bad in (Decimal("0"), Decimal("-2"), Decimal("NaN"), Decimal("Infinity"), Decimal("0.0000001")):
         with pytest.raises(ValueError, match="większą od zera"):
             UnitConversion(from_unit_id=karton.id, to_unit_id=szt.id, factor=bad)
