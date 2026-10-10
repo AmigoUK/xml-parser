@@ -9,7 +9,7 @@ Specyfikacja: `docs/superpowers/specs/2026-10-10-xml-invoice-parser-design.md`.
 ```bash
 cp .env.example .env   # uzupełnij hasła
 docker compose up -d --build
-# panel: http://<host>:5010
+# panel (Tailscale MagicDNS): http://<nazwa-hosta>.<tailnet>.ts.net:${APP_PORT}   (domyślnie APP_PORT=18506; kontener nasłuchuje wewnętrznie na 5010)
 ```
 
 Serwer: gunicorn z workerami wątkowymi (`-k gthread -w 2 --threads 8 --timeout 60`), dzięki czemu
