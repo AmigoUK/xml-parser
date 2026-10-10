@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] — 2026-10-10
+
+Wydanie po audycie bezpieczeństwa i sytuacji brzegowych (AI Council: Security, QA, Backend/DBA, DevOps).
+
 ### Uwagi do aktualizacji
 Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejność:
 1. **Kopia zapasowa przed migracją** — `tools/backup.sh` (kończy się błędem, gdy zrzut bazy lub archiwum storage są puste/niekompletne). Migracja `e4a1d7c03b52` zmienia statusy dokumentów i usuwa zduplikowane aliasy, przeliczniki i mapowania — jedyną drogą powrotu jest kopia.
@@ -149,7 +155,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/AmigoUK/xml-parser/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/AmigoUK/xml-parser/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/AmigoUK/xml-parser/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/AmigoUK/xml-parser/releases/tag/v0.0.1
