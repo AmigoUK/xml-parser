@@ -46,14 +46,41 @@ def document_key(supplier_id, doc_type, number, scope: str = "web") -> str | Non
     return _digest("doc", scope, int(supplier_id), fold(doc_type or ""), num)
 
 
+def norm_mapping_code(value) -> str | None:
+    """Kod towaru u dostawcy w postaci porównywalnej (fold) — wspólna dla klucza i wyszukiwania (FR-6)."""
+    if value in (None, ""):
+        return None
+    return fold(value) or None
+
+
+def norm_mapping_gtin(value) -> str | None:
+    """GTIN do klucza mapowania: bez spacji na brzegach, uzupełniony zerami do 14 cyfr (FR-6)."""
+    if value in (None, ""):
+        return None
+    s = str(value).strip()
+    return s.zfill(14) if s else None
+
+
+def norm_mapping_name(value) -> str | None:
+    """Znormalizowana nazwa towaru (``supplier_name_norm``) w postaci klucza (fold) (FR-6)."""
+    if value in (None, ""):
+        return None
+    return fold(value) or None
+
+
 def mapping_key(supplier_id, supplier_code, supplier_gtin, supplier_name_norm) -> str | None:
-    """Tożsamość mapowania towaru: kod, a gdy brak — GTIN, a gdy brak — nazwa (BE-3). Brak wszystkich → None."""
+    """Tożsamość mapowania towaru: kod, a gdy brak — GTIN, a gdy brak — nazwa (BE-3). Brak wszystkich → None.
+
+    Ta sama funkcja liczy ``match_key`` przy zapisie i klucz przy wyszukiwaniu mapowania (FR-6)."""
     if supplier_id is None:
         return None
-    if supplier_code not in (None, "") and fold(supplier_code):
-        return _digest("map", int(supplier_id), "code", fold(supplier_code))
-    if supplier_gtin not in (None, "") and str(supplier_gtin).strip():
-        return _digest("map", int(supplier_id), "gtin", str(supplier_gtin).strip().zfill(14))
-    if supplier_name_norm not in (None, "") and fold(supplier_name_norm):
-        return _digest("map", int(supplier_id), "name", fold(supplier_name_norm))
+    code = norm_mapping_code(supplier_code)
+    if code:
+        return _digest("map", int(supplier_id), "code", code)
+    gtin = norm_mapping_gtin(supplier_gtin)
+    if gtin:
+        return _digest("map", int(supplier_id), "gtin", gtin)
+    name = norm_mapping_name(supplier_name_norm)
+    if name:
+        return _digest("map", int(supplier_id), "name", name)
     return None

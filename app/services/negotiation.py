@@ -5,6 +5,7 @@ import copy
 from decimal import Decimal
 
 from app.engine.canonical import FIELD_LABELS, LINE_KEYS
+from app.engine.keys import mapping_key
 from app.engine.lookups import norm_alias, norm_product_name
 from app.engine.suggest import FIELDS_BY_KEY, norm_tax_id, tax_ids_match
 from app.engine.tree import relative_path
@@ -239,18 +240,13 @@ def _map_line_to_product(doc, line_no, product: Product, remember: bool) -> None
     hint = "przypisz towar tylko dla tej faktury (bez „zapamiętaj”)"
     _check_len(code, ProductMapping.supplier_code, "Kod towaru u dostawcy", hint)
     _check_len(gtin, ProductMapping.supplier_gtin, "GTIN pozycji", hint)
-    q = ProductMapping.query.filter_by(supplier_id=doc.supplier_id)
-    # szukamy wyłącznie po kolumnie, której używamy — nigdy po NULL (BE-3/EDGE-3)
-    if code:
-        row = q.filter_by(supplier_code=code).first()
-    elif gtin:
-        row = q.filter(ProductMapping.supplier_code.is_(None), ProductMapping.supplier_gtin == gtin).first()
-    elif name:
-        row = q.filter(ProductMapping.supplier_code.is_(None), ProductMapping.supplier_gtin.is_(None),
-                       ProductMapping.supplier_name_norm == name).first()
-    else:
+    if not (code or gtin or name):
         raise NegotiationError("Pozycja nie ma kodu, GTIN ani nazwy towaru — nie da się tego zapamiętać. "
                                "Przypisz towar tylko dla tej faktury (bez „zapamiętaj”).")
+    # istniejący wiersz szukamy po tym samym kluczu, który pilnuje unikalności w bazie (FR-6) — kod,
+    # a gdy brak: GTIN, a gdy brak: nazwa; nigdy po NULL ani cudzym kluczu (BE-3/EDGE-3)
+    row = ProductMapping.query.filter_by(
+        match_key=mapping_key(doc.supplier_id, code, gtin, None if (code or gtin) else name)).first()
     if row:
         row.product_id = product.id
     else:

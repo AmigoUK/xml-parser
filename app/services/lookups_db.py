@@ -1,15 +1,9 @@
-import unicodedata
 from decimal import Decimal
 
+from app.engine.keys import mapping_key, norm_mapping_code, norm_mapping_gtin
 from app.engine.lookups import norm_alias, norm_product_name
 from app.extensions import db
 from app.models import Product, ProductMapping, Supplier, Unit, UnitAlias, UnitConversion
-
-
-def _fold(value: str) -> str:
-    """Przybliżenie kolacji MariaDB *_unicode_ci: bez akcentów, bez wielkości liter i spacji na końcu."""
-    decomposed = unicodedata.normalize("NFKD", str(value))
-    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold().rstrip(" ")
 
 
 class DbLookups:
@@ -65,21 +59,21 @@ class DbLookups:
                 return self._units_by_id[row.to_unit_id].code, Decimal(row.factor)
         return None
 
-    def _mapping_keys(self, supplier_id) -> tuple[set, set, set]:
-        """Złożone (fold) klucze mapowań dostawcy z jednego zapytania — szybkie odrzucenie pozycji bez
-        mapowania. Trafienie i tak idzie zapytaniem do bazy, więc zachowana jest semantyka kolacji DB."""
+    def _mapping_index(self, supplier_id) -> tuple[dict, dict]:
+        """Mapowania dostawcy z jednego zapytania: ``match_key`` → towar oraz GTIN (14 cyfr) → towar
+        (także z wierszy po kodzie). Klucze liczy ta sama funkcja co przy zapisie (``mapping_key``),
+        więc wyszukiwanie i unikalność w bazie zawsze się zgadzają (FR-6)."""
         def load():
-            codes, gtins, names = set(), set(), set()
-            for code, g, name in ProductMapping.query.filter_by(supplier_id=supplier_id).with_entities(
-                    ProductMapping.supplier_code, ProductMapping.supplier_gtin, ProductMapping.supplier_name_norm):
-                if code is not None:
-                    codes.add(_fold(code))
-                if g is not None:
-                    gtins.add(_fold(g))
-                if name is not None and code is None and g is None:
-                    names.add(name)
-            return codes, gtins, names
-        return self._cached(("mapping-keys", supplier_id), load)
+            by_key, by_gtin = {}, {}
+            for mk, g, product_id in ProductMapping.query.filter_by(supplier_id=supplier_id).order_by(
+                    ProductMapping.id).with_entities(ProductMapping.match_key, ProductMapping.supplier_gtin,
+                                                     ProductMapping.product_id):
+                if mk:
+                    by_key.setdefault(mk, product_id)
+                if norm_mapping_gtin(g):
+                    by_gtin.setdefault(norm_mapping_gtin(g), product_id)
+            return by_key, by_gtin
+        return self._cached(("mapping-index", supplier_id), load)
 
     def product_for(self, supplier_id, supplier_code, gtin, name=None):
         return self._cached(("product", supplier_id, supplier_code, gtin, name),
@@ -87,18 +81,18 @@ class DbLookups:
 
     def _product_for(self, supplier_id, supplier_code, gtin, name=None):
         if supplier_id:
-            codes, gtins, names = self._mapping_keys(supplier_id)
-            q = ProductMapping.query.filter_by(supplier_id=supplier_id)
-            row = (q.filter_by(supplier_code=supplier_code).first()
-                   if supplier_code and _fold(supplier_code) in codes else None)
-            if row is None and gtin and _fold(gtin.zfill(14)) in gtins:
-                row = q.filter_by(supplier_gtin=gtin.zfill(14)).first()
+            by_key, by_gtin = self._mapping_index(supplier_id)
+            product_id = None
+            if norm_mapping_code(supplier_code):
+                product_id = by_key.get(mapping_key(supplier_id, supplier_code, None, None))
+            if product_id is None and norm_mapping_gtin(gtin):
+                product_id = (by_key.get(mapping_key(supplier_id, None, gtin, None))
+                              or by_gtin.get(norm_mapping_gtin(gtin)))
             name_key = norm_product_name(name) if not supplier_code and not gtin else None
-            if row is None and name_key and name_key in names:  # pozycja bez kodu i GTIN (BE-3)
-                row = q.filter(ProductMapping.supplier_code.is_(None), ProductMapping.supplier_gtin.is_(None),
-                               ProductMapping.supplier_name_norm == name_key).order_by(ProductMapping.id).first()
-            if row:
-                return db.session.get(Product, row.product_id).code
+            if product_id is None and name_key:  # pozycja bez kodu i GTIN (BE-3)
+                product_id = by_key.get(mapping_key(supplier_id, None, None, name_key))
+            if product_id is not None:
+                return db.session.get(Product, product_id).code
         if gtin:
             if self._gtin_index is None:
                 self._gtin_index = {}

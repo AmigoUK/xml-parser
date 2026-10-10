@@ -193,3 +193,71 @@ def test_editor_save_with_current_base_still_ok(file_app):
     assert r.status_code == 200, r.get_data(as_text=True)
     db.session.expire_all()
     assert db.session.get(Template, tid).active_version.comment == "praca B"
+
+
+# ------------------------------------------------------------------ FR-6: jedna normalizacja klucza mapowania
+def _mapping_setup(stored_code=None, stored_name=None, stored_gtin=None):
+    from app.models import Product, ProductMapping, Supplier
+    s = Supplier(name="Fikcyjny FR6", tax_id="PL1111111111")
+    db.session.add(s)
+    szt = Unit.query.filter_by(code="szt").one()
+    p1 = Product(code="TOW-A", name="A", unit_id=szt.id)
+    p2 = Product(code="TOW-B", name="B", unit_id=szt.id)
+    db.session.add_all([p1, p2])
+    db.session.flush()
+    db.session.add(ProductMapping(supplier_id=s.id, supplier_code=stored_code, supplier_gtin=stored_gtin,
+                                  supplier_name_norm=stored_name, product_id=p1.id))
+    db.session.commit()
+    return s
+
+
+def _doc_with_line(s, code=None, name="Towar", gtin=None):
+    from app.models import Document
+    d = Document(filename="f.json", sha256="0" * 64, fmt="json", status="needs_review", supplier_id=s.id,
+                 result={"lines": [{"line_no": 1, "supplier_code": code, "gtin": gtin, "name": name}]}, issues=[])
+    db.session.add(d)
+    db.session.commit()
+    return d
+
+
+@pytest.mark.parametrize("stored,line", [("AB  1", "AB 1"), ("ABC", "abc"), ("Kód-1", "KOD-1"), (" X1 ", "X1")])
+def test_lookup_finds_mapping_with_same_key(seeded, stored, line):
+    from app.services.lookups_db import DbLookups
+    s = _mapping_setup(stored_code=stored)
+    assert DbLookups().product_for(s.id, line, None) == "TOW-A"
+
+
+@pytest.mark.parametrize("stored,line", [("AB  1", "AB 1"), ("ABC", "abc")])
+def test_remember_updates_existing_mapping_instead_of_conflict(seeded, stored, line, monkeypatch):
+    from app.models import ProductMapping
+    import app.services.negotiation as neg
+    monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
+    s = _mapping_setup(stored_code=stored)
+    d = _doc_with_line(s, code=line)
+    resolve(d, "map_product", {"line_no": 1, "product_code": "TOW-B"}, True, "t")
+    rows = ProductMapping.query.all()
+    assert len(rows) == 1 and rows[0].product.code == "TOW-B"
+
+
+def test_name_mapping_matches_by_key(seeded, monkeypatch):
+    from app.models import ProductMapping
+    from app.services.lookups_db import DbLookups
+    import app.services.negotiation as neg
+    monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
+    s = _mapping_setup(stored_name="ser żółty  gouda")
+    assert DbLookups().product_for(s.id, None, None, "Ser Zołty Gouda") == "TOW-A"
+    d = _doc_with_line(s, code=None, name="SER ŻÓŁTY GOUDA")
+    resolve(d, "map_product", {"line_no": 1, "product_code": "TOW-B"}, True, "t")
+    assert ProductMapping.query.count() == 1
+
+
+def test_gtin_mapping_matches_padded(seeded, monkeypatch):
+    from app.models import ProductMapping
+    from app.services.lookups_db import DbLookups
+    import app.services.negotiation as neg
+    monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
+    s = _mapping_setup(stored_gtin="05901234123457")
+    assert DbLookups().product_for(s.id, None, "5901234123457") == "TOW-A"
+    d = _doc_with_line(s, code=None, gtin="5901234123457")
+    resolve(d, "map_product", {"line_no": 1, "product_code": "TOW-B"}, True, "t")
+    assert ProductMapping.query.count() == 1
