@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/">
+  <Naglowek>
+    <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
+    <WariantFormularza>3</WariantFormularza>
+    <DataWytworzeniaFa>2026-10-08T10:00:00Z</DataWytworzeniaFa>
+  </Naglowek>
+  <Podmiot1>
+    <DaneIdentyfikacyjne><NIP>9990000022</NIP><Nazwa>Młyn Beta Sp. z o.o.</Nazwa></DaneIdentyfikacyjne>
+    <Adres><KodKraju>PL</KodKraju><AdresL1>ul. Młyńska 5</AdresL1><AdresL2>00-952 Przykładowo</AdresL2></Adres>
+  </Podmiot1>
+  <Podmiot2>
+    <DaneIdentyfikacyjne><NIP>9990000099</NIP><Nazwa>Piekarnia Demo Sp. z o.o.</Nazwa></DaneIdentyfikacyjne>
+    <Adres><KodKraju>PL</KodKraju><AdresL1>ul. Demonstracyjna 2</AdresL1><AdresL2>00-951 Przykładowo</AdresL2></Adres>
+  </Podmiot2>
+  <Fa>
+    <KodWaluty>PLN</KodWaluty>
+    <P_1>2026-10-08</P_1>
+    <P_2>FV/B/1024/2026</P_2>
+    <P_13_1>1000.00</P_13_1>
+    <P_14_1>50.00</P_14_1>
+    <P_15>1050.00</P_15>
+    <RodzajFaktury>VAT</RodzajFaktury>
+    <FaWiersz>
+      <NrWierszaFa>1</NrWierszaFa>
+      <Indeks>M-450</Indeks>
+      <GTIN>5909999000044</GTIN>
+      <P_7>Mąka pszenna typ 450 25 kg</P_7>
+      <P_8A>worek</P_8A>
+      <P_8B>20</P_8B>
+      <P_9A>40.00</P_9A>
+      <P_11>800.00</P_11>
+      <P_12>5</P_12>
+    </FaWiersz>
+    <FaWiersz>
+      <NrWierszaFa>2</NrWierszaFa>
+      <Indeks>M-750</Indeks>
+      <GTIN>5909999000051</GTIN>
+      <P_7>Mąka żytnia typ 750 25 kg</P_7>
+      <P_8A>worek</P_8A>
+      <P_8B>5</P_8B>
+      <P_9A>40.00</P_9A>
+      <P_11>200.00</P_11>
+      <P_12>5</P_12>
+    </FaWiersz>
+    <Platnosc>
+      <TerminPlatnosci><Termin>2026-10-22</Termin></TerminPlatnosci>
+      <FormaPlatnosci>6</FormaPlatnosci>
+    </Platnosc>
+  </Fa>
+</Faktura>
