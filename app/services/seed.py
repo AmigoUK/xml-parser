@@ -1,6 +1,7 @@
 import click
 from flask import current_app
 
+from app.engine.keys import alias_key
 from app.extensions import db
 from app.models import (ApiKey, AuditLog, Document, Product, ProductMapping, Supplier, Template,
                         TemplateVersion, Unit, UnitAlias, UnitConversion, User)
@@ -38,7 +39,7 @@ def seed_base(commit: bool = True) -> None:
             db.session.add(units[code])
     db.session.flush()
     for alias, code in GLOBAL_ALIASES:
-        if not UnitAlias.query.filter_by(alias_norm=alias, supplier_id=None).first():
+        if not UnitAlias.query.filter_by(alias_key=alias_key(None, alias)).first():
             db.session.add(UnitAlias(alias=alias, unit_id=units[code].id, supplier_id=None))
     cfg = current_app.config
     admin_email = (cfg.get("ADMIN_EMAIL") or "").strip().lower()

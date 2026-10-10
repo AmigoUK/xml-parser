@@ -46,6 +46,16 @@ def document_key(supplier_id, doc_type, number, scope: str = "web") -> str | Non
     return _digest("doc", scope, int(supplier_id), fold(doc_type or ""), num)
 
 
+def alias_key(supplier_id, alias_norm) -> str | None:
+    """Tożsamość aliasu jednostki: zakres (dostawca albo 0 = globalny) + alias po złożeniu (fold).
+
+    Unikat na tym haszu nie zależy od kolacji bazy (FR-9) — wyszukiwanie i zapis używają tej samej funkcji."""
+    name = fold(alias_norm or "")
+    if not name:
+        return None
+    return _digest("alias", int(supplier_id or 0), name)
+
+
 def norm_mapping_code(value) -> str | None:
     """Kod towaru u dostawcy w postaci porównywalnej (fold) — wspólna dla klucza i wyszukiwania (FR-6)."""
     if value in (None, ""):

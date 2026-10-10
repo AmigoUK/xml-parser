@@ -7,7 +7,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from .engine.keys import mapping_key
+from .engine.keys import alias_key, mapping_key
 from .extensions import db
 
 STATUS_RECEIVED = "received"
@@ -82,15 +82,15 @@ class Unit(db.Model):
 
 class UnitAlias(db.Model):
     __tablename__ = "unit_aliases"
-    __table_args__ = (db.UniqueConstraint("alias_norm", "supplier_id", name="uq_alias_supplier"),
-                      # supplier_id NULL nie jest unikalny w UNIQUE — stąd kolumna zakresu (0 = globalny) (BE-17)
-                      db.Index("uq_alias_scope", "alias_norm", "supplier_scope", unique=True))
+    __table_args__ = (db.UniqueConstraint("alias_norm", "supplier_id", name="uq_alias_supplier"),)
     id = db.Column(db.Integer, primary_key=True)
     alias = db.Column(db.String(64), nullable=False)
     alias_norm = db.Column(db.String(64), nullable=False, index=True)
     unit_id = db.Column(db.Integer, db.ForeignKey("units.id"), nullable=False)
     supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))
-    supplier_scope = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    # sha256 (zakres: dostawca albo 0 = globalny, alias po fold) — unikalny także dla aliasów globalnych
+    # (supplier_id NULL nie jest unikalny w UNIQUE) i niezależny od kolacji bazy (BE-17, FR-9)
+    alias_key = db.Column(db.String(64), unique=True, index=True)
     unit = db.relationship("Unit")
     supplier = db.relationship("Supplier")
 
@@ -271,8 +271,8 @@ class LoginAttempt(db.Model):
 
 @event.listens_for(UnitAlias, "before_insert")
 @event.listens_for(UnitAlias, "before_update")
-def _alias_scope(mapper, connection, target):
-    target.supplier_scope = target.supplier_id or 0
+def _alias_key(mapper, connection, target):
+    target.alias_key = alias_key(target.supplier_id, target.alias_norm)
 
 
 @event.listens_for(UnitConversion, "before_insert")

@@ -261,3 +261,34 @@ def test_gtin_mapping_matches_padded(seeded, monkeypatch):
     d = _doc_with_line(s, code=None, gtin="5901234123457")
     resolve(d, "map_product", {"line_no": 1, "product_code": "TOW-B"}, True, "t")
     assert ProductMapping.query.count() == 1
+
+
+# ------------------------------------------------------------------ FR-9: alias jednostki po kluczu niezależnym od kolacji
+def test_alias_lookup_and_remember_use_alias_key(seeded, monkeypatch):
+    from app.models import Supplier, UnitAlias
+    from app.services.lookups_db import DbLookups
+    import app.services.negotiation as neg
+    monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
+    s = Supplier(name="Fikcyjny FR9", tax_id="PL2222222222")
+    db.session.add(s)
+    db.session.flush()
+    kg, szt = Unit.query.filter_by(code="kg").one(), Unit.query.filter_by(code="szt").one()
+    db.session.add(UnitAlias(alias="Opakowánie", unit_id=kg.id, supplier_id=s.id))
+    db.session.commit()
+    assert DbLookups().unit_for_alias("opakowanie", s.id) == "kg"
+    d = _doc_with_line(s)
+    resolve(d, "map_unit", {"alias": "OPAKOWANIE", "unit": "szt"}, True, "t")
+    rows = UnitAlias.query.filter_by(supplier_id=s.id).all()
+    assert len(rows) == 1 and rows[0].unit_id == szt.id and rows[0].alias_key
+
+
+def test_global_alias_duplicate_rejected_by_db(seeded):
+    from sqlalchemy.exc import IntegrityError
+    from app.models import UnitAlias
+    szt = Unit.query.filter_by(code="szt").one()
+    db.session.add(UnitAlias(alias="Sztuka-X", unit_id=szt.id, supplier_id=None))
+    db.session.commit()
+    db.session.add(UnitAlias(alias="sztuka-x ", unit_id=szt.id, supplier_id=None))
+    with pytest.raises(IntegrityError):
+        db.session.commit()
+    db.session.rollback()

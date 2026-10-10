@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from app.engine.keys import mapping_key, norm_mapping_code, norm_mapping_gtin
+from app.engine.keys import alias_key, mapping_key, norm_mapping_code, norm_mapping_gtin
 from app.engine.lookups import norm_alias, norm_product_name
 from app.extensions import db
 from app.models import Product, ProductMapping, Supplier, Unit, UnitAlias, UnitConversion
@@ -31,9 +31,9 @@ class DbLookups:
         a = norm_alias(alias)
         if a in self._units:
             return a
-        q = UnitAlias.query.filter_by(alias_norm=a)
-        row = q.filter_by(supplier_id=supplier_id).first() if supplier_id else None
-        row = row or q.filter(UnitAlias.supplier_id.is_(None)).first()
+        # ten sam klucz co unikat w bazie (FR-6, FR-9): najpierw alias dostawcy, potem globalny
+        row = UnitAlias.query.filter_by(alias_key=alias_key(supplier_id, a)).first() if supplier_id else None
+        row = row or UnitAlias.query.filter_by(alias_key=alias_key(None, a)).first()
         return self._units_by_id[row.unit_id].code if row else None
 
     def is_base_unit(self, code):

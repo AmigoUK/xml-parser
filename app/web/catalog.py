@@ -9,6 +9,7 @@ from sqlalchemy import Text, or_, type_coerce
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 
+from app.engine.keys import alias_key
 from app.engine.lookups import norm_alias, norm_product_name
 from app.engine.suggest import norm_tax_id
 from app.engine.values import normalize_gtin
@@ -84,8 +85,9 @@ def _product_before_save(p: Product):
 
 def _alias_before_save(a: UnitAlias):
     a.alias_norm = norm_alias(a.alias)
-    # UniqueConstraint nie chroni przy supplier_id NULL, więc sprawdzamy jawnie
-    q = UnitAlias.query.filter(UnitAlias.alias_norm == a.alias_norm)
+    # sprawdzamy jawnie wg klucza aliasu (unikat w bazie, FR-9) i wg kolumny (kolacja, uq_alias_supplier)
+    q = UnitAlias.query.filter(or_(UnitAlias.alias_key == alias_key(a.supplier_id, a.alias_norm),
+                                   UnitAlias.alias_norm == a.alias_norm))
     q = q.filter(UnitAlias.supplier_id.is_(None)) if a.supplier_id is None else q.filter(UnitAlias.supplier_id == a.supplier_id)
     if a.id is not None:
         q = q.filter(UnitAlias.id != a.id)

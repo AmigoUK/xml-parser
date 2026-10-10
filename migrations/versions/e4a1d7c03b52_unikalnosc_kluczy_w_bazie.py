@@ -7,7 +7,9 @@ Create Date: 2026-10-10 23:50:00.000000
 Przed założeniem indeksów UNIQUE migracja deduplikuje istniejące dane:
 - dostawcy: NIP normalizowany (bez spacji/myślników/kropek, wielkie litery); przy powtórzeniu NIP zostaje
   u najstarszego dostawcy, u pozostałych jest czyszczony z notatką (dokumenty/szablony zostają nietknięte);
-- aliasy jednostek: kolumna supplier_scope (0 = globalny); powtórzenia → zostaje najstarszy;
+- aliasy jednostek: kolumna alias_key (sha256: zakres dostawca/0 = globalny + alias po fold) z unikatem;
+  powtórzenia → zostaje najstarszy. Unikat na haszu liczonym w Pythonie nie zależy od kolacji bazy, więc
+  deduplikacja i indeks zawsze się zgadzają (FR-9; indeks na VARCHAR z utf8mb4_unicode_ci mógł paść);
 - przeliczniki: kolumny supplier_scope/product_scope; powtórzenia klucza (dostawca, towar, z jednostki) →
   zostaje najnowszy (tak wybierał lookup);
 - mapowania towarów: kolumna match_key (sha256: dostawca + kod / GTIN / nazwa); powtórzenia → zostaje
@@ -15,6 +17,15 @@ Przed założeniem indeksów UNIQUE migracja deduplikuje istniejące dane:
 - dokumenty: dedupe_hash dla wszystkich, dedupe_key dla żywego oryginału (najniższe id) w zakresie
   (klucz API albo panel „web”); późniejsze żywe kopie tej samej faktury w tym samym zakresie dostają
   status duplicate z problemem „duplicate”. Dokumenty różnych zakresów nie są dla siebie duplikatami.
+- FR-8: dokumenty oznaczone przez v0.1.1 jako duplicate względem dokumentu z INNEGO zakresu przestają być
+  duplikatami. Ich status sprzed oznaczenia nie jest odtwarzalny bez silnika (wyniki liczone starymi
+  regułami), więc dostają needs_review z blokującym problemem „reprocess_required” (wymaga ponownego
+  przetworzenia: panel albo POST /api/v1/documents/{id}/reprocess) i — jako żywe — biorą udział
+  w ustalaniu oryginału w swoim zakresie (kolejna kopia w tym samym zakresie zostaje duplikatem).
+
+Ponawialność (FR-9): na MariaDB DDL nie jest transakcyjny, więc po częściowej awarii część kroków zostaje
+wykonana bez wpisu w alembic_version. Każdy krok DDL sprawdza stan schematu (inspektor) przed wykonaniem,
+a kroki na danych są idempotentne — ponowny `flask db upgrade` dokańcza migrację.
 
 Funkcje normalizujące są tu skopiowane (zamrożone) z app/engine/keys.py — migracja nie może zależeć od
 przyszłych zmian kodu aplikacji.
@@ -79,6 +90,13 @@ def _mapping_key(supplier_id, code, gtin, name):
     return None
 
 
+def _alias_key(supplier_id, alias_norm):
+    name = _fold(alias_norm or "")
+    if not name:
+        return None
+    return _digest("alias", int(supplier_id or 0), name)
+
+
 def _norm_tax_id(value):
     return re.sub(r"[^A-Z0-9]", "", (value or "").upper())[:64] or None
 
@@ -101,7 +119,7 @@ def _json(value, default):
 suppliers = sa.table('suppliers', sa.column('id', sa.Integer), sa.column('tax_id', sa.String),
                      sa.column('notes', sa.Text))
 aliases = sa.table('unit_aliases', sa.column('id', sa.Integer), sa.column('alias_norm', sa.String),
-                   sa.column('supplier_id', sa.Integer), sa.column('supplier_scope', sa.Integer))
+                   sa.column('supplier_id', sa.Integer), sa.column('alias_key', sa.String))
 conversions = sa.table('unit_conversions', sa.column('id', sa.Integer), sa.column('supplier_id', sa.Integer),
                        sa.column('product_id', sa.Integer), sa.column('from_unit_id', sa.Integer),
                        sa.column('supplier_scope', sa.Integer), sa.column('product_scope', sa.Integer))
@@ -114,6 +132,40 @@ documents = sa.table('documents', sa.column('id', sa.Integer), sa.column('suppli
                      sa.column('doc_type', sa.String), sa.column('result', sa.Text),
                      sa.column('overrides', sa.Text), sa.column('issues', sa.Text),
                      sa.column('dedupe_hash', sa.String), sa.column('dedupe_key', sa.String))
+
+
+# ---------------------------------------------------------------- idempotentne kroki DDL (FR-9)
+
+def _columns(bind, table):
+    return {c['name'] for c in sa.inspect(bind).get_columns(table)}  # nowy inspektor — bez cache
+
+
+def _index(bind, table, name):
+    return next((i for i in sa.inspect(bind).get_indexes(table) if i['name'] == name), None)
+
+
+def _add_column(bind, table, column):
+    if column.name not in _columns(bind, table):
+        with op.batch_alter_table(table, schema=None) as batch_op:
+            batch_op.add_column(column)
+
+
+def _drop_column(bind, table, name):
+    if name in _columns(bind, table):
+        with op.batch_alter_table(table, schema=None) as batch_op:
+            batch_op.drop_column(name)
+
+
+def _create_index(bind, table, name, cols, unique):
+    if _index(bind, table, name) is None:
+        with op.batch_alter_table(table, schema=None) as batch_op:
+            batch_op.create_index(name, cols, unique=unique)
+
+
+def _drop_index(bind, table, name):
+    if _index(bind, table, name) is not None:
+        with op.batch_alter_table(table, schema=None) as batch_op:
+            batch_op.drop_index(name)
 
 
 def _delete_ids(bind, table, ids):
@@ -142,15 +194,17 @@ def _dedupe_suppliers(bind):
 
 
 def _dedupe_aliases(bind):
-    bind.execute(aliases.update().values(supplier_scope=sa.func.coalesce(aliases.c.supplier_id, 0)))
-    seen, drop = set(), []
-    for aid, norm, scope in bind.execute(sa.select(aliases.c.id, aliases.c.alias_norm, aliases.c.supplier_scope)
-                                         .order_by(aliases.c.id)):
-        key = (_fold(norm or ""), scope)  # równość wg kolacji MariaDB (wielkość liter, akcenty, spacje)
-        if key in seen:
+    keep, drop = {}, []
+    for aid, sid, norm, old_key in bind.execute(sa.select(aliases.c.id, aliases.c.supplier_id, aliases.c.alias_norm,
+                                                         aliases.c.alias_key).order_by(aliases.c.id)).fetchall():
+        key = _alias_key(sid, norm)  # ten sam klucz co unikat w bazie — nie zależy od kolacji (FR-9)
+        if key is not None and key in keep:
             drop.append(aid)
+        elif key != old_key:
+            keep[key] = aid
+            bind.execute(aliases.update().where(aliases.c.id == aid).values(alias_key=key))
         else:
-            seen.add(key)
+            keep[key] = aid
     _delete_ids(bind, aliases, drop)
 
 
@@ -186,113 +240,135 @@ def _dedupe_mappings(bind):
         bind.execute(mappings.update().where(mappings.c.id == mid).values(match_key=key))
 
 
+REPROCESS_MSG = ("Dokument był oznaczony jako duplikat dokumentu z innego zakresu (inny klucz API albo panel). "
+                 "Od v0.2.0 różne zakresy nie są dla siebie duplikatami — przetwórz dokument ponownie "
+                 "(„Przetwórz ponownie” w panelu albo POST /api/v1/documents/{id}/reprocess).")
+
+
+def _issue(code, message, source_value=None):
+    return {"code": code, "severity": "blocking", "message": message, "field": None, "line_no": None,
+            "source_path": None, "source_value": source_value, "suggestions": [], "count": 1, "line_nos": []}
+
+
+def _dup_ref(issues):
+    for i in issues:
+        if i.get("code") == "duplicate":
+            try:
+                return int(i.get("source_value"))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def _dedupe_documents(bind):
     holders = {}
     rows = bind.execute(sa.select(documents.c.id, documents.c.supplier_id, documents.c.api_key_id,
                                   documents.c.status, documents.c.number,
                                   documents.c.doc_type, documents.c.result, documents.c.overrides,
-                                  documents.c.issues).order_by(documents.c.id)).fetchall()
-    for did, sid, key_id, status, number, doc_type, result, overrides, issues in rows:
+                                  documents.c.issues, documents.c.dedupe_hash, documents.c.dedupe_key)
+                        .order_by(documents.c.id)).fetchall()
+    scope_of = {r[0]: _scope(r[2]) for r in rows}
+    for did, sid, key_id, status, number, doc_type, result, overrides, issues, old_hash, old_key in rows:
         result = _json(result, {}) or {}
         if not isinstance(result, dict):
             result = {}
         overrides = _json(overrides, {}) or {}
+        old_issues = [i for i in (_json(issues, []) or []) if isinstance(i, dict)]
+        rest = [i for i in old_issues if i.get("code") != "duplicate"]
+        scope = _scope(key_id)
         full_number = result.get("number", number) if result else number
         dtype = result.get("doc_type", doc_type) if result else doc_type
-        h = _document_key(sid, dtype, full_number, _scope(key_id))  # zakres: klucz API albo panel
-        values = {"dedupe_hash": h}
-        live = status in LIVE and not (isinstance(overrides, dict) and overrides.get("allow_duplicate"))
-        if h and live:
-            if h in holders:
-                issue = {"code": "duplicate", "severity": "blocking",
-                         "message": f"Ta faktura była już przetworzona (dokument #{holders[h]}).",
-                         "field": None, "line_no": None, "source_path": None, "source_value": str(holders[h]),
-                         "suggestions": [], "count": 1, "line_nos": []}
-                old = _json(issues, []) or []
-                values.update(status="duplicate",
-                              issues=json.dumps([issue] + [i for i in old if isinstance(i, dict)
-                                                           and i.get("code") != "duplicate"]))
-            else:
+        h = _document_key(sid, dtype, full_number, scope)  # zakres: klucz API albo panel
+        values = {}
+        if h != old_hash:
+            values["dedupe_hash"] = h
+        # FR-8: duplikat (v0.1.1) dokumentu z innego zakresu — już nie duplikat, do ponownego przetworzenia
+        ref = _dup_ref(old_issues) if status == 'duplicate' else None
+        cross = ref is not None and ref in scope_of and scope_of[ref] != scope
+        allowed = isinstance(overrides, dict) and overrides.get("allow_duplicate")
+        live = (status in LIVE or cross) and not allowed
+        if live and h and h in holders:
+            if status != 'duplicate' or cross:
+                issue = _issue("duplicate", f"Ta faktura była już przetworzona (dokument #{holders[h]}).",
+                               str(holders[h]))
+                values.update(status="duplicate", issues=json.dumps([issue] + rest))
+        elif live:
+            if cross:
+                values.update(status="needs_review",
+                              issues=json.dumps([_issue("reprocess_required", REPROCESS_MSG)] + rest))
+            if h:
                 holders[h] = did
-                values["dedupe_key"] = h
-        bind.execute(documents.update().where(documents.c.id == did).values(**values))
+                if old_key != h:
+                    values["dedupe_key"] = h
+        if values:
+            bind.execute(documents.update().where(documents.c.id == did).values(**values))
 
 
 def upgrade():
     bind = op.get_bind()
 
-    # --- dostawcy: NIP znormalizowany i unikalny
+    # --- dostawcy: NIP znormalizowany (A-Z0-9 — równość binarna = równość wg kolacji) i unikalny
     _dedupe_suppliers(bind)
-    with op.batch_alter_table('suppliers', schema=None) as batch_op:
-        batch_op.drop_index('ix_suppliers_tax_id')
-        batch_op.create_index('ix_suppliers_tax_id', ['tax_id'], unique=True)
+    idx = _index(bind, 'suppliers', 'ix_suppliers_tax_id')
+    if idx is not None and not idx.get('unique'):
+        _drop_index(bind, 'suppliers', 'ix_suppliers_tax_id')
+    _create_index(bind, 'suppliers', 'ix_suppliers_tax_id', ['tax_id'], unique=True)
 
-    # --- aliasy jednostek: zakres 0 = globalny
-    with op.batch_alter_table('unit_aliases', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('supplier_scope', sa.Integer(), server_default='0', nullable=False))
+    # --- aliasy jednostek: unikat na haszu (zakres + alias po fold), niezależny od kolacji (FR-9)
+    _drop_index(bind, 'unit_aliases', 'uq_alias_scope')  # pozostałość wcześniejszej wersji tej migracji
+    _drop_column(bind, 'unit_aliases', 'supplier_scope')
+    _add_column(bind, 'unit_aliases', sa.Column('alias_key', sa.String(length=64), nullable=True))
     _dedupe_aliases(bind)
-    with op.batch_alter_table('unit_aliases', schema=None) as batch_op:
-        batch_op.create_index('uq_alias_scope', ['alias_norm', 'supplier_scope'], unique=True)
+    _create_index(bind, 'unit_aliases', 'ix_unit_aliases_alias_key', ['alias_key'], unique=True)
 
     # --- przeliczniki: (dostawca, towar, z jednostki) z NULL → 0
-    with op.batch_alter_table('unit_conversions', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('supplier_scope', sa.Integer(), server_default='0', nullable=False))
-        batch_op.add_column(sa.Column('product_scope', sa.Integer(), server_default='0', nullable=False))
+    _add_column(bind, 'unit_conversions', sa.Column('supplier_scope', sa.Integer(), server_default='0', nullable=False))
+    _add_column(bind, 'unit_conversions', sa.Column('product_scope', sa.Integer(), server_default='0', nullable=False))
     _dedupe_conversions(bind)
-    with op.batch_alter_table('unit_conversions', schema=None) as batch_op:
-        batch_op.create_index('uq_conversion_scope', ['supplier_scope', 'product_scope', 'from_unit_id'],
-                              unique=True)
+    _create_index(bind, 'unit_conversions', 'uq_conversion_scope', ['supplier_scope', 'product_scope', 'from_unit_id'],
+                  unique=True)
 
     # --- mapowania towarów: hash tożsamości (indeks z kilku VARCHAR(255) utf8mb4 przekroczyłby 3072 B)
-    with op.batch_alter_table('product_mappings', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('match_key', sa.String(length=64), nullable=True))
+    _add_column(bind, 'product_mappings', sa.Column('match_key', sa.String(length=64), nullable=True))
     _dedupe_mappings(bind)
-    with op.batch_alter_table('product_mappings', schema=None) as batch_op:
-        batch_op.create_index('ix_product_mappings_match_key', ['match_key'], unique=True)
+    _create_index(bind, 'product_mappings', 'ix_product_mappings_match_key', ['match_key'], unique=True)
 
     # --- dokumenty: klucz faktury (najwyżej jeden żywy oryginał) + indeks listy API
-    with op.batch_alter_table('documents', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('dedupe_hash', sa.String(length=64), nullable=True))
-        batch_op.add_column(sa.Column('dedupe_key', sa.String(length=64), nullable=True))
+    _add_column(bind, 'documents', sa.Column('dedupe_hash', sa.String(length=64), nullable=True))
+    _add_column(bind, 'documents', sa.Column('dedupe_key', sa.String(length=64), nullable=True))
     _dedupe_documents(bind)
-    with op.batch_alter_table('documents', schema=None) as batch_op:
-        batch_op.create_index('ix_documents_dedupe_hash', ['dedupe_hash'], unique=False)
-        batch_op.create_index('ix_documents_dedupe_key', ['dedupe_key'], unique=True)
-        batch_op.create_index('ix_documents_api_status_created', ['api_key_id', 'status', 'created_at'],
-                              unique=False)
+    _create_index(bind, 'documents', 'ix_documents_dedupe_hash', ['dedupe_hash'], unique=False)
+    _create_index(bind, 'documents', 'ix_documents_dedupe_key', ['dedupe_key'], unique=True)
+    _create_index(bind, 'documents', 'ix_documents_api_status_created', ['api_key_id', 'status', 'created_at'],
+                  unique=False)
     if bind.dialect.name in ('mysql', 'mariadb'):
         # pozostałość po downgrade (indeks dla klucza obcego) — teraz FK obsługuje indeks złożony
-        if 'ix_documents_api_key_id' in {i['name'] for i in sa.inspect(bind).get_indexes('documents')}:
-            op.drop_index('ix_documents_api_key_id', table_name='documents')
+        _drop_index(bind, 'documents', 'ix_documents_api_key_id')
 
 
 def downgrade():
     bind = op.get_bind()
-    if bind.dialect.name in ('mysql', 'mariadb') and 'ix_documents_api_key_id' not in {
-            i['name'] for i in sa.inspect(bind).get_indexes('documents')}:
+    if bind.dialect.name in ('mysql', 'mariadb'):
         # InnoDB mógł użyć indeksu złożonego dla klucza obcego api_key_id (i usunąć własny) — bez
         # osobnego indeksu nie da się go skasować
-        op.create_index('ix_documents_api_key_id', 'documents', ['api_key_id'], unique=False)
-    with op.batch_alter_table('documents', schema=None) as batch_op:
-        batch_op.drop_index('ix_documents_api_status_created')
-        batch_op.drop_index('ix_documents_dedupe_key')
-        batch_op.drop_index('ix_documents_dedupe_hash')
-        batch_op.drop_column('dedupe_key')
-        batch_op.drop_column('dedupe_hash')
+        _create_index(bind, 'documents', 'ix_documents_api_key_id', ['api_key_id'], unique=False)
+    _drop_index(bind, 'documents', 'ix_documents_api_status_created')
+    _drop_index(bind, 'documents', 'ix_documents_dedupe_key')
+    _drop_index(bind, 'documents', 'ix_documents_dedupe_hash')
+    _drop_column(bind, 'documents', 'dedupe_key')
+    _drop_column(bind, 'documents', 'dedupe_hash')
 
-    with op.batch_alter_table('product_mappings', schema=None) as batch_op:
-        batch_op.drop_index('ix_product_mappings_match_key')
-        batch_op.drop_column('match_key')
+    _drop_index(bind, 'product_mappings', 'ix_product_mappings_match_key')
+    _drop_column(bind, 'product_mappings', 'match_key')
 
-    with op.batch_alter_table('unit_conversions', schema=None) as batch_op:
-        batch_op.drop_index('uq_conversion_scope')
-        batch_op.drop_column('product_scope')
-        batch_op.drop_column('supplier_scope')
+    _drop_index(bind, 'unit_conversions', 'uq_conversion_scope')
+    _drop_column(bind, 'unit_conversions', 'product_scope')
+    _drop_column(bind, 'unit_conversions', 'supplier_scope')
 
-    with op.batch_alter_table('unit_aliases', schema=None) as batch_op:
-        batch_op.drop_index('uq_alias_scope')
-        batch_op.drop_column('supplier_scope')
+    _drop_index(bind, 'unit_aliases', 'ix_unit_aliases_alias_key')
+    _drop_column(bind, 'unit_aliases', 'alias_key')
 
-    with op.batch_alter_table('suppliers', schema=None) as batch_op:
-        batch_op.drop_index('ix_suppliers_tax_id')
-        batch_op.create_index('ix_suppliers_tax_id', ['tax_id'], unique=False)
+    idx = _index(bind, 'suppliers', 'ix_suppliers_tax_id')
+    if idx is not None and idx.get('unique'):
+        _drop_index(bind, 'suppliers', 'ix_suppliers_tax_id')
+    _create_index(bind, 'suppliers', 'ix_suppliers_tax_id', ['tax_id'], unique=False)

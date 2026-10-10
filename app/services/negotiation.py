@@ -5,7 +5,7 @@ import copy
 from decimal import Decimal
 
 from app.engine.canonical import FIELD_LABELS, LINE_KEYS
-from app.engine.keys import mapping_key
+from app.engine.keys import alias_key, mapping_key
 from app.engine.lookups import norm_alias, norm_product_name
 from app.engine.suggest import FIELDS_BY_KEY, norm_tax_id, tax_ids_match
 from app.engine.tree import relative_path
@@ -175,7 +175,7 @@ def a_map_unit(doc, data, remember, user):
         return
     _require_supplier(doc)
     _check_len(alias, UnitAlias.alias, "Jednostka z faktury", "przypisz ją tylko dla tej faktury")
-    row = UnitAlias.query.filter_by(alias_norm=norm_alias(alias), supplier_id=doc.supplier_id).first()
+    row = UnitAlias.query.filter_by(alias_key=alias_key(doc.supplier_id, norm_alias(alias))).first()
     if row:
         row.unit_id = unit.id
     else:
