@@ -1,0 +1,25 @@
+# Prywatne dane — NIGDY w repo (realne faktury dostawców)
+private/
+storage/
+uploads/
+instance/
+
+# Środowisko / sekrety
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Edytory / system
+.vscode/
+.idea/
+.DS_Store
