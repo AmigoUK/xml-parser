@@ -9,8 +9,9 @@ def test_root_redirects_to_demo(seeded, client):
 def test_demo_page_public_and_descriptive(seeded, client):
     html = client.get("/demo").get_data(as_text=True)
     assert "Jak to działa" in html and "alfa-1.xml" in html
-    assert "xp_test_demo_key" in html            # przykład curl z kluczem demo
-    assert "admin@example.com" in html           # dane logowania demo
+    assert "/api/v1/documents" in html           # przykład curl (klucz demo tylko dla zalogowanych)
+    assert "xp_test_demo_key" not in html
+    assert "admin@example.com" in html           # e-mail konta demo (hasło nigdy)
     assert "Project &amp; Development" in html   # stopka
 
 

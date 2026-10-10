@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -190,15 +191,30 @@ class ApiKey(db.Model):
     created_at = db.Column(db.DateTime, default=utcnow)
 
 
+def new_session_token() -> str:
+    return secrets.token_hex(16)
+
+
 class User(UserMixin, db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(16), nullable=False, default="admin")
+    # zmieniany przy wylogowaniu i zmianie hasła — unieważnia skopiowane ciasteczka sesji (SEC-4)
+    session_token = db.Column(db.String(64), nullable=False, default=new_session_token)
+
+    def get_id(self) -> str:
+        if not self.session_token:
+            self.session_token = new_session_token()
+        return f"{self.id}:{self.session_token}"
+
+    def rotate_session_token(self) -> None:
+        self.session_token = new_session_token()
 
     def set_password(self, pw: str) -> None:
         self.password_hash = generate_password_hash(pw)
+        self.rotate_session_token()
 
     def check_password(self, pw: str) -> bool:
         return check_password_hash(self.password_hash, pw)
@@ -213,3 +229,12 @@ class AuditLog(db.Model):
     entity_id = db.Column(db.Integer)
     payload = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=utcnow, index=True)
+
+
+class LoginAttempt(db.Model):
+    """Nieudane próby logowania — limit prób per e-mail i per IP (SEC-2), wspólny dla wszystkich workerów."""
+    __tablename__ = "login_attempts"
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    ip = db.Column(db.String(64), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)

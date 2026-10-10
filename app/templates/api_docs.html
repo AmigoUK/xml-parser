@@ -5,10 +5,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/swagger-ui.css') }}">
 </head>
 <body>
-  <div id="swagger"></div>
+  <div id="swagger" data-spec-url="{{ url_for('static', filename='openapi.yaml') }}"></div>
   <script src="{{ url_for('static', filename='vendor/swagger-ui-bundle.js') }}"></script>
-  <script>
-    SwaggerUIBundle({ url: "{{ url_for('static', filename='openapi.yaml') }}", dom_id: "#swagger" });
-  </script>
+  <script src="{{ url_for('static', filename='api_docs.js') }}"></script>
 </body>
 </html>

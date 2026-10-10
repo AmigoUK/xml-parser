@@ -27,6 +27,35 @@ def require_api_key(fn):
     return wrapper
 
 
+# Podpowiedzi zbudowane wyłącznie z treści samego dokumentu albo słowników globalnych (jednostki).
+# Pozostałe (kandydaci-dostawcy, szablony do sklonowania, towary z kartoteki) ujawniałyby dane spoza
+# klucza API, więc w API są wycinane (SEC-5). Nieznane rodzaje też — fail-closed.
+API_SAFE_SUGGESTIONS = {"path", "line_path", "default", "unit", "conversion", "create_supplier", "create_product"}
+FOREIGN_DUPLICATE_MESSAGE = "Ta faktura była już przetworzona (duplikat istniejącego dokumentu)."
+
+
+def _duplicate_owned_by_other_key(issue: dict, api_key_id: int | None) -> bool:
+    ref = str(issue.get("source_value") or "")
+    if not ref.isdigit():
+        return True  # brak wskazania — traktuj ostrożnie
+    other = db.session.get(Document, int(ref))
+    return other is None or other.api_key_id != api_key_id
+
+
+def api_issues(doc: Document) -> list[dict]:
+    """Problemy dokumentu w wersji dla klienta API — bez danych innych kluczy i globalnej kartoteki."""
+    out = []
+    for issue in doc.issues or []:
+        issue = dict(issue)
+        if issue.get("code") == "duplicate" and _duplicate_owned_by_other_key(issue, doc.api_key_id):
+            issue["message"], issue["source_value"] = FOREIGN_DUPLICATE_MESSAGE, None
+        if issue.get("suggestions"):
+            issue["suggestions"] = [s for s in issue["suggestions"]
+                                    if isinstance(s, dict) and s.get("kind") in API_SAFE_SUGGESTIONS]
+        out.append(issue)
+    return out
+
+
 def doc_to_json(doc: Document, full: bool = True) -> dict:
     out = {
         "id": doc.id, "status": doc.status, "status_label": doc.status_label, "format": doc.fmt,
@@ -38,7 +67,7 @@ def doc_to_json(doc: Document, full: bool = True) -> dict:
     }
     if full:
         out["invoice"] = doc.result
-        out["issues"] = doc.issues or []
+        out["issues"] = api_issues(doc)
     return out
 
 
@@ -112,8 +141,11 @@ def reprocess_document(doc_id):
 @bp.get("/suppliers")
 @require_api_key
 def list_suppliers():
-    return jsonify(items=[{"id": s.id, "name": s.name, "tax_id": s.tax_id}
-                          for s in Supplier.query.order_by(Supplier.name)])
+    # tylko dostawcy z dokumentów tego klucza — klucz nie widzi całej kartoteki (SEC-5)
+    own = db.select(Document.supplier_id).where(Document.api_key_id == g.api_key.id,
+                                                Document.supplier_id.isnot(None))
+    q = Supplier.query.filter(Supplier.id.in_(own)).order_by(Supplier.name)
+    return jsonify(items=[{"id": s.id, "name": s.name, "tax_id": s.tax_id} for s in q])
 
 
 @bp.app_errorhandler(413)

@@ -34,7 +34,8 @@
     <div class="card mb-3"><div class="card-body small">
       <h2 class="h6">Dostęp demo</h2>
       <div>E-mail: <code>{{ admin_email }}</code></div>
-      <div>Hasło: <code>{{ admin_password }}</code></div>
+      <div class="text-muted">Hasło nie jest tu wyświetlane — ustawia je administrator instancji
+        w zmiennej <code>ADMIN_PASSWORD</code> w pliku <code>.env</code> (przed pierwszym uruchomieniem).</div>
       {% if not current_user.is_authenticated %}<a class="btn btn-sm btn-primary mt-2" href="{{ url_for('auth.login') }}">Zaloguj</a>{% endif %}
     </div></div>
 
@@ -48,8 +49,8 @@
           {% endif %}</td></tr>
         {% endfor %}
       </table>
-      {% if current_user.is_authenticated %}
-      <form method="post" action="{{ url_for('demo.reset') }}" onsubmit="return confirm('Wyczyścić wszystkie dane demo?')">
+      {% if current_user.is_authenticated and current_user.role == 'admin' %}
+      <form method="post" action="{{ url_for('demo.reset') }}" data-confirm="Wyczyścić wszystkie dane demo?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Wyczyść dane demo</button>
       </form>
       {% endif %}
@@ -58,9 +59,10 @@
     <div class="card"><div class="card-body small">
       <h2 class="h6">API</h2>
       <p class="mb-1">Wyślij fakturę z dowolnego systemu:</p>
-      <pre class="bg-light p-2 small mb-1">curl -H "X-API-Key: {{ demo_key }}" \
+      <pre class="bg-light p-2 small mb-1">curl -H "X-API-Key: {{ demo_key or '<klucz API>' }}" \
   -F file=@faktura.xml \
   {{ api_base }}/api/v1/documents</pre>
+      {% if not demo_key %}<p class="small text-muted mb-1">Klucz API demo widzą zalogowani użytkownicy.</p>{% endif %}
       <a href="{{ url_for('api_docs') }}">Dokumentacja API (Swagger) →</a>
     </div></div>
   </div>

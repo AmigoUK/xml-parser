@@ -65,9 +65,38 @@ Plik jest ignorowany przez git; bez niego skan jest pomijany — utwórz go na k
 
 ## Tryb demo
 
-`DEMO_MODE=1` włącza publiczną stronę „O demo” **z danymi logowania admina** i kluczem API demo.
-Nie używaj `DEMO_MODE=1` na instancji z prawdziwymi danymi. Wdrożenia demo muszą używać
-jednorazowych (throwaway) danych logowania, bo strona pokazuje je publicznie.
+Domyślnie `DEMO_MODE=0`. `DEMO_MODE=1` włącza publiczną stronę „O demo” (opis, próbki faktur,
+e-mail konta demo) oraz kartotekę i klucz API demo. Strona **nigdy nie pokazuje hasła** —
+hasło ustawiasz w `ADMIN_PASSWORD` w `.env`. Klucz API demo widzą tylko zalogowani, a reset danych
+(„Wyczyść dane demo”) może wykonać tylko administrator. Nie używaj `DEMO_MODE=1` na instancji
+z prawdziwymi danymi.
+
+## Bezpieczeństwo panelu
+
+| Zmienna | Domyślnie | Znaczenie |
+|---|---|---|
+| `SESSION_COOKIE_SECURE` | `0` | `1` = ciasteczka sesji tylko po HTTPS. Domyślnie wyłączone, bo demo działa po HTTP przez Tailscale (tunel szyfrowany). Włącz, gdy panel stoi za TLS (np. `tailscale serve` / reverse proxy z HTTPS) — inaczej logowanie przestanie działać. |
+| `TRUSTED_PROXY_COUNT` | `0` | Liczba zaufanych reverse proxy przed aplikacją. `0` = nagłówki `X-Forwarded-*` ignorowane (bez proxy ktoś mógłby podszyć IP). Ustaw `1`, gdy aplikacja stoi za jednym proxy (adres klienta, schemat https). |
+| `LOGIN_MAX_ATTEMPTS` | `5` | Główny limit: nieudane logowania dla pary (e-mail, adres IP), po których ta para jest blokowana. `0` wyłącza ten próg. |
+| `LOGIN_LOCKOUT_MINUTES` | `15` | Okno liczenia i czas blokady dla progów per (e-mail, IP) i per IP. |
+| `LOGIN_MAX_ATTEMPTS_PER_IP` | `20` | Nieudane logowania z jednego IP na dowolne konta (rozpylanie haseł). |
+| `LOGIN_MAX_ATTEMPTS_PER_EMAIL` | `50` | Nieudane logowania na jedno konto z dowolnych IP (atak rozproszony). |
+| `LOGIN_EMAIL_LOCKOUT_MINUTES` | `5` | Okno i czas blokady dla progu per e-mail (krótsze). |
+
+Kompromis limitu logowania: obcy, który zna e-mail admina, ale nie hasło, blokuje 5 próbami tylko
+siebie (parę e-mail + jego IP) — admin z innego adresu loguje się normalnie. Blokada całego konta
+następuje dopiero po 50 nieudanych próbach w 5 min z wielu adresów i trwa krótko. Próby odrzucone
+blokadą nie są liczone (nie przedłużają blokady). Próba jest zapisywana w bazie przed sprawdzeniem
+hasła, więc równoległe żądania nie omijają limitu. Uwaga: jeśli wszyscy klienci docierają z jednego
+adresu (NAT Dockera, proxy bez `TRUSTED_PROXY_COUNT`), progi per IP działają jak globalne.
+
+Pozostałe zabezpieczenia: nagłówki `Content-Security-Policy` (bez skryptów inline; `'unsafe-eval'`
+jest wymagany przez standardowy build Alpine.js), `X-Frame-Options: DENY`, `X-Content-Type-Options`,
+`Referrer-Policy`; ciasteczka `HttpOnly` + `SameSite=Lax`, sesja wygasa po 8 h; wylogowanie
+(i zmiana hasła) unieważnia wszystkie wcześniej wydane ciasteczka sesji użytkownika.
+Nieudane i zablokowane logowania trafiają do „Historii” (`login_failed`, `login_blocked`).
+Klucz API widzi tylko swoje dokumenty i dostawców z tych dokumentów; podpowiedzi z kartoteki
+(towary, inni dostawcy, szablony) nie są zwracane przez API.
 
 ## Sieć Docker (`XP_SUBNET`)
 

@@ -19,7 +19,7 @@
     <td class="small">{{ k.last_used_at.strftime('%Y-%m-%d %H:%M') if k.last_used_at else '—' }}</td>
     <td class="text-end text-nowrap">
       <form method="post" action="{{ url_for('apikeys.toggle', key_id=k.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">{{ 'Wyłącz' if k.active else 'Włącz' }}</button></form>
-      <form method="post" action="{{ url_for('apikeys.delete', key_id=k.id) }}" class="d-inline" onsubmit="return confirm('Usunąć klucz?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Usuń</button></form>
+      <form method="post" action="{{ url_for('apikeys.delete', key_id=k.id) }}" class="d-inline" data-confirm="Usunąć klucz?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Usuń</button></form>
     </td>
   </tr>{% endfor %}</tbody>
 </table>

@@ -1,9 +1,27 @@
+import hmac
+
 import click
 from flask import Flask, jsonify
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import PLACEHOLDER_SECRET_KEYS, Config
 from .extensions import csrf, db, login_manager, migrate
 from .version import __version__
+
+# Alpine.js (standardowy build) wylicza wyrażenia z atrybutów przez konstruktor Function, stąd 'unsafe-eval'
+# w script-src; inline <script> i atrybuty on* są niedozwolone. Style inline (atrybuty style, :style Alpine,
+# Swagger UI) wymagają 'unsafe-inline' w style-src.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; "
+    "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+}
 
 
 def create_app(config_overrides: dict | None = None) -> Flask:
@@ -21,6 +39,10 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "python -c \"import secrets;print(secrets.token_hex(32))\" i wpisz go do .env."
         )
 
+    proxies = int(app.config.get("TRUSTED_PROXY_COUNT") or 0)
+    if proxies > 0:  # OPS-8: X-Forwarded-* tylko od zaufanych proxy
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxies, x_proto=proxies, x_host=proxies, x_port=proxies)
+
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
@@ -34,6 +56,12 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "DEMO_MODE": app.config["DEMO_MODE"],
             "nav_blueprints": set(app.blueprints),
         }
+
+    @app.after_request
+    def security_headers(response):
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
 
     @app.get("/healthz")
     def healthz():
@@ -49,7 +77,13 @@ def create_app(config_overrides: dict | None = None) -> Flask:
 
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(models.User, int(user_id))
+        uid, _, token = (user_id or "").partition(":")
+        if not uid.isdigit() or not token:
+            return None  # ciasteczko w starym formacie albo uszkodzone
+        user = db.session.get(models.User, int(uid))
+        if user is None or not user.session_token or not hmac.compare_digest(user.session_token, token):
+            return None
+        return user
 
     @app.cli.command("seed")
     def seed_cmd():

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app.extensions import db
 from app.services.audit import audit
@@ -36,10 +36,10 @@ def only_in_demo_mode():
 
 @bp.get("")
 def index():
+    # hasła admina nie pokazujemy nigdy; klucz API demo tylko zalogowanym (K-1)
+    demo_key = current_app.config.get("DEMO_API_KEY") if current_user.is_authenticated else None
     return render_template("demo.html", samples=DEMO_SAMPLES, api_base=request.host_url.rstrip("/"),
-                           demo_key=current_app.config.get("DEMO_API_KEY"),
-                           admin_email=current_app.config.get("ADMIN_EMAIL"),
-                           admin_password=current_app.config.get("ADMIN_PASSWORD"))
+                           demo_key=demo_key, admin_email=current_app.config.get("ADMIN_EMAIL"))
 
 
 @bp.post("/wczytaj/<path:name>")
@@ -54,6 +54,8 @@ def load_sample(name):
 @bp.post("/reset")
 @login_required
 def reset():
+    if current_user.role != "admin":
+        abort(403)
     try:
         reset_demo()
     except RuntimeError as exc:
