@@ -1,0 +1,9 @@
+.git
+.superpowers
+private
+storage
+instance
+.env
+__pycache__
+.pytest_cache
+.venv

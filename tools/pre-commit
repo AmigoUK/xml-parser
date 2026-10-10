@@ -1,0 +1,10 @@
+#!/bin/sh
+# Instalacja: ln -sf ../../tools/pre-commit .git/hooks/pre-commit
+cd "$(git rev-parse --show-toplevel)" || exit 1
+PY=python3
+[ -x .venv/bin/python ] && PY=.venv/bin/python
+if ! "$PY" -c "import pytest, flask, flask_migrate" 2>/dev/null; then
+  echo "pre-commit: brak środowiska. Utwórz .venv: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt" >&2
+  exit 1
+fi
+exec "$PY" -m pytest tests/test_no_private_data.py -q -p no:cacheprovider

@@ -1,0 +1,27 @@
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-xmlparser}
+      MARIADB_USER: ${MARIADB_USER:-xmlparser}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes: [dbdata:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 20
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db: { condition: service_healthy }
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-5010}:5010"
+    volumes: [storage:/data/storage]
+volumes:
+  dbdata:
+  storage:
