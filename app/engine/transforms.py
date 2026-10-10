@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Callable
 
 import regex
 
 from .gs1 import DATE_AIS, GS1Error, gs1_date, parse_gs1
 from .tree import Node, SourceTree
-from .values import fmt_qty, to_decimal
+from .values import DECIMAL_SEPARATORS, PlainNumber, fmt_qty, to_decimal
 
 MAX_PATTERN = 200
 MAX_INPUT = 1000
@@ -24,13 +25,39 @@ class TransformError(ValueError):
 class TransformContext:
     tree: SourceTree | None = None
     node: Node | None = None
+    decimal_sep: str | None = None  # separator dziesiętny wywnioskowany z dokumentu (EDGE-11)
+
+
+def _num(v, ctx, sep: str | None = None) -> Decimal:
+    """Wartość źródłowa → Decimal; forma niejednoznaczna bez znanego separatora → błąd (EDGE-11).
+
+    Wynik kroków liczbowych to ``PlainNumber`` (kanoniczny zapis z kropką), więc kolejny krok go nie odrzuca."""
+    if sep is None and ctx is not None:
+        sep = ctx.decimal_sep
+    return to_decimal(v, sep, reject_ambiguous=True)
+
+
+def parse_factor(arg) -> Decimal:
+    """Współczynnik transformacji 'convert' — liczba dodatnia (EDGE-16; do zmiany znaku służy 'negate')."""
+    if isinstance(arg, bool) or arg is None:
+        raise ValueError("Współczynnik przeliczenia musi być liczbą.")
+    if isinstance(arg, (int, float, Decimal)):
+        arg = PlainNumber(arg)  # liczba JSON w szablonie jest jednoznaczna
+    elif not isinstance(arg, str):
+        raise ValueError("Współczynnik przeliczenia musi być liczbą.")
+    factor = to_decimal(arg, reject_ambiguous=True)
+    if factor <= 0:
+        raise ValueError("Współczynnik przeliczenia musi być większy od zera (do zmiany znaku służy 'negate').")
+    return factor
 
 
 def _decimal(v, arg, ctx):
     if v is None:
         return None
+    if arg not in (None, "", *DECIMAL_SEPARATORS):
+        raise TransformError("Argument transformacji 'decimal' to separator dziesiętny: „,” albo „.”.")
     try:
-        return fmt_qty(to_decimal(v))
+        return PlainNumber(fmt_qty(_num(v, ctx, arg or None)))
     except ValueError as exc:
         raise TransformError(str(exc)) from exc
 
@@ -79,7 +106,7 @@ def _convert(v, arg, ctx):
     if v is None:
         return None
     try:
-        return fmt_qty(to_decimal(v) * to_decimal(arg))
+        return PlainNumber(fmt_qty(_num(v, ctx) * parse_factor(arg)))
     except ValueError as exc:
         raise TransformError(str(exc)) from exc
 
@@ -88,7 +115,7 @@ def _negate(v, arg, ctx):
     if v is None:
         return None
     try:
-        return fmt_qty(-to_decimal(v))
+        return PlainNumber(fmt_qty(-_num(v, ctx)))
     except ValueError as exc:
         raise TransformError(str(exc)) from exc
 
@@ -156,7 +183,7 @@ TRANSFORM_LABELS = {
     "trim": "Usuń spacje z brzegów",
     "upper": "Wielkie litery",
     "lower": "Małe litery",
-    "decimal": "Liczba (przecinek/kropka)",
+    "decimal": "Liczba; separator dziesiętny jako argument, np. {\"decimal\": \",\"}",
     "strip_percent": "Usuń znak %",
     "date": "Data wg formatu (np. %d.%m.%Y)",
     "regex_extract": "Wytnij wyrażeniem regularnym",

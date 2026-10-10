@@ -9,7 +9,8 @@ from .issues import BLOCKING, WARNING, Issue
 from .lookups import Lookups
 from .transforms import TransformContext, TransformError, apply_chain
 from .tree import Node, SourceTree
-from .values import fmt_money, fmt_price, fmt_qty, normalize_gtin, parse_date, to_decimal
+from .values import (AmbiguousNumberError, PlainNumber, fmt_money, fmt_price, fmt_qty, infer_decimal_sep,
+                     normalize_currency, normalize_gtin, parse_date, to_decimal, vat_code)
 
 
 @dataclass
@@ -18,8 +19,21 @@ class ApplyResult:
     issues: list[Issue] = field(default_factory=list)
 
 
+def _ambiguous_issue(f: FieldDef, exc: Exception, line_no: int | None, src: str | None, raw) -> Issue:
+    """Niejednoznaczna liczba zawsze blokuje — błąd o 3 rzędy wielkości nie może przejść po cichu (EDGE-11)."""
+    return Issue("ambiguous_number", BLOCKING, f"{f.label}: {exc}", field=f.key, line_no=line_no,
+                 source_path=src, source_value=None if raw is None else str(raw))
+
+
+def document_decimal_sep(tree: SourceTree) -> str | None:
+    """Separator dziesiętny jednoznacznie wynikający z wartości dokumentu (liczony raz na drzewo)."""
+    if "decimal_sep" not in tree.cache:
+        tree.cache["decimal_sep"] = infer_decimal_sep(n.text for n in tree.iter_nodes())
+    return tree.cache["decimal_sep"]
+
+
 def _eval_rule(tree: SourceTree, rule: dict | None, node: Node | None, f: FieldDef,
-               issues: list[Issue], line_no: int | None):
+               issues: list[Issue], line_no: int | None, decimal_sep: str | None = None):
     """Zwraca (surowa_wartość, ścieżka_źródłowa). Dla LIST surowa wartość to lista."""
     if not rule:
         return None, None
@@ -34,8 +48,11 @@ def _eval_rule(tree: SourceTree, rule: dict | None, node: Node | None, f: FieldD
     else:
         raw = None
     try:
-        raw = apply_chain(raw, rule.get("transforms") or [], TransformContext(tree, node))
+        raw = apply_chain(raw, rule.get("transforms") or [], TransformContext(tree, node, decimal_sep))
     except TransformError as exc:
+        if isinstance(exc.__cause__, AmbiguousNumberError):
+            issues.append(_ambiguous_issue(f, exc, line_no, src, raw))
+            return None, src
         issues.append(Issue("transform_error", BLOCKING if f.required else WARNING,
                             f"{f.label}: {exc}", field=f.key, line_no=line_no, source_path=src,
                             source_value=raw))
@@ -43,10 +60,30 @@ def _eval_rule(tree: SourceTree, rule: dict | None, node: Node | None, f: FieldD
     return raw, src
 
 
-def _coerce(f: FieldDef, raw, issues: list[Issue], line_no: int | None, src: str | None):
+def _coerce(f: FieldDef, raw, issues: list[Issue], line_no: int | None, src: str | None,
+            decimal_sep: str | None = None):
     if raw is None or raw == "" or raw == []:
         return [] if f.kind == LIST else None
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        raw = PlainNumber(raw)  # liczba z JSON-a szablonu (wartość domyślna) jest jednoznaczna
+
+    def num():
+        return to_decimal(raw, decimal_sep, reject_ambiguous=True)
+
     try:
+        if f.key == "currency":
+            return normalize_currency(raw)
+        if f.key == "vat_rate":
+            code = vat_code(raw)
+            if code:
+                return code
+            rate = num()
+            if 0 < rate < 1:
+                issues.append(Issue("vat_rate_fraction", WARNING,
+                                    f"{f.label}: wartość {fmt_qty(rate)} wygląda na ułamek, nie procent "
+                                    f"(np. 0,23 zamiast 23) — sprawdź mapowanie pola.",
+                                    field=f.key, line_no=line_no, source_path=src, source_value=str(raw)))
+            return fmt_qty(rate)
         if f.kind == LIST:
             items = raw if isinstance(raw, list) else str(raw).split(",")
             return [str(x).strip() for x in items if str(x).strip()]
@@ -55,13 +92,16 @@ def _coerce(f: FieldDef, raw, issues: list[Issue], line_no: int | None, src: str
         if f.kind == DATE:
             return parse_date(str(raw))
         if f.kind == MONEY:
-            return fmt_money(to_decimal(raw))
+            return fmt_money(num())
         if f.kind == PRICE:
-            return fmt_price(to_decimal(raw))
+            return fmt_price(num())
         if f.kind == DECIMAL:
-            return fmt_qty(to_decimal(raw))
+            return fmt_qty(num())
         if f.kind == GTIN:
             return normalize_gtin(str(raw))
+    except AmbiguousNumberError as exc:
+        issues.append(_ambiguous_issue(f, exc, line_no, src, raw))
+        return None
     except (ValueError, ArithmeticError) as exc:
         issues.append(Issue("invalid_value", BLOCKING if f.required else WARNING,
                             f"{f.label}: {exc}", field=f.key, line_no=line_no, source_path=src,
@@ -81,17 +121,18 @@ def apply_template(tree: SourceTree, rules: dict, lookups: Lookups, supplier_id:
     line_defaults = rules.get("line_defaults") or {}
     invoice = empty_invoice()
     issues: list[Issue] = []
+    dsep = document_decimal_sep(tree)
 
     # --- nagłówek ---
     failed: set[str] = set()
     for f in HEADER_FIELDS:
         before = len(issues)
-        raw, src = _eval_rule(tree, (rules.get("header") or {}).get(f.key), None, f, issues, None)
+        raw, src = _eval_rule(tree, (rules.get("header") or {}).get(f.key), None, f, issues, None, dsep)
         if raw in (None, "", []) and f.key in defaults:
             raw = defaults[f.key]
         if f.key in field_over:
             raw = field_over[f.key]
-        value = _coerce(f, raw, issues, None, src)
+        value = _coerce(f, raw, issues, None, src, dsep)
         if len(issues) > before:
             failed.add(f.key)
         if f.key == "doc_type" and not value:
@@ -126,7 +167,7 @@ def apply_template(tree: SourceTree, rules: dict, lookups: Lookups, supplier_id:
         failed_line: set[str] = set()
         for f in LINE_FIELDS:
             before = len(issues)
-            raw, src = _eval_rule(tree, (rules.get("lines") or {}).get(f.key), node, f, issues, line_no)
+            raw, src = _eval_rule(tree, (rules.get("lines") or {}).get(f.key), node, f, issues, line_no, dsep)
             if raw in (None, "") and f.key in line_defaults:
                 raw = line_defaults[f.key]
             if len(issues) > before:
@@ -146,7 +187,7 @@ def apply_template(tree: SourceTree, rules: dict, lookups: Lookups, supplier_id:
                         failed_line.add("unit")
                 line["unit"] = unit
                 continue
-            line[f.key] = _coerce(f, raw, issues, line_no, src)
+            line[f.key] = _coerce(f, raw, issues, line_no, src, dsep)
             if len(issues) > before:
                 failed_line.add(f.key)
 

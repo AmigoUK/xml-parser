@@ -1,6 +1,8 @@
 import json
+from decimal import Decimal
 
 from app.engine.tree import Node, SourceTree
+from app.engine.values import PlainNumber
 
 from . import NodeBudget, ReaderError
 
@@ -10,6 +12,13 @@ def _scalar(v) -> str | None:
         return None
     if isinstance(v, bool):
         return "true" if v else "false"
+    if isinstance(v, Decimal):
+        # liczba JSON: zapis jednoznaczny (kropka); wykładnik rozwijamy, gdy wynik jest krótki (EDGE-1)
+        if v.is_finite() and -30 <= v.adjusted() <= 30:
+            return PlainNumber(format(v, "f"))
+        return PlainNumber(v)
+    if isinstance(v, PlainNumber):  # liczba całkowita JSON (parse_int)
+        return v
     return str(v)
 
 
@@ -34,7 +43,7 @@ def _build(name: str, value, parent: Node, budget: NodeBudget) -> None:
 def read_json(data: bytes, budget: NodeBudget | None = None) -> SourceTree:
     budget = budget or NodeBudget(10 ** 9)
     try:
-        obj = json.loads(data.decode("utf-8-sig"), parse_float=str, parse_int=str)
+        obj = json.loads(data.decode("utf-8-sig"), parse_float=Decimal, parse_int=PlainNumber)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ReaderError(f"Niepoprawny JSON: {exc}.") from exc
     except RecursionError:

@@ -9,8 +9,9 @@ from flask_login import current_user, login_required
 from app.engine.canonical import HEADER_FIELDS, LINE_FIELDS
 from app.engine.suggest import field_candidates, learned_pairs, load_synonyms
 from app.engine.template import apply_template
-from app.engine.transforms import MAX_PATTERN, REGISTRY, TRANSFORM_LABELS
+from app.engine.transforms import MAX_PATTERN, REGISTRY, TRANSFORM_LABELS, parse_factor
 from app.engine.validate import validate_invoice
+from app.engine.values import DECIMAL_SEPARATORS
 from app.extensions import db
 from app.ingest import ReaderError
 from app.models import Document, Template, TemplateVersion
@@ -130,25 +131,16 @@ def editor_for_document(doc_id):
     return _render_editor(doc, current_rules(doc), f"Edytor mapowań — dokument #{doc.id}")
 
 
-def _is_number(v) -> bool:
-    if isinstance(v, bool):
-        return False
-    if isinstance(v, (int, float)):
-        return True
-    if isinstance(v, str):
-        try:
-            float(v.replace(",", "."))
-            return True
-        except ValueError:
-            return False
-    return False
-
-
 def _check_arg(name: str, arg, key: str) -> str | None:
     if name == "map" and not isinstance(arg, dict):
         return f"Transformacja 'map' w polu '{key}' wymaga słownika."
-    if name == "convert" and not _is_number(arg):
-        return f"Transformacja 'convert' w polu '{key}' wymaga liczby."
+    if name == "convert":
+        try:
+            parse_factor(arg)  # liczba > 0, spójnie z CRUD i negocjacją (EDGE-16)
+        except ValueError as exc:
+            return f"Transformacja 'convert' w polu '{key}': {exc}"
+    if name == "decimal" and arg not in (None, "", *DECIMAL_SEPARATORS):
+        return f"Transformacja 'decimal' w polu '{key}': separator dziesiętny musi być „,” albo „.”."
     if name == "date" and not (isinstance(arg, str) and arg):
         return f"Transformacja 'date' w polu '{key}' wymaga formatu daty (tekst)."
     if name == "split":

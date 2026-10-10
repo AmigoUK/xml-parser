@@ -130,6 +130,33 @@ def _preview(value: str | None, transforms: list) -> str | None:
         return None
 
 
+def _step_name(step) -> str | None:
+    if isinstance(step, str):
+        return step
+    if isinstance(step, dict) and len(step) == 1:
+        return next(iter(step))
+    return None
+
+
+def decimal_sep_candidates(rule: dict | None, source_path: str | None, source_value: str | None) -> list[dict]:
+    """Podpowiedzi dla niejednoznacznej liczby (EDGE-11): ta sama ścieżka z jawnym separatorem dziesiętnym.
+
+    Istniejące kroki reguły zostają; krok 'decimal' trafia przed pierwszy krok liczbowy (convert/negate)."""
+    rule = rule or {}
+    path = rule.get("path") or source_path
+    if not path:
+        return []
+    chain = [st for st in (rule.get("transforms") or []) if _step_name(st) != "decimal"]
+    pos = next((i for i, st in enumerate(chain) if _step_name(st) in ("convert", "negate")), len(chain))
+    out = []
+    for sep, label in ((",", "przecinek"), (".", "kropka")):
+        transforms = chain[:pos] + [{"decimal": sep}] + chain[pos:]
+        out.append({"kind": "path", "path": path, "transforms": transforms,
+                    "preview": _preview(source_value, transforms), "confidence": 0.5,
+                    "reason": f"separator dziesiętny: {label}"})
+    return out
+
+
 # Rozpoznawanie pola po samym typie wartości (data, liczba, GTIN…) jest drogie — dla bardzo szerokich
 # plików ograniczamy je do pierwszych N ścieżek w kolejności dokumentu (SEC-1). Synonimy i wyuczone
 # ścieżki działają dla wszystkich ścieżek przez indeks sufiksów.

@@ -38,6 +38,8 @@ _AGGREGATE_KEYS = {
     "unmapped_product": ("field", "source_value"),
     "invalid_value": ("field",),
     "transform_error": ("field",),
+    "ambiguous_number": ("field",),
+    "vat_rate_fraction": ("field",),
     "sum_mismatch_line": ("field",),
 }
 

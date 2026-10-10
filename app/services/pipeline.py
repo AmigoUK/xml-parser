@@ -6,9 +6,9 @@ from dataclasses import dataclass
 
 from flask import current_app
 
-from app.engine.canonical import get_path
+from app.engine.canonical import LINE_KEYS, get_path
 from app.engine.issues import BLOCKING, Issue, aggregate_line_issues, has_blocking
-from app.engine.suggest import (FIELDS_BY_KEY, conversion_guess, draft_rules, field_candidates, learned_pairs,
+from app.engine.suggest import (FIELDS_BY_KEY, conversion_guess, decimal_sep_candidates, draft_rules, field_candidates, learned_pairs,
                                 load_synonyms, product_candidates, suffix_match, supplier_candidates,
                                 tax_ids_match, unit_candidates)
 from app.engine.template import apply_template
@@ -151,6 +151,9 @@ def _enrich(issues: list[Issue], tree: SourceTree, rules: dict, inv: dict, synon
                 cands = [c.to_dict() for c in field_candidates(tree, issue.field, line_path, synonyms, learned)]
                 issue.suggestions = cands + [{"kind": "default", "value": v, "confidence": 0.5,
                                               "reason": "typowa wartość"} for v in DEFAULT_VALUES.get(issue.field, [])]
+        elif code == "ambiguous_number" and issue.field:
+            rule = (rules.get("lines" if issue.field in LINE_KEYS else "header") or {}).get(issue.field)
+            issue.suggestions = decimal_sep_candidates(rule, issue.source_path, issue.source_value)
         elif code == "unknown_unit":
             issue.suggestions = unit_candidates(issue.source_value or "", lookups.unit_codes(), synonyms)
         elif code == "unmapped_product" and issue.line_no:

@@ -46,7 +46,7 @@
         </div>
       </div>
 
-    {% elif i.code in ('unmapped_field', 'transform_error', 'invalid_value') and i.field %}
+    {% elif i.code in ('unmapped_field', 'transform_error', 'invalid_value', 'ambiguous_number') and i.field %}
       {{ form_open(doc, 'map_field') }}
         <input type="hidden" name="issue" value="{{ idx }}">
         <div class="small fw-semibold">Pole: {{ ctx.field_labels.get(i.field, i.field) }}{% if i.line_no %} (pozycje){% endif %}</div>

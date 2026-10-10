@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Healthcheck usługi `app`; `/healthz` sprawdza połączenie z bazą (503 przy awarii, pole `db`) (OPS-7).
 - Limity zasobów kontenerów (`APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS`) i rotacja logów dockera (OPS-12, OPS-18).
 - `requirements.lock` z przypiętymi zależnościami przechodnimi, używany w obrazie (OPS-6).
+- Transformacja `decimal` przyjmuje separator dziesiętny jako argument (`{"decimal": ","}` / `{"decimal": "."}`); problem „niejednoznaczna liczba” ma w panelu gotowe podpowiedzi z podglądem obu wariantów (EDGE-11).
+- Stawki VAT `zw`, `np` (także `np I` / `np II` z KSeF) i `oo` są zachowywane w `vat_rate` jako kod stawki; stawka w postaci ułamka (`0,23`) daje ostrzeżenie „prawdopodobnie ułamek, nie procent” (EDGE-10).
 
 ### Changed
 - Widok szczegółów dokumentu pokazuje maks. 50 kart problemów, 3 000 wierszy drzewa pliku i 500 pozycji wyniku (pełne dane w JSON) — strona dużej faktury nie ma już dziesiątek MB (EDGE-5).
@@ -22,10 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Domyślny `APP_PORT` 18506 w compose (OPS-16).
 - Obrazy bazowe przypięte do wersji (python 3.12.15-slim-trixie, mariadb 11.4.13) (OPS-5).
 - Entrypoint: migracje z ponawianiem i backoffem; gunicorn z `--max-requests` (restart workerów) (OPS-10, OPS-12).
+- Liczba w formie niejednoznacznej (jeden separator i dokładnie 3 cyfry po nim, np. `1,234` / `1.234`) blokuje dokument problemem `ambiguous_number`, chyba że separator jest ustawiony w transformacji `decimal` albo jednoznacznie wynika z innych wartości tego samego dokumentu; liczby z JSON-a (typ number) są zawsze jednoznaczne (EDGE-11).
+- Waluta normalizowana do kodu ISO 4217 (`zł`/`zl` → PLN, `EURO`/`€` → EUR, `£` → GBP, wielkość liter, spacje); nieznana waluta to problem blokujący (EDGE-21).
+- Litery wewnątrz liczby (np. `12a3`, `0.1+0.2`) są błędem zamiast być po cichu usuwane; dopiski waluty/procentu przed lub po liczbie (`£80.50`, `12,50 zł`, `23%`) działają jak dotąd (EDGE-1).
 
 ### Fixed
 - Faktura z jedną pozycją i inną powtarzalną grupą (raty `TerminPlatnosci`, `AdditionalDocumentReference`, `payments`) nie dostaje już rat jako pozycji; pojedyncza pozycja pod kluczem spoza listy podpowiedzi (np. `products`) jest rozpoznawana (EDGE-4).
 - CSV z separatorem grupy GS1 (`\x1d`, także `\x1e`) nie jest już odrzucany jako plik binarny (EDGE-12).
+- Notacja wykładnicza (`1e5`, `1.5e-3`, liczby JSON typu `1E5`) jest parsowana poprawnie zamiast zamieniać się po cichu w inną liczbę (`1e5` → 15); dotyczy wartości faktur, przeliczników w CRUD, negocjacji i transformacji `convert` (EDGE-1).
+- Liczby ujemne zapisane w nawiasach (`(100,00)`), z minusem typograficznym (U+2212, półpauza) lub z minusem na końcu (`100-`) nie tracą znaku — faktury korygujące nie są już zatwierdzane z wartościami dodatnimi (EDGE-2).
+- Dokument kanoniczny nie zawiera „-0” / „-0.00” (EDGE-28).
+- Edytor szablonów odrzuca transformację `convert` ze współczynnikiem ≤ 0 lub niejednoznacznym, spójnie z CRUD i negocjacją; transformacja odrzuca taki współczynnik także przy przetwarzaniu (do zmiany znaku służy `negate`) (EDGE-16).
 - Przetwarzanie dużych faktur: wyniki słowników (jednostki, przeliczniki, mapowania towarów) zapamiętywane na czas przetworzenia, wolny indeks nowego towaru liczony raz — 4 000 pozycji: ingest 11,3 s → 0,7 s (EDGE-5).
 
 ### Security
