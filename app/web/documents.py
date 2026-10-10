@@ -1,5 +1,8 @@
-from flask import (Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request,
-                   url_for)
+import io
+import re
+
+from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request,
+                   send_file, url_for)
 from flask_login import current_user, login_required
 
 from app.engine.canonical import FIELD_LABELS, HEADER_FIELDS, LINE_FIELDS
@@ -116,14 +119,19 @@ def resolve_issue(doc_id):
     doc = _get(doc_id)
     try:
         action, data, remember = form_to_action(doc, request.form)
-        code_taken = (action == "create_product" and data.get("code")
-                      and Product.query.filter_by(code=data["code"]).first() is not None)
+    except (ValueError, IndexError, KeyError):
+        flash("Nieprawidłowe dane formularza.", "error")
+        return redirect(url_for("docs.detail", doc_id=doc_id))
+    code_taken = (action == "create_product" and data.get("code")
+                  and Product.query.filter_by(code=data["code"]).first() is not None)
+    try:
         resolve(doc, action, data, remember, current_user.email)
+    except NegotiationError as exc:
+        flash(str(exc) or "Nie udało się zastosować zmiany.", "error")
+    else:
         flash("Zapisano. Dokument przetworzono ponownie.", "success")
         if code_taken:
             flash(f"Indeks „{data['code']}” był już zajęty — nowemu towarowi nadano kolejny wolny indeks.", "info")
-    except (NegotiationError, ValueError, IndexError, KeyError) as exc:
-        flash(str(exc) or "Nie udało się zastosować zmiany.", "error")
     return redirect(url_for("docs.detail", doc_id=doc_id))
 
 
@@ -143,8 +151,10 @@ def raw(doc_id):
     doc = _get(doc_id)
     mime = {"xml": "application/xml", "json": "application/json", "csv": "text/csv"}.get(doc.fmt,
                                                                                           "application/octet-stream")
-    return Response(get_storage().load(doc.sha256), mimetype=mime,
-                    headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'})
+    resp = send_file(io.BytesIO(get_storage().load(doc.sha256)), mimetype=mime, as_attachment=True,
+                     download_name=re.sub(r"[\x00-\x1f\x7f]", "", doc.filename or "") or "dokument")
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @bp.get("/dokumenty/<int:doc_id>/json")

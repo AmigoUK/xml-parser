@@ -72,3 +72,72 @@ def test_upload_empty_file(auth_client):
     r = auth_client.post("/wgraj", data={"file": (io.BytesIO(b""), "x.xml")},
                          content_type="multipart/form-data", follow_redirects=True)
     assert "Wybierz niepusty plik" in r.get_data(as_text=True)
+
+
+# --- regresje bezpieczeństwa ---
+
+import json
+
+import pytest
+
+
+@pytest.mark.parametrize("nxt", ["/\\evil.com", "//evil.com", "https://evil.com", "/\\\\evil.com"])
+def test_login_next_open_redirect_blocked(seeded, client, nxt):
+    r = client.post("/login", query_string={"next": nxt},
+                    data={"email": "admin@example.com", "password": "haslo123"})
+    assert r.status_code == 302 and r.headers["Location"] == "/pulpit"
+
+
+def test_login_next_local_honoured(seeded, client):
+    r = client.post("/login?next=/kolejka", data={"email": "admin@example.com", "password": "haslo123"})
+    assert r.headers["Location"] == "/kolejka"
+
+
+def test_raw_download_odd_filename(auth_client):
+    from app.extensions import db
+    upload(auth_client, "alfa-1.xml")
+    doc = Document.query.one()
+    doc.filename = 'faktura "ł"\r\nX-Evil: 1.xml'
+    db.session.commit()
+    r = auth_client.get(f"/dokumenty/{doc.id}/plik")
+    assert r.status_code == 200
+    cd = r.headers["Content-Disposition"]
+    assert cd.startswith("attachment") and "\n" not in cd and "X-Evil" not in r.headers
+    assert 'filename="faktura "ł""' not in cd
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert r.data == sample_bytes("alfa-1.xml")
+
+
+def test_csrf_enforced(app, seeded):
+    app.config["WTF_CSRF_ENABLED"] = True
+    c = app.test_client()
+    assert c.post("/dokumenty/1/ponownie").status_code in (400, 302)  # bez tokenu: 400 (CSRF) przed logowaniem
+    assert c.post("/dokumenty/1/rozwiaz", data={"action": "reject"}).status_code == 400
+    assert c.post("/login", data={"email": "admin@example.com", "password": "haslo123"}).status_code == 400
+
+
+def test_xss_payloads_escaped(auth_client):
+    p1, p2 = "<script>alert(1)</script>", '"><img src=x onerror=alert(1)>'
+    data = json.loads(sample_bytes("epsilon.json"))
+    data["invoice"]["seller"]["name"] = p1
+    data["invoice"]["items"][0]["description"] = p2
+    auth_client.post("/wgraj", data={"file": (io.BytesIO(json.dumps(data).encode()), p1 + ".json")},
+                     content_type="multipart/form-data")
+    doc = Document.query.one()
+    for url in (f"/dokumenty/{doc.id}", "/pulpit", "/kolejka", "/dokumenty"):
+        html = auth_client.get(url).get_data(as_text=True)
+        assert p1 not in html and p2 not in html and "<img src=x" not in html
+    html = auth_client.get(f"/dokumenty/{doc.id}").get_data(as_text=True)
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+
+def test_logout_post(auth_client):
+    assert auth_client.post("/logout").status_code == 302
+    assert auth_client.get("/pulpit").status_code == 302
+
+
+def test_unknown_document_404(auth_client):
+    for url in ("/dokumenty/9999", "/dokumenty/9999/plik", "/dokumenty/9999/json"):
+        assert auth_client.get(url).status_code == 404
+    assert auth_client.post("/dokumenty/9999/rozwiaz", data={"action": "reject"}).status_code == 404
+    assert auth_client.post("/dokumenty/9999/ponownie").status_code == 404
