@@ -1,7 +1,7 @@
 """Biała lista transformacji wartości. Każda: (value, arg, ctx) -> str | None."""
 from __future__ import annotations
 
-import re
+import regex
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
@@ -12,6 +12,7 @@ from .values import fmt_qty, to_decimal
 
 MAX_PATTERN = 200
 MAX_INPUT = 1000
+REGEX_TIMEOUT = 0.2
 
 
 class TransformError(ValueError):
@@ -45,17 +46,32 @@ def _date(v, arg, ctx):
 def _regex(v, arg, ctx):
     if v is None:
         return None
-    pattern = (arg or {}).get("pattern", "")
-    group = int((arg or {}).get("group", 0))
+    if not isinstance(arg, dict):
+        raise TransformError("Argument 'regex_extract' musi być słownikiem (pattern, group).")
+    pattern = arg.get("pattern", "")
+    if not isinstance(pattern, str):
+        raise TransformError("Wzorzec wyrażenia regularnego musi być tekstem.")
+    try:
+        group = int(arg.get("group", 0))
+    except (TypeError, ValueError):
+        raise TransformError("Numer grupy wyrażenia regularnego musi być liczbą.") from None
     if len(pattern) > MAX_PATTERN:
         raise TransformError("Wyrażenie regularne jest za długie (max 200 znaków).")
     try:
-        m = re.search(pattern, v[:MAX_INPUT])
-    except re.error as exc:
+        m = regex.search(pattern, v[:MAX_INPUT], timeout=REGEX_TIMEOUT)
+    except regex.error as exc:
         raise TransformError(f"Błędne wyrażenie regularne: {exc}.") from exc
+    except TimeoutError:
+        raise TransformError("Wyrażenie regularne działa zbyt długo (przekroczono limit czasu).") from None
     if not m:
         raise TransformError(f"Wartość {v!r} nie pasuje do wzorca.")
-    return m.group(group)
+    try:
+        result = m.group(group)
+    except (IndexError, regex.error):
+        raise TransformError(f"Wzorzec nie ma grupy nr {group}.") from None
+    if result is None:
+        raise TransformError(f"Wartość {v!r} nie pasuje do wzorca.")
+    return result
 
 
 def _convert(v, arg, ctx):
@@ -165,5 +181,10 @@ def apply_chain(value: str | None, chain: list, ctx: TransformContext | None = N
         fn = REGISTRY.get(name)
         if fn is None:
             raise TransformError(f"Nieznana transformacja: {name!r}")
-        value = fn(value, arg, ctx)
+        try:
+            value = fn(value, arg, ctx)
+        except TransformError:
+            raise
+        except (AttributeError, TypeError, IndexError, KeyError) as exc:
+            raise TransformError(f"Niepoprawny argument transformacji {name!r}.") from exc
     return value

@@ -58,3 +58,29 @@ def test_registry_whitelist():
         "trim", "upper", "lower", "decimal", "strip_percent", "date", "regex_extract", "map",
         "convert", "constant", "concat", "split", "negate", "gs1", "strip_ai_prefix",
     }
+
+
+def test_regex_redos_times_out():
+    import time
+    t = time.monotonic()
+    with pytest.raises(TransformError):
+        apply_chain("a" * 990 + "b", [{"regex_extract": {"pattern": "(a+)+$"}}])
+    assert time.monotonic() - t < 2
+
+
+def test_regex_bad_group_and_unmatched_group():
+    with pytest.raises(TransformError):
+        apply_chain("abc", [{"regex_extract": {"pattern": "(a)", "group": 5}}])
+    with pytest.raises(TransformError):
+        apply_chain("abc", [{"regex_extract": {"pattern": "(a)", "group": "x"}}])
+    with pytest.raises(TransformError):
+        apply_chain("b", [{"regex_extract": {"pattern": "(a)|b", "group": 1}}])
+
+
+def test_bad_argument_shapes_raise_transform_error():
+    for chain in (
+        [{"split": "x"}], [{"split": {"sep": " ", "index": 5}}], [{"regex_extract": "x"}],
+        [{"map": "x"}], [{"concat": "x"}], [{"date": None}], [{"convert": None}],
+    ):
+        with pytest.raises(TransformError):
+            apply_chain("a b", chain, TransformContext(tree=SourceTree(Node("R"), "xml")))
