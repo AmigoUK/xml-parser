@@ -9,6 +9,8 @@ from app.engine.lookups import norm_alias, norm_product_name
 from app.engine.suggest import FIELDS_BY_KEY, norm_tax_id, tax_ids_match
 from app.engine.tree import relative_path
 from app.engine.values import AmbiguousNumberError, normalize_gtin, to_decimal
+from sqlalchemy.exc import DataError, IntegrityError
+
 from app.extensions import db
 from app.models import (STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
                         STATUS_REJECTED, Document, Product, ProductMapping, Supplier, Template, Unit,
@@ -54,6 +56,13 @@ def save_rules(doc: Document, rules: dict, user: str | None, comment: str):
 
 
 _save_rules = save_rules
+
+
+def _check_len(value, column, label: str, hint: str) -> None:
+    """Wartość dłuższa niż kolumna → czytelny błąd zamiast DataError/500 w MariaDB (BE-8/EDGE-18)."""
+    limit = column.type.length
+    if value is not None and len(str(value)) > limit:
+        raise NegotiationError(f"{label} ma ponad {limit} znaków — nie da się go zapamiętać; {hint}.")
 
 
 def _require_supplier(doc: Document) -> None:
@@ -172,6 +181,7 @@ def a_map_unit(doc, data, remember, user):
         _set_override(doc, "units", alias, unit.code)
         return
     _require_supplier(doc)
+    _check_len(alias, UnitAlias.alias, "Jednostka z faktury", "przypisz ją tylko dla tej faktury")
     row = UnitAlias.query.filter_by(alias_norm=norm_alias(alias), supplier_id=doc.supplier_id).first()
     if row:
         row.unit_id = unit.id
@@ -234,6 +244,9 @@ def _map_line_to_product(doc, line_no, product: Product, remember: bool) -> None
         return
     _require_supplier(doc)
     code, gtin, name = line.get("supplier_code"), line.get("gtin"), norm_product_name(line.get("name"))
+    hint = "przypisz towar tylko dla tej faktury (bez „zapamiętaj”)"
+    _check_len(code, ProductMapping.supplier_code, "Kod towaru u dostawcy", hint)
+    _check_len(gtin, ProductMapping.supplier_gtin, "GTIN pozycji", hint)
     q = ProductMapping.query.filter_by(supplier_id=doc.supplier_id)
     # szukamy wyłącznie po kolumnie, której używamy — nigdy po NULL (BE-3/EDGE-3)
     if code:
@@ -265,6 +278,8 @@ def a_create_product(doc, data, remember, user):
     code, name = (data.get("code") or "").strip(), (data.get("name") or "").strip()
     if not code or not name:
         raise NegotiationError("Podaj indeks i nazwę towaru.")
+    _check_len(code, Product.code, "Indeks towaru", "skróć go")
+    name = name[:Product.name.type.length]  # nazwa z faktury bywa dłuższa niż kolumna (BE-8/EDGE-18)
     if Product.query.filter_by(code=code).first():
         # Podpowiedzi dla kilku pozycji jednej faktury mają ten sam kod — przydziel wolny.
         code = next_product_code()
@@ -290,8 +305,8 @@ def a_allow_duplicate(doc, data, remember, user):
 def _copies(doc: Document):
     """Inne dokumenty tej samej faktury (ten sam plik albo dostawca + numer), od najstarszego."""
     cond = Document.sha256 == doc.sha256
-    if doc.supplier_id and doc.number:
-        cond = cond | ((Document.supplier_id == doc.supplier_id) & (Document.number == doc.number))
+    if doc.dedupe_hash:  # ten sam dostawca, rodzaj i znormalizowany pełny numer (BE-1)
+        cond = cond | (Document.dedupe_hash == doc.dedupe_hash)
     return Document.query.filter(Document.id != doc.id, cond).order_by(Document.id).all()
 
 
@@ -346,26 +361,42 @@ ACTIONS = {
 }
 
 
+RESOLVE_ATTEMPTS = 3
+CONFLICT_MSG = ("Nie udało się zapisać — te same dane zmieniono równocześnie w innym oknie lub żądaniu. "
+                "Odśwież stronę i spróbuj ponownie.")
+
+
 def resolve(doc: Document, action: str, data: dict, remember: bool = True, user: str | None = None) -> Document:
     handler = ACTIONS.get(action)
     if handler is None:
         raise NegotiationError(f"Nieznana akcja „{action}”.")
-    if doc.is_manually_rejected and action != "reject":  # BE-2: tylko jawne „Przywróć”
-        raise NegotiationError(REJECTED_MSG)
-    try:
-        handler(doc, data or {}, remember, user)
-        db.session.flush()
-        audit(f"resolve:{action}", "document", doc.id, {"data": data or {}, "remember": remember}, user)
-        if action != "reject":
-            process(doc)
-        db.session.commit()
-    except NegotiationError:
-        db.session.rollback()
-        raise
-    except ValueError as exc:  # np. walidator modelu (przelicznik)
-        db.session.rollback()
-        raise NegotiationError(str(exc)) from None
-    except Exception:
-        db.session.rollback()
-        raise
+    for attempt in range(1, RESOLVE_ATTEMPTS + 1):
+        if doc.is_manually_rejected and action != "reject":  # BE-2: tylko jawne „Przywróć”
+            raise NegotiationError(REJECTED_MSG)
+        try:
+            handler(doc, data or {}, remember, user)
+            db.session.flush()
+            audit(f"resolve:{action}", "document", doc.id, {"data": data or {}, "remember": remember}, user)
+            if action != "reject":
+                process(doc)
+            db.session.commit()
+            return doc
+        except IntegrityError:
+            # wyścig (np. ten sam NIP, kod TOW-nnnn, mapowanie, przelicznik) — ponów na świeżym stanie bazy;
+            # druga próba znajduje rekord dodany równolegle i go używa (BE-7, BE-17)
+            db.session.rollback()
+            if attempt == RESOLVE_ATTEMPTS:
+                raise NegotiationError(CONFLICT_MSG) from None
+        except DataError:
+            db.session.rollback()
+            raise NegotiationError("Wartość jest zbyt długa lub ma niepoprawny format dla bazy danych.") from None
+        except NegotiationError:
+            db.session.rollback()
+            raise
+        except ValueError as exc:  # np. walidator modelu (przelicznik)
+            db.session.rollback()
+            raise NegotiationError(str(exc)) from None
+        except Exception:
+            db.session.rollback()
+            raise
     return doc

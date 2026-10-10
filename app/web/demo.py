@@ -3,8 +3,6 @@ from pathlib import Path
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from app.extensions import db
-from app.services.audit import audit
 from app.services.pipeline import ingest
 from app.services.seed import reset_demo
 
@@ -57,11 +55,9 @@ def reset():
     if current_user.role != "admin":
         abort(403)
     try:
-        reset_demo()
+        reset_demo(current_user.email)  # jedna transakcja razem z wpisem w historii (BE-15)
     except RuntimeError as exc:
         flash(str(exc), "danger")
         return redirect(url_for("demo.index"))
-    audit("reset", "demo", None, {})
-    db.session.commit()
     flash("Dane demo wyczyszczone — kartoteka towarów i jednostki przywrócone.", "success")
     return redirect(url_for("demo.index"))

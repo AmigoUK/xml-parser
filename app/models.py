@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from flask_login import UserMixin
+from sqlalchemy import event
 from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from .engine.keys import mapping_key
 from .extensions import db
 
 STATUS_RECEIVED = "received"
@@ -13,6 +15,8 @@ STATUS_APPROVED = "approved"
 STATUS_NEEDS_REVIEW = "needs_review"
 STATUS_DUPLICATE = "duplicate"
 STATUS_REJECTED = "rejected"
+# „żywy” dokument (nie duplikat, nie odrzucony) — tylko taki może mieć klucz unikalności faktury (BE-1)
+LIVE_STATUSES = (STATUS_APPROVED, STATUS_NEEDS_REVIEW)
 STATUS_LABELS = {
     STATUS_RECEIVED: "Przyjęta",
     STATUS_APPROVED: "Zatwierdzona",
@@ -30,7 +34,8 @@ class Supplier(db.Model):
     __tablename__ = "suppliers"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
-    tax_id = db.Column(db.String(64), index=True)
+    # znormalizowany NIP/VAT (BE-11); unikalny w bazie — wyścig dwóch „Utwórz dostawcę” kończy się IntegrityError
+    tax_id = db.Column(db.String(64), index=True, unique=True)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -77,12 +82,15 @@ class Unit(db.Model):
 
 class UnitAlias(db.Model):
     __tablename__ = "unit_aliases"
-    __table_args__ = (db.UniqueConstraint("alias_norm", "supplier_id", name="uq_alias_supplier"),)
+    __table_args__ = (db.UniqueConstraint("alias_norm", "supplier_id", name="uq_alias_supplier"),
+                      # supplier_id NULL nie jest unikalny w UNIQUE — stąd kolumna zakresu (0 = globalny) (BE-17)
+                      db.Index("uq_alias_scope", "alias_norm", "supplier_scope", unique=True))
     id = db.Column(db.Integer, primary_key=True)
     alias = db.Column(db.String(64), nullable=False)
     alias_norm = db.Column(db.String(64), nullable=False, index=True)
     unit_id = db.Column(db.Integer, db.ForeignKey("units.id"), nullable=False)
     supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))
+    supplier_scope = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     unit = db.relationship("Unit")
     supplier = db.relationship("Supplier")
 
@@ -93,9 +101,14 @@ class UnitAlias(db.Model):
 
 class UnitConversion(db.Model):
     __tablename__ = "unit_conversions"
+    # jeden przelicznik na (dostawca, towar, z jednostki); NULL = „wszyscy” → zakres 0 (BE-4, BE-17)
+    __table_args__ = (db.Index("uq_conversion_scope", "supplier_scope", "product_scope", "from_unit_id",
+                               unique=True),)
     id = db.Column(db.Integer, primary_key=True)
     supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"))
+    supplier_scope = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    product_scope = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     from_unit_id = db.Column(db.Integer, db.ForeignKey("units.id"), nullable=False)
     to_unit_id = db.Column(db.Integer, db.ForeignKey("units.id"), nullable=False)
     factor = db.Column(db.Numeric(18, 6), nullable=False)
@@ -134,6 +147,9 @@ class ProductMapping(db.Model):
     supplier_gtin = db.Column(db.String(14))
     # pozycje bez kodu i GTIN zapamiętujemy po znormalizowanej nazwie towaru (BE-3/EDGE-3)
     supplier_name_norm = db.Column(db.String(255))
+    # sha256 tożsamości mapowania (dostawca + kod / GTIN / nazwa) — unikalny; hash, bo indeks złożony
+    # z kilku VARCHAR(255) utf8mb4 przekroczyłby limit 3072 B w MariaDB (BE-17)
+    match_key = db.Column(db.String(64), unique=True, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
     supplier = db.relationship("Supplier")
     product = db.relationship("Product")
@@ -141,6 +157,8 @@ class ProductMapping(db.Model):
 
 class Document(db.Model):
     __tablename__ = "documents"
+    # lista dokumentów klucza API filtrowana po statusie i dacie (BE-17)
+    __table_args__ = (db.Index("ix_documents_api_status_created", "api_key_id", "status", "created_at"),)
     id = db.Column(db.Integer, primary_key=True)
     source = db.Column(db.String(16), nullable=False, default="upload")
     filename = db.Column(db.String(255))
@@ -161,6 +179,11 @@ class Document(db.Model):
     # ręczne odrzucenie przez operatora (kto) — trwałe do jawnego „Przywróć”; automatyczne
     # odrzucenia (unreadable, too_many_lines) mają tu NULL i można je przetworzyć ponownie (BE-2)
     rejected_by = db.Column(db.String(255))
+    # sha256(dostawca, doc_type, znormalizowany pełny numer) — liczony zawsze, gdy znane (wyszukiwanie kopii)
+    dedupe_hash = db.Column(db.String(64), index=True)
+    # ten sam hash, ale tylko dla „żywego” oryginału; UNIQUE → najwyżej jeden żywy dokument na fakturę,
+    # także przy równoległym przyjęciu (BE-1/EDGE-17). NULL: duplikat, odrzucony, allow_duplicate.
+    dedupe_key = db.Column(db.String(64), unique=True, index=True)
     corrects_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
     api_key_id = db.Column(db.Integer, db.ForeignKey("api_keys.id"))
     created_at = db.Column(db.DateTime, default=utcnow, index=True)
@@ -168,6 +191,12 @@ class Document(db.Model):
     supplier = db.relationship("Supplier")
     template = db.relationship("Template")
     template_version = db.relationship("TemplateVersion")
+
+    @validates("status")
+    def _release_dedupe_key(self, key, value):
+        if value not in LIVE_STATUSES:
+            self.dedupe_key = None
+        return value
 
     @property
     def is_manually_rejected(self) -> bool:
@@ -238,3 +267,23 @@ class LoginAttempt(db.Model):
     email = db.Column(db.String(255), nullable=False, index=True)
     ip = db.Column(db.String(64), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
+
+
+@event.listens_for(UnitAlias, "before_insert")
+@event.listens_for(UnitAlias, "before_update")
+def _alias_scope(mapper, connection, target):
+    target.supplier_scope = target.supplier_id or 0
+
+
+@event.listens_for(UnitConversion, "before_insert")
+@event.listens_for(UnitConversion, "before_update")
+def _conversion_scope(mapper, connection, target):
+    target.supplier_scope = target.supplier_id or 0
+    target.product_scope = target.product_id or 0
+
+
+@event.listens_for(ProductMapping, "before_insert")
+@event.listens_for(ProductMapping, "before_update")
+def _mapping_key(mapper, connection, target):
+    target.match_key = mapping_key(target.supplier_id, target.supplier_code, target.supplier_gtin,
+                                   target.supplier_name_norm)

@@ -2,6 +2,7 @@ import difflib
 import json
 
 import regex
+from sqlalchemy.exc import IntegrityError
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -18,7 +19,8 @@ from app.models import Document, Template, TemplateVersion
 from app.services.audit import audit
 from app.services.lookups_db import DbLookups
 from app.services.pipeline import current_rules, load_tree, process
-from app.services.negotiation import save_rules
+from app.services.dbutil import commit_with_retry
+from app.services.negotiation import CONFLICT_MSG, save_rules
 from app.services.templates import active_rule_sets, new_version
 
 bp = Blueprint("templates_views", __name__, url_prefix="/szablony")
@@ -70,9 +72,17 @@ def restore(tid, vid):
     v = db.session.get(TemplateVersion, vid)
     if not v or v.template_id != t.id:
         abort(404)
-    nv = new_version(t, v.rules, current_user.email, f"Przywrócono wersję {v.version}")
-    audit("restore", "template", t.id, {"from_version": v.version, "new_version": nv.version})
-    db.session.commit()
+    rules, from_version = dict(v.rules), v.version
+
+    def apply():
+        nv = new_version(t, rules, current_user.email, f"Przywrócono wersję {from_version}")
+        audit("restore", "template", t.id, {"from_version": from_version, "new_version": nv.version})
+        return nv
+    try:
+        nv = commit_with_retry(apply)
+    except IntegrityError:
+        flash(CONFLICT_MSG, "error")
+        return redirect(url_for("templates_views.detail", tid=tid))
     flash(f"Aktywna jest teraz wersja {nv.version} (kopia wersji {v.version}).", "success")
     return redirect(url_for("templates_views.detail", tid=t.id))
 
@@ -109,6 +119,8 @@ def _render_editor(doc: Document, rules: dict, title: str):
         "previewUrl": url_for("templates_views.preview", doc_id=doc.id),
         "saveUrl": url_for("templates_views.save", doc_id=doc.id),
         "backUrl": url_for("docs.detail", doc_id=doc.id),
+        # blokada optymistyczna: zapis porównuje tę wersję z aktywną (BE-7)
+        "baseVersionId": _active_version_id(doc),
     }
     return render_template("editor.html", full_screen=True, config=config, title=title, doc=doc)
 
@@ -129,6 +141,11 @@ def editor_for_template(tid):
 def editor_for_document(doc_id):
     doc = _doc(doc_id)
     return _render_editor(doc, current_rules(doc), f"Edytor mapowań — dokument #{doc.id}")
+
+
+def _active_version_id(doc: Document) -> int | None:
+    tpl = db.session.get(Template, doc.template_id) if doc.template_id else None
+    return tpl.active_version_id if tpl else None
 
 
 def _check_arg(name: str, arg, key: str) -> str | None:
@@ -276,13 +293,20 @@ def save(doc_id):
         return jsonify(error="Nie można odczytać pliku źródłowego dokumentu."), 400
     except Exception:  # noqa: BLE001
         return jsonify(error="Reguły nie dają się zastosować do tego dokumentu."), 400
-    if doc.template_id or doc.supplier_id:
-        v = save_rules(doc, rules, current_user.email, comment)
-        audit("edit", "template", doc.template_id, {"version": v.version, "comment": comment})
-    else:
-        doc.draft_rules = rules
-        audit("edit_draft", "document", doc.id, {"comment": comment})
-    if not doc.is_manually_rejected:  # zapis szablonu nie cofa ręcznego odrzucenia (BE-2)
-        process(doc)
-    db.session.commit()
+    if "base_version_id" in payload and payload["base_version_id"] != _active_version_id(doc):
+        return jsonify(error="Szablon zmienił się w międzyczasie (ktoś zapisał nowszą wersję) — odśwież edytor "
+                             "i nanieś zmiany ponownie, żeby nie nadpisać cudzej pracy.", conflict=True), 409
+
+    def apply():
+        if doc.template_id or doc.supplier_id:
+            v = save_rules(doc, rules, current_user.email, comment)
+            audit("edit", "template", doc.template_id, {"version": v.version, "comment": comment})
+        else:
+            doc.draft_rules = rules
+            audit("edit_draft", "document", doc.id, {"comment": comment})
+        process(doc)  # process() sam pomija dokument odrzucony ręcznie (BE-2)
+    try:
+        commit_with_retry(apply)
+    except IntegrityError:
+        return jsonify(error=CONFLICT_MSG, conflict=True), 409
     return jsonify(ok=True, status=doc.status, redirect=url_for("docs.detail", doc_id=doc.id))

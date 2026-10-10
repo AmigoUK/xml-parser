@@ -1,9 +1,12 @@
 import csv
 import io
+import json
 from decimal import Decimal
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
+from sqlalchemy import Text, or_, type_coerce
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 
 from app.engine.lookups import norm_alias, norm_product_name
@@ -31,9 +34,52 @@ def product_choices():
     return [("", "— wszystkie towary —")] + [(p.id, f"{p.code} — {p.name}") for p in Product.query.order_by(Product.code)]
 
 
+def _like_json_string(value: str) -> str:
+    """Wzorzec LIKE dla wartości zapisanej jako napis JSON (tak jak serializuje ją SQLAlchemy)."""
+    core = json.dumps(value)
+    return "%" + core.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
+
+
+def documents_using(kind: str, code: str) -> int:
+    """Liczba dokumentów, których wynik lub ręczne przypisania odwołują się do kodu towaru („product”)
+    albo jednostki („unit”) — te odwołania są tekstowe, bez klucza obcego (BE-14)."""
+    if not code:
+        return 0
+    pattern = _like_json_string(code)
+    cond = or_(type_coerce(Document.result, Text).like(pattern, escape="!"),
+               type_coerce(Document.overrides, Text).like(pattern, escape="!"))
+    n = 0
+    with db.session.no_autoflush:
+        rows = db.session.query(Document.result, Document.overrides).filter(cond).all()
+    for result, overrides in rows:
+        lines = (result or {}).get("lines") or [] if isinstance(result, dict) else []
+        ov = overrides if isinstance(overrides, dict) else {}
+        if kind == "product":
+            used = (any(isinstance(ln, dict) and ln.get("product_index") == code for ln in lines)
+                    or code in (ov.get("products") or {}).values())
+        else:
+            used = (any(isinstance(ln, dict) and ln.get("unit") == code for ln in lines)
+                    or code in (ov.get("units") or {}).values())
+        n += bool(used)
+    return n
+
+
+def _code_change_blocker(obj, kind: str, label: str) -> None:
+    """Zmiana kodu używanego w dokumentach osierociłaby odwołania w ich wynikach — blokujemy (BE-14)."""
+    hist = sa_inspect(obj).attrs.code.history
+    old = hist.deleted[0] if hist.deleted else None
+    if obj.id is None or not old or old == obj.code:
+        return
+    used = documents_using(kind, old)
+    if used:
+        raise ValueError(f"Nie można zmienić kodu „{old}”: {label} jest użyty w {used} dokument(ach). "
+                         "Dodaj nowy rekord zamiast zmieniać kod.")
+
+
 def _product_before_save(p: Product):
     if p.gtin:
         p.gtin = normalize_gtin(p.gtin)  # walidacja + zapis jako 14 cyfr
+    _code_change_blocker(p, "product", "towar")
 
 
 def _alias_before_save(a: UnitAlias):
@@ -50,6 +96,7 @@ def _alias_before_save(a: UnitAlias):
 
 def _unit_before_save(u: Unit):
     u.code = (u.code or "").strip().lower()
+    _code_change_blocker(u, "unit", "jednostka")
 
 
 def _conversion_before_save(c: UnitConversion):
@@ -92,12 +139,18 @@ def _supplier_blocker(s):
 
 
 def _unit_blocker(u):
+    docs = documents_using("unit", u.code)
+    if docs:
+        return f"jednostka jest użyta w {docs} dokument(ach)."
     used = (UnitAlias.query.filter_by(unit_id=u.id).count() + Product.query.filter_by(unit_id=u.id).count()
             + UnitConversion.query.filter((UnitConversion.from_unit_id == u.id) | (UnitConversion.to_unit_id == u.id)).count())
     return "jednostka jest używana (aliasy, towary lub przeliczniki)." if used else None
 
 
 def _product_blocker(p):
+    docs = documents_using("product", p.code)
+    if docs:
+        return f"towar jest użyty w {docs} dokument(ach)."
     if ProductMapping.query.filter_by(product_id=p.id).count():
         return "towar ma mapowania dostawców."
     if UnitConversion.query.filter_by(product_id=p.id).count():

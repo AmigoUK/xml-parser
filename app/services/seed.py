@@ -5,6 +5,8 @@ from app.extensions import db
 from app.models import (ApiKey, AuditLog, Document, Product, ProductMapping, Supplier, Template,
                         TemplateVersion, Unit, UnitAlias, UnitConversion, User)
 from app.services.apikeys import create_key, hash_key
+from app.services.audit import audit
+from app.services.storage import get_storage
 
 BASE_UNITS = [
     ("szt", "sztuka", True), ("kg", "kilogram", True), ("l", "litr", True), ("m", "metr", True),
@@ -28,7 +30,7 @@ DEMO_PRODUCTS = [
 ]
 
 
-def seed_base() -> None:
+def seed_base(commit: bool = True) -> None:
     units = {u.code: u for u in Unit.query.all()}
     for code, name, is_base in BASE_UNITS:
         if code not in units:
@@ -56,26 +58,47 @@ def seed_base() -> None:
         k.active = bool(demo_on and k.key_hash == current_hash)
     if demo_on and not ApiKey.query.filter_by(key_hash=current_hash).first():
         create_key(DEMO_KEY_NAME, demo_key)
-    db.session.commit()
+    if commit:
+        db.session.commit()
+    else:
+        db.session.flush()
 
 
-def seed_demo() -> None:
+def seed_demo(commit: bool = True) -> None:
     units = {u.code: u for u in Unit.query.all()}
     for code, name, gtin, unit in DEMO_PRODUCTS:
         if not Product.query.filter_by(code=code).first():
             db.session.add(Product(code=code, name=name, gtin=gtin, unit_id=units[unit].id))
-    db.session.commit()
+    if commit:
+        db.session.commit()
+    else:
+        db.session.flush()
 
 
-def reset_demo() -> None:
+def reset_demo(user: str | None = None) -> None:
+    """Czyści dane i przywraca stan demo w JEDNEJ transakcji (błąd = rollback, dane nietknięte); pliki
+    dokumentów usuwane z magazynu dopiero po udanym commicie (BE-15)."""
     if not current_app.config.get("DEMO_MODE"):
         raise RuntimeError("reset-demo jest dozwolone tylko przy DEMO_MODE=1 (usuwa wszystkie dane).")
-    db.session.query(Document).update({Document.template_version_id: None, Document.template_id: None,
-                                       Document.corrects_document_id: None})
-    for model in (Document, ProductMapping, UnitConversion, TemplateVersion, Template, Product, AuditLog):
-        db.session.query(model).delete()
-    db.session.query(UnitAlias).filter(UnitAlias.supplier_id.isnot(None)).delete()
-    db.session.query(Supplier).delete()
-    db.session.commit()
-    seed_base()
-    seed_demo()
+    try:
+        shas = {sha for (sha,) in db.session.query(Document.sha256).distinct()}
+        db.session.query(Document).update({Document.template_version_id: None, Document.template_id: None,
+                                           Document.corrects_document_id: None, Document.dedupe_key: None})
+        for model in (Document, ProductMapping, UnitConversion, TemplateVersion, Template, Product, AuditLog):
+            db.session.query(model).delete()
+        db.session.query(UnitAlias).filter(UnitAlias.supplier_id.isnot(None)).delete()
+        db.session.query(Supplier).delete()
+        db.session.flush()
+        seed_base(commit=False)
+        seed_demo(commit=False)
+        audit("reset", "demo", None, {"documents_files": len(shas)}, user)
+        db.session.commit()
+    except BaseException:
+        db.session.rollback()
+        raise
+    storage = get_storage()
+    for sha in shas:  # po commicie — żaden dokument już ich nie wskazuje
+        try:
+            storage.delete(sha)
+        except (OSError, ValueError):
+            current_app.logger.warning("reset demo: nie udało się usunąć pliku %s", sha)

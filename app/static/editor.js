@@ -65,7 +65,8 @@ function editor(cfg) {
     async save() {
       this.saving = true;
       try {
-        const body = { rules: this.rules, comment: this.comment };
+        // base_version_id — blokada optymistyczna: serwer odrzuci zapis (409), jeśli szablon zmienił się w międzyczasie
+        const body = { rules: this.rules, comment: this.comment, base_version_id: cfg.baseVersionId ?? null };
         let res;
         try { res = await this.post(cfg.saveUrl, body); }
         catch (e) {

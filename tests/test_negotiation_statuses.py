@@ -268,12 +268,19 @@ def test_crud_conversion_duplicate_is_validation_error(auth_client):
     assert UnitConversion.query.count() == 1
 
 
-def test_conversion_lookup_prefers_newest(seeded):
+def test_conversion_duplicates_impossible_in_db(seeded):
+    # dawniej: stare duplikaty → wygrywał najnowszy; od pakietu E duplikat klucza odrzuca baza (BE-17),
+    # a migracja zostawia najnowszy wiersz
+    from sqlalchemy.exc import IntegrityError
+
     from app.services.lookups_db import DbLookups
     units = {u.code: u.id for u in Unit.query.all()}
-    for f in ("10", "12"):  # stare dane sprzed poprawki mogą mieć duplikaty
-        db.session.add(UnitConversion(from_unit_id=units["karton"], to_unit_id=units["szt"], factor=f))
+    db.session.add(UnitConversion(from_unit_id=units["karton"], to_unit_id=units["szt"], factor="12"))
     db.session.commit()
+    db.session.add(UnitConversion(from_unit_id=units["karton"], to_unit_id=units["szt"], factor="10"))
+    with pytest.raises(IntegrityError):
+        db.session.commit()
+    db.session.rollback()
     assert DbLookups().conversion(None, None, "karton")[1] == 12
 
 
@@ -288,7 +295,11 @@ def test_override_to_deleted_product_blocks(supplier, client):
     d = ingest(inv("O/1", [line(sku="ZZ", ean=None, name="Inny")]), "o.json")
     resolve(d, "map_product", {"product_code": "TMP-1", "line_no": "1"}, False, "qa")
     assert d.status == "approved"
+    # panel blokuje usunięcie towaru użytego w dokumencie (BE-14) — symulujemy usunięcie poza panelem
     client.post(f"/towary/{p.id}/usun")
+    assert Product.query.filter_by(code="TMP-1").first() is not None
+    db.session.delete(p)
+    db.session.commit()
     assert Product.query.filter_by(code="TMP-1").first() is None
     d = db.session.get(Document, d.id)
     process(d)

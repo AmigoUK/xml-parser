@@ -5,6 +5,7 @@ import copy
 from dataclasses import dataclass
 
 from flask import current_app
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.engine.canonical import LINE_KEYS, get_path
 from app.engine.issues import BLOCKING, Issue, aggregate_line_issues, has_blocking
@@ -16,7 +17,8 @@ from app.engine.tree import SourceTree, jaccard
 from app.engine.validate import validate_invoice
 from app.extensions import db
 from app.ingest import ReaderError, read_document
-from app.models import (STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
+from app.engine.keys import document_key
+from app.models import (LIVE_STATUSES, STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
                         STATUS_REJECTED, Document, Product, Supplier, Template)
 from app.services.audit import audit
 from app.services.lookups_db import DbLookups
@@ -110,19 +112,64 @@ def _stored_number(invoice: dict) -> str | None:
     return _fit(Document.number, str(raw).strip()) or None
 
 
-def _find_duplicate(doc: Document, invoice: dict) -> Document | None:
-    # oryginałem jest wcześniej przyjęty dokument — późniejsza kopia (np. zatwierdzona przez
-    # allow_duplicate) nigdy nie czyni oryginału duplikatem (BE-5); odrzucone się nie liczą (EDGE-24)
-    q = Document.query.filter(Document.id < doc.id,
-                              Document.status.in_([STATUS_APPROVED, STATUS_NEEDS_REVIEW]))
-    same = q.filter(Document.sha256 == doc.sha256).order_by(Document.id).first()
-    if same:
-        return same
-    num = _stored_number(invoice)
-    if doc.supplier_id and num:
-        return q.filter(Document.supplier_id == doc.supplier_id,
-                        Document.number == num).order_by(Document.id).first()
-    return None
+# Duplikat równoległego przyjęcia, którego oryginał nie był jeszcze widoczny (wyścig rozstrzygnięty przez UNIQUE)
+_CONCURRENT = object()
+
+
+def _earlier_same_file(doc: Document) -> Document | None:
+    """Wcześniej przyjęty (niższe id), żywy dokument z tym samym plikiem."""
+    return (Document.query.filter(Document.id < doc.id, Document.status.in_(LIVE_STATUSES),
+                                  Document.sha256 == doc.sha256).order_by(Document.id).first())
+
+
+def _key_holder(doc: Document, key: str, lock: bool = False) -> Document | None:
+    """Żywy dokument trzymający klucz faktury. `lock` — odczyt blokujący: w MariaDB (REPEATABLE READ) widzi
+    wiersz zatwierdzony przez równoległą transakcję po starcie naszej."""
+    q = Document.query.filter(Document.dedupe_key == key, Document.id != doc.id)
+    if lock:
+        q = q.with_for_update(read=True)
+    with db.session.no_autoflush:
+        return q.first()
+
+
+def _claim_key(doc: Document, key: str):
+    """Przejmuje klucz faktury dla `doc` albo zwraca dokument, którego `doc` jest duplikatem (BE-1).
+
+    Zwraca (oryginał | _CONCURRENT | None, zdegradowana_późniejsza_kopia | None). Oryginałem jest zawsze żywy
+    dokument z niższym id (BE-5) — późniejsza żywa kopia oddaje klucz i jest przeliczana jako duplikat."""
+    holder = _key_holder(doc, key)
+    if holder is not None and holder.id < doc.id:
+        return holder, None
+    demoted = None
+    if holder is not None:  # późniejsza kopia była żywa (np. oryginał przetworzony po niej) — oddaje klucz
+        holder.dedupe_key = None
+        db.session.flush()
+        demoted = holder
+    if doc.dedupe_key == key:
+        return None, demoted
+    try:
+        with db.session.begin_nested():
+            doc.dedupe_key = key
+            db.session.flush()
+    except IntegrityError:
+        # równoległe przyjęcie tej samej faktury zdążyło przed nami — UNIQUE rozstrzyga wyścig (EDGE-17)
+        return _key_holder(doc, key, lock=True) or _CONCURRENT, demoted
+    return None, demoted
+
+
+def _resolve_duplicate(doc: Document, invoice: dict):
+    """Ustala oryginał (duplikat) i klucz faktury dokumentu. Zwraca (oryginał | _CONCURRENT | None, zdegradowany)."""
+    doc.dedupe_hash = document_key(doc.supplier_id, invoice.get("doc_type"), invoice.get("number"))
+    if (doc.overrides or {}).get("allow_duplicate"):  # jawna zgoda operatora — dokument nie trzyma klucza
+        doc.dedupe_key = None
+        return None, None
+    same = _earlier_same_file(doc)
+    if same is not None:
+        return same, None
+    if not doc.dedupe_hash:
+        doc.dedupe_key = None
+        return None, None
+    return _claim_key(doc, doc.dedupe_hash)
 
 
 def _enrich(issues: list[Issue], tree: SourceTree, rules: dict, inv: dict, synonyms: dict,
@@ -190,13 +237,41 @@ def _too_many_lines(tree: SourceTree, rules: dict | None) -> str | None:
             "albo poproś administratora o podniesienie limitu MAX_LINES.")
 
 
+def _error_status(doc: Document) -> str:
+    """Status po błędzie przetwarzania: duplikat zostaje duplikatem (nie staje się „żywy” bez klucza)."""
+    return STATUS_DUPLICATE if doc.status == STATUS_DUPLICATE else STATUS_NEEDS_REVIEW
+
+
 def process(doc: Document) -> Document:
+    """Przetwarza dokument. Jedyny punkt wejścia — każda ścieżka (API, panel, negocjacja, edytor) przechodzi
+    przez straż ręcznego odrzucenia (BE-2) i obsługę błędów (BE-9/BE-10)."""
+    if doc.is_manually_rejected:  # cofa je tylko jawne „Przywróć” (negotiation.restore)
+        return doc
+    try:
+        return _process(doc)
+    except SQLAlchemyError:
+        raise  # błąd bazy — transakcja do wycofania przez wywołującego
+    except Exception as exc:  # noqa: BLE001 - np. zepsuta reguła szablonu; dokument nie może zginąć (BE-10)
+        current_app.logger.exception("Błąd przetwarzania dokumentu #%s", doc.id)
+        msg = (f"Wewnętrzny błąd przetwarzania ({type(exc).__name__}) — dokument zapisano do wyjaśnienia; "
+               "sprawdź reguły szablonu albo zgłoś problem administratorowi.")
+        doc.status, doc.error = _error_status(doc), msg
+        doc.issues = [Issue("internal_error", BLOCKING, msg).to_dict()]
+        return doc
+
+
+def _process(doc: Document) -> Document:
     synonyms = load_synonyms()
     try:
         tree = load_tree(doc)
     except ReaderError as exc:
         doc.status, doc.error, doc.result = STATUS_REJECTED, str(exc), None
         doc.issues = [Issue("unreadable", BLOCKING, str(exc)).to_dict()]
+        return doc
+    except OSError:  # brak pliku w storage (utracony wolumen, zła ścieżka) — czytelny problem, nie 500 (BE-9)
+        msg = "Brak pliku źródłowego dokumentu w magazynie plików — wgraj fakturę ponownie albo odtwórz storage."
+        doc.status, doc.error = _error_status(doc), msg
+        doc.issues = [Issue("file_missing", BLOCKING, msg).to_dict()]
         return doc
     doc.fmt, doc.error = tree.fmt, None
     ident = identify(tree, doc, synonyms)
@@ -228,17 +303,24 @@ def process(doc: Document) -> Document:
                                field="supplier",
                                source_value=" / ".join(x for x in (get_path(inv, "supplier.name"),
                                                                    get_path(inv, "supplier.tax_id")) if x) or None))
-    dup = None if (doc.overrides or {}).get("allow_duplicate") else _find_duplicate(doc, inv)
-    if dup:
+    _enrich(issues, tree, rules, inv, synonyms, ident, lookups)
+    # duplikat ustalany na końcu: po nim są już tylko zapisy (przejęcie klucza nie zostanie w połowie)
+    dup, demoted = _resolve_duplicate(doc, inv)
+    if dup is _CONCURRENT:
+        issues.insert(0, Issue("duplicate", BLOCKING, "Ta faktura została właśnie przyjęta w równoległym "
+                                                      "żądaniu (duplikat istniejącego dokumentu)."))
+    elif dup is not None:
         issues.insert(0, Issue("duplicate", BLOCKING,
                                f"Ta faktura była już przetworzona (dokument #{dup.id}).", source_value=str(dup.id)))
-    _enrich(issues, tree, rules, inv, synonyms, ident, lookups)
     doc.result = inv
     doc.issues = [i.to_dict() for i in issues]
     doc.number = _stored_number(inv)
     doc.issue_date = _fit(Document.issue_date, inv.get("issue_date"))
     doc.doc_type = _fit(Document.doc_type, inv.get("doc_type"))
     doc.status = STATUS_DUPLICATE if dup else (STATUS_NEEDS_REVIEW if has_blocking(issues) else STATUS_APPROVED)
+    if demoted is not None:
+        db.session.flush()
+        process(demoted)  # późniejsza kopia — teraz duplikat tego (wcześniejszego) dokumentu
     return doc
 
 
@@ -246,13 +328,25 @@ def ingest(data: bytes, filename: str | None, source: str = "upload", api_key_id
     limit = current_app.config["MAX_DOCUMENT_BYTES"]
     if len(data) > limit:
         raise DocumentTooLarge(f"Plik przekracza limit {limit // (1024 * 1024)} MB.")
-    sha = get_storage().save(data)
-    doc = Document(source=_fit(Document.source, source), filename=_fit(Document.filename, filename or "dokument"),
-                   sha256=sha, status=STATUS_RECEIVED,
-                   overrides={}, issues=[], api_key_id=api_key_id)
-    db.session.add(doc)
-    db.session.flush()
-    process(doc)
-    audit("ingest", "document", doc.id, {"status": doc.status, "source": source, "filename": doc.filename})
-    db.session.commit()
+    storage = get_storage()
+    sha, created = storage.store(data)
+    try:
+        doc = Document(source=_fit(Document.source, source), filename=_fit(Document.filename, filename or "dokument"),
+                       sha256=sha, status=STATUS_RECEIVED,
+                       overrides={}, issues=[], api_key_id=api_key_id)
+        db.session.add(doc)
+        db.session.flush()
+        process(doc)
+        audit("ingest", "document", doc.id, {"status": doc.status, "source": source, "filename": doc.filename})
+        db.session.commit()
+    except BaseException:
+        # rekord nie powstał — nie zostawiamy osieroconego pliku, który zapisaliśmy (BE-9)
+        db.session.rollback()
+        if created:
+            try:
+                if not Document.query.filter_by(sha256=sha).first():
+                    storage.delete(sha)
+            except Exception:  # noqa: BLE001 - sprzątanie nie może przesłonić pierwotnego błędu
+                current_app.logger.exception("Nie udało się usunąć osieroconego pliku %s", sha)
+        raise
     return doc

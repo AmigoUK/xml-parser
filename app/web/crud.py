@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from flask import flash, redirect, render_template, request, url_for
 from flask_login import login_required
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 
 from app.engine.values import AmbiguousNumberError, to_decimal
 from app.extensions import db
@@ -37,7 +37,12 @@ class CrudSpec:
     extra_actions: list[tuple[str, str]] = field(default_factory=list)  # (etykieta, endpoint)
 
 
-def _parse(f: CrudField, raw: str | None):
+def _max_length(model, name: str) -> int | None:
+    col = model.__table__.columns.get(name)
+    return getattr(col.type, "length", None) if col is not None else None
+
+
+def _parse(f: CrudField, raw: str | None, model=None):
     raw = (raw or "").strip()
     if f.type == "checkbox":
         return raw in ("1", "on", "true")
@@ -55,6 +60,9 @@ def _parse(f: CrudField, raw: str | None):
         if not raw.isdigit():
             raise ValueError(f"Nieprawidłowa wartość pola „{f.label}”.")
         return int(raw)
+    limit = _max_length(model, f.name) if model is not None else None
+    if limit and len(raw) > limit:  # MariaDB strict odrzuciłaby to DataError → 500 (BE-8/EDGE-18)
+        raise ValueError(f"Pole „{f.label}” może mieć maks. {limit} znaków (wpisano {len(raw)}).")
     return raw
 
 
@@ -79,7 +87,7 @@ def register_crud(bp, spec: CrudSpec) -> None:
         if request.method == "POST":
             try:
                 for f in spec.fields:
-                    setattr(obj, f.name, _parse(f, request.form.get(f.name)))
+                    setattr(obj, f.name, _parse(f, request.form.get(f.name), spec.model))
                 if spec.before_save:
                     spec.before_save(obj)
                 if obj_id is None:
@@ -92,10 +100,13 @@ def register_crud(bp, spec: CrudSpec) -> None:
             except ValueError as exc:
                 db.session.rollback()
                 flash(str(exc), "error")
-            except IntegrityError:  # np. naruszenie unikalności lub klucza obcego
+            except IntegrityError:  # np. naruszenie unikalności (także w wyścigu) lub klucza obcego
                 db.session.rollback()
                 flash("Nie udało się zapisać — sprawdź, czy wartość nie jest zduplikowana "
                       "i czy wskazane powiązania istnieją.", "error")
+            except DataError:  # wartość niemieszcząca się w kolumnie — ostatnia linia obrony (BE-8)
+                db.session.rollback()
+                flash("Nie udało się zapisać — wartość jest zbyt długa lub ma niepoprawny format.", "error")
             # po błędzie pokazujemy wpisane wartości (obiekt po rollbacku ma stan z bazy)
             form = request.form
         else:

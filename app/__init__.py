@@ -39,6 +39,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "python -c \"import secrets;print(secrets.token_hex(32))\" i wpisz go do .env."
         )
 
+    from .services.storage import check_storage_dir
+    check_storage_dir(app.config["STORAGE_DIR"])  # BE-9: brak zapisu = błąd przy starcie, nie 500 przy uploadzie
+
     proxies = int(app.config.get("TRUSTED_PROXY_COUNT") or 0)
     if proxies > 0:  # OPS-8: X-Forwarded-* tylko od zaufanych proxy
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxies, x_proto=proxies, x_host=proxies, x_port=proxies)
