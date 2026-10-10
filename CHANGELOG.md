@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Healthcheck usługi `app`; `/healthz` sprawdza połączenie z bazą (503 przy awarii, pole `db`) (OPS-7).
 - Limity zasobów kontenerów (`APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS`) i rotacja logów dockera (OPS-12, OPS-18).
 - `requirements.lock` z przypiętymi zależnościami przechodnimi, używany w obrazie (OPS-6).
+- Limit prób logowania: po 5 nieudanych próbach w 15 min (osobno na e-mail i na adres IP) blokada na 15 min z komunikatem; liczone w bazie (tabela `login_attempts`), więc działa przy wielu workerach; konfigurowalne `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES` (SEC-2).
+- Nieudane i zablokowane logowania zapisywane w historii (`login_failed`, `login_blocked`) (SEC-2).
+- `TRUSTED_PROXY_COUNT` — ProxyFix włączany tylko dla jawnie zaufanych proxy (domyślnie 0) (OPS-8).
 
 ### Changed
 - Widok szczegółów dokumentu pokazuje maks. 50 kart problemów, 3 000 wierszy drzewa pliku i 500 pozycji wyniku (pełne dane w JSON) — strona dużej faktury nie ma już dziesiątek MB (EDGE-5).
@@ -22,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Domyślny `APP_PORT` 18506 w compose (OPS-16).
 - Obrazy bazowe przypięte do wersji (python 3.12.15-slim-trixie, mariadb 11.4.13) (OPS-5).
 - Entrypoint: migracje z ponawianiem i backoffem; gunicorn z `--max-requests` (restart workerów) (OPS-10, OPS-12).
+- **BREAKING:** `DEMO_MODE` domyślnie `0` (config i `.env.example`); instancje demo muszą ustawić `DEMO_MODE=1` jawnie (BE-15, OPS-11).
+- Strona „O demo” nie pokazuje hasła admina (tylko informację o `ADMIN_PASSWORD`); klucz API demo widoczny tylko dla zalogowanych; reset danych demo tylko dla roli admin (K-1).
+- Potwierdzenia usuwania przez atrybut `data-confirm` i `static/app.js`, inicjalizacja Swagger UI w `static/api_docs.js` — bez skryptów inline (SEC-3).
+- Po wdrożeniu wszyscy użytkownicy muszą zalogować się ponownie (nowy format identyfikatora sesji) (SEC-4).
 
 ### Fixed
 - Faktura z jedną pozycją i inną powtarzalną grupą (raty `TerminPlatnosci`, `AdditionalDocumentReference`, `payments`) nie dostaje już rat jako pozycji; pojedyncza pozycja pod kluczem spoza listy podpowiedzi (np. `products`) jest rozpoznawana (EDGE-4).
@@ -34,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kontener aplikacji działa jako użytkownik nie-root (uid 10001); entrypoint naprawia właściciela wolumenu storage (OPS-2).
 - Wymagane `MARIADB_PASSWORD` i `MARIADB_ROOT_PASSWORD` w docker-compose (OPS-13).
 - Rozszerzony `.dockerignore` (sekrety, testy, dokumentacja, narzędzia poza obrazem) (OPS-14).
+- Nagłówki bezpieczeństwa na każdej odpowiedzi: `Content-Security-Policy` (`default-src 'self'`, skrypty tylko z plików, `'unsafe-eval'` wymagany przez Alpine.js, `frame-ancestors 'none'`, `object-src 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` (SEC-3).
+- Ciasteczka sesji i „zapamiętaj mnie”: `HttpOnly`, `SameSite=Lax`, `Secure` z env `SESSION_COOKIE_SECURE` (domyślnie 0 — HTTP przez Tailscale); sesja wygasa po 8 h; Flask-Login `session_protection="strong"` (SEC-4, OPS-9).
+- Wylogowanie i zmiana hasła unieważniają skopiowane ciasteczka sesji (token sesji `users.session_token` sprawdzany przy każdym żądaniu) (SEC-4).
+- API: komunikat o duplikacie dokumentu innego klucza API nie zdradza jego id („duplikat istniejącego dokumentu”) (K-2).
+- API `/api/v1/suppliers` zwraca tylko dostawców z dokumentów danego klucza; w odpowiedziach API usuwane są podpowiedzi z kartoteki (towary, inni dostawcy, szablony do sklonowania) (SEC-5).
 
 ## [0.1.1] — 2026-10-10
 

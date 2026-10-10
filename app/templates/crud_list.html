@@ -16,7 +16,7 @@
       {% for _, getter in spec.columns %}<td>{{ getter(row) }}</td>{% endfor %}
       <td class="text-end text-nowrap">
         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('catalog.edit_' ~ spec.key, obj_id=row.id) }}">Edytuj</a>
-        <form method="post" action="{{ url_for('catalog.delete_' ~ spec.key, obj_id=row.id) }}" class="d-inline" onsubmit="return confirm('Usunąć?')">
+        <form method="post" action="{{ url_for('catalog.delete_' ~ spec.key, obj_id=row.id) }}" class="d-inline" data-confirm="Usunąć?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-sm btn-outline-danger">Usuń</button>
         </form>

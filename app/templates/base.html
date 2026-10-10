@@ -21,6 +21,7 @@
   {% if not full_screen %}{% include "_footer.html" %}{% endif %}
   <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
   <script src="{{ url_for('static', filename='vendor/htmx.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
   <script defer src="{{ url_for('static', filename='vendor/alpine.min.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>

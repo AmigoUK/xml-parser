@@ -8,4 +8,5 @@ migrate = Migrate()
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
 login_manager.login_message = "Zaloguj się, aby kontynuować."
+login_manager.session_protection = "strong"
 csrf = CSRFProtect()
