@@ -9,6 +9,7 @@ _DATE_FORMATS = ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%Y%m%d", "%d-%m-%Y", "%Y.%
 
 MAX_INTEGER_DIGITS = 18
 MAX_FRACTION_DIGITS = 30  # dla zapisu wykładniczego (1e-400 dałoby setki zer po przecinku)
+MAX_NUMBER_TEXT = 100  # dłuższy tekst nie jest liczbą; chroni wyrażenia regularne przed kosztem kwadratowym
 DECIMAL_SEPARATORS = (",", ".")
 
 
@@ -115,6 +116,8 @@ def to_decimal(raw, decimal_sep: str | None = None, *, reject_ambiguous: bool = 
         raise ValueError(f"Nieznany separator dziesiętny {decimal_sep!r} (dozwolone „,” lub „.”).")
     if isinstance(raw, PlainNumber):
         decimal_sep = "."
+    if len(str(raw)) > MAX_NUMBER_TEXT:
+        raise ValueError(f"Wartość liczbowa jest zbyt długa (maks. {MAX_NUMBER_TEXT} znaków).")
     s = _GROUPING_CHARS.sub("", str(raw).translate(_MINUS_TRANS))
     if not re.search(r"\d", s):
         raise _invalid(raw)

@@ -278,3 +278,17 @@ def test_unknown_currency_is_blocking_problem(raw):
     assert len(cur) == 1 and cur[0].severity == BLOCKING and cur[0].code == "invalid_value"
     assert "ISO 4217" in cur[0].message
     assert has_blocking(res.issues)
+
+
+def test_long_number_text_rejected_quickly():
+    # ReDoS: dopiski przed/po liczbie dawały koszt kwadratowy dla długich wartości
+    import time
+
+    import pytest
+
+    from app.engine.values import to_decimal
+
+    start = time.monotonic()
+    with pytest.raises(ValueError):
+        to_decimal("1" + "a" * 50_000 + "!")
+    assert time.monotonic() - start < 0.5
