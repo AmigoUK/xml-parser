@@ -34,6 +34,15 @@ def read_json(data: bytes) -> SourceTree:
         obj = json.loads(data.decode("utf-8-sig"), parse_float=str, parse_int=str)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ReaderError(f"Niepoprawny JSON: {exc}.") from exc
+    except RecursionError:
+        raise ReaderError("JSON jest zagnieżdżony zbyt głęboko.") from None
+    try:
+        return _to_tree(obj)
+    except RecursionError:
+        raise ReaderError("JSON jest zagnieżdżony zbyt głęboko.") from None
+
+
+def _to_tree(obj) -> SourceTree:
     root = Node("root")
     if isinstance(obj, dict):
         for k, v in obj.items():

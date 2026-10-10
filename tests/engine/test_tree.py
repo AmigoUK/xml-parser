@@ -61,3 +61,10 @@ def test_helpers():
     assert relative_path("A/X", "A/B") is None
     assert jaccard({"a", "b"}, {"a", "b", "c", "d"}) == 0.5
     assert jaccard(set(), set()) == 0.0
+
+
+def test_node_children_ctor_links_parent():
+    child = Node("c", "1")
+    root = Node("r", children=[child])
+    assert child.parent is root
+    assert child.path == "r/c"

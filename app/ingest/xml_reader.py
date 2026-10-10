@@ -32,4 +32,10 @@ def read_xml(data: bytes) -> SourceTree:
         root = etree.fromstring(data, etree.XMLParser(**_PARSER_KW))
     except etree.XMLSyntaxError as exc:
         raise ReaderError(f"Niepoprawny XML: {exc.msg} (linia {exc.lineno}).") from exc
-    return SourceTree(_convert(root), "xml")
+    info = root.getroottree().docinfo
+    if info.doctype or info.internalDTD is not None or info.externalDTD is not None:
+        raise ReaderError("Pliki XML z deklaracją DOCTYPE/ENTITY są odrzucane ze względów bezpieczeństwa.")
+    try:
+        return SourceTree(_convert(root), "xml")
+    except RecursionError:
+        raise ReaderError("Dokument XML jest zagnieżdżony zbyt głęboko.") from None

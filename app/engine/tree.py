@@ -17,6 +17,10 @@ class Node:
     children: list["Node"] = field(default_factory=list)
     parent: "Node | None" = field(default=None, repr=False)
 
+    def __post_init__(self) -> None:
+        for child in self.children:
+            child.parent = self
+
     def add(self, child: "Node") -> "Node":
         child.parent = self
         self.children.append(child)

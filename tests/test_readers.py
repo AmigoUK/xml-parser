@@ -59,3 +59,36 @@ def test_csv_cp1250_fallback():
 def test_empty_inputs_rejected(data):
     with pytest.raises(ReaderError):
         read_document(data, "x.csv")
+
+
+def test_xml_rejects_late_doctype():
+    evil = b'<?xml version="1.0"?><!-- ' + b"x" * 5000 + b' --><!DOCTYPE a><a>1</a>'
+    with pytest.raises(ReaderError, match="DOCTYPE"):
+        read_document(evil)
+
+
+def test_xml_rejects_utf16_without_bom():
+    evil = '<?xml version="1.0"?><!DOCTYPE a [<!ENTITY x "y">]><a>&x;</a>'.encode("utf-16-le")
+    with pytest.raises(ReaderError):
+        read_document(evil)
+
+
+def test_xml_rejects_utf16_with_bom():
+    with pytest.raises(ReaderError):
+        read_document("<a>1</a>".encode("utf-16"))
+
+
+def test_json_deep_nesting_rejected():
+    with pytest.raises(ReaderError):
+        read_document(b"[" * 5000 + b"]" * 5000)
+
+
+def test_json_deep_nesting_objects_rejected():
+    with pytest.raises(ReaderError):
+        read_document(b'{"a":' * 3000 + b"1" + b"}" * 3000)
+
+
+def test_csv_oversized_field_rejected():
+    data = b"A;B\n" + b"x" * 200000 + b";1\n"
+    with pytest.raises(ReaderError):
+        read_document(data, "x.csv")
