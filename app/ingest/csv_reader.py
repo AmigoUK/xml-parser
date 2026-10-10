@@ -3,7 +3,7 @@ import io
 
 from app.engine.tree import Node, SourceTree
 
-from . import ReaderError
+from . import NodeBudget, ReaderError
 
 
 def _decode(data: bytes) -> str:
@@ -13,7 +13,8 @@ def _decode(data: bytes) -> str:
         return data.decode("cp1250", errors="replace")
 
 
-def read_csv(data: bytes) -> SourceTree:
+def read_csv(data: bytes, budget: NodeBudget | None = None) -> SourceTree:
+    budget = budget or NodeBudget(10 ** 9)
     text = _decode(data)
     sample = text[:4096]
     try:
@@ -34,6 +35,7 @@ def read_csv(data: bytes) -> SourceTree:
         for row in reader:
             if not any(cell.strip() for cell in row):
                 continue
+            budget.take(1 + min(len(names), len(row)))
             rnode = root.add(Node("row"))
             for name, cell in zip(names, row):
                 rnode.add(Node(name, cell.strip() or None))

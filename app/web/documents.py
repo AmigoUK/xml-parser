@@ -15,6 +15,11 @@ from app.services.storage import get_storage
 
 bp = Blueprint("docs", __name__)
 
+# limity widoku szczegółów — strona dla dużego pliku nie może mieć dziesiątek MB (EDGE-5)
+ISSUE_CARDS_LIMIT = 50
+TREE_ROWS_LIMIT = 3000
+LEAF_PATHS_LIMIT = 2000
+LINES_TABLE_LIMIT = 500
 ALWAYS_REMEMBER = {"create_supplier", "use_supplier", "add_conversion", "allow_duplicate", "reject"}
 FORM_FIELDS = ("name", "tax_id", "supplier_id", "alias", "unit", "from_unit", "to_unit", "factor", "scope",
                "line_no", "product_code", "code")
@@ -101,13 +106,16 @@ def documents():
 def detail(doc_id):
     doc = _get(doc_id)
     try:
-        rows = load_tree(doc).display_rows()
+        tree = load_tree(doc)
+        rows = tree.display_rows(limit=TREE_ROWS_LIMIT + 1)
+        leaf_paths = tree.leaf_paths()[:LEAF_PATHS_LIMIT]
     except (ReaderError, OSError):
-        rows = []
+        rows, leaf_paths = [], []
     return render_template(
-        "document.html", doc=doc, rows=rows, field_labels=FIELD_LABELS,
-        header_fields=HEADER_FIELDS, line_fields=LINE_FIELDS,
-        leaf_paths=[r["path"] for r in rows if r["value"]],
+        "document.html", doc=doc, rows=rows[:TREE_ROWS_LIMIT], rows_truncated=len(rows) > TREE_ROWS_LIMIT,
+        issue_limit=ISSUE_CARDS_LIMIT, lines_limit=LINES_TABLE_LIMIT,
+        field_labels=FIELD_LABELS, header_fields=HEADER_FIELDS, line_fields=LINE_FIELDS,
+        leaf_paths=leaf_paths,
         units=Unit.query.order_by(Unit.code).all(),
         products=Product.query.order_by(Product.code).all(),
         suppliers=Supplier.query.order_by(Supplier.name).all())

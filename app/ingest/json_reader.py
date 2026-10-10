@@ -2,7 +2,7 @@ import json
 
 from app.engine.tree import Node, SourceTree
 
-from . import ReaderError
+from . import NodeBudget, ReaderError
 
 
 def _scalar(v) -> str | None:
@@ -13,23 +13,26 @@ def _scalar(v) -> str | None:
     return str(v)
 
 
-def _build(name: str, value, parent: Node) -> None:
+def _build(name: str, value, parent: Node, budget: NodeBudget) -> None:
     if isinstance(value, dict):
+        budget.take()
         node = parent.add(Node(name))
         for k, v in value.items():
             if isinstance(v, list):
                 for item in v:
-                    _build(k, item, node)
+                    _build(k, item, node, budget)
             else:
-                _build(k, v, node)
+                _build(k, v, node, budget)
     elif isinstance(value, list):
         for item in value:
-            _build(name, item, parent)
+            _build(name, item, parent, budget)
     else:
+        budget.take()
         parent.add(Node(name, _scalar(value)))
 
 
-def read_json(data: bytes) -> SourceTree:
+def read_json(data: bytes, budget: NodeBudget | None = None) -> SourceTree:
+    budget = budget or NodeBudget(10 ** 9)
     try:
         obj = json.loads(data.decode("utf-8-sig"), parse_float=str, parse_int=str)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -37,23 +40,23 @@ def read_json(data: bytes) -> SourceTree:
     except RecursionError:
         raise ReaderError("JSON jest zagnieżdżony zbyt głęboko.") from None
     try:
-        return _to_tree(obj)
+        return _to_tree(obj, budget)
     except RecursionError:
         raise ReaderError("JSON jest zagnieżdżony zbyt głęboko.") from None
 
 
-def _to_tree(obj) -> SourceTree:
+def _to_tree(obj, budget: NodeBudget) -> SourceTree:
     root = Node("root")
     if isinstance(obj, dict):
         for k, v in obj.items():
             if isinstance(v, list):
                 for item in v:
-                    _build(k, item, root)
+                    _build(k, item, root, budget)
             else:
-                _build(k, v, root)
+                _build(k, v, root, budget)
     elif isinstance(obj, list):
         for item in obj:
-            _build("item", item, root)
+            _build("item", item, root, budget)
     else:
         raise ReaderError("JSON nie zawiera obiektu ani listy.")
     if not root.children:

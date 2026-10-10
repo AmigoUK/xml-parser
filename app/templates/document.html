@@ -18,7 +18,10 @@
 {% set ctx = {'field_labels': field_labels, 'leaf_paths': leaf_paths, 'units': units, 'products': products, 'suppliers': suppliers} %}
 {% if doc.issues %}
 <h2 class="h6">Problemy ({{ doc.issues|length }}) — rozwiąż je po kolei, od góry</h2>
-{% for i in doc.issues %}{{ issue_card(doc, loop.index0, i, ctx) }}{% endfor %}
+{% for i in doc.issues[:issue_limit] %}{{ issue_card(doc, loop.index0, i, ctx) }}{% endfor %}
+{% if doc.issues|length > issue_limit %}
+<div class="alert alert-secondary small">Pokazano {{ issue_limit }} z {{ doc.issues|length }} problemów — rozwiąż widoczne, kolejne pojawią się po ponownym przetworzeniu. Pełna lista: <a href="{{ url_for('docs.as_json', doc_id=doc.id) }}">JSON</a>.</div>
+{% endif %}
 {% else %}
 <div class="alert alert-success">Faktura odczytana bez problemów.</div>
 {% endif %}
@@ -27,6 +30,7 @@
   <div class="col-lg-5">
     <h2 class="h6">Plik źródłowy</h2>
     <div class="card card-body p-2" style="max-height: 70vh; overflow: auto">
+      {% if rows_truncated %}<div class="small text-muted mb-1">Pokazano pierwsze {{ rows|length }} wierszy pliku — całość w „Plik źródłowy”.</div>{% endif %}
       {% for r in rows %}<div class="tree-row" style="padding-left: {{ r.depth * 12 }}px" title="{{ r.path }}">{{ r.name }}{% if r.value %}: <span class="val">{{ r.value }}</span>{% endif %}</div>{% endfor %}
     </div>
   </div>
@@ -39,8 +43,9 @@
     </table>
     <div class="table-responsive">
     <table class="table table-sm bg-white small">
+      {% if doc.result.lines|length > lines_limit %}<caption class="small">Pokazano {{ lines_limit }} z {{ doc.result.lines|length }} pozycji — całość w JSON.</caption>{% endif %}
       <thead><tr><th>#</th><th>Indeks</th>{% for f in line_fields %}<th>{{ f.label }}</th>{% endfor %}<th>JM źródłowa</th><th>Przelicznik</th></tr></thead>
-      <tbody>{% for l in doc.result.lines %}<tr><td>{{ l.line_no }}</td><td>{{ l.product_index or '—' }}</td>{% for f in line_fields %}<td>{{ l[f.key] if l[f.key] is not none else '—' }}</td>{% endfor %}<td>{{ l.unit_source or '—' }}</td><td>{{ l.conversion_factor }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for l in doc.result.lines[:lines_limit] %}<tr><td>{{ l.line_no }}</td><td>{{ l.product_index or '—' }}</td>{% for f in line_fields %}<td>{{ l[f.key] if l[f.key] is not none else '—' }}</td>{% endfor %}<td>{{ l.unit_source or '—' }}</td><td>{{ l.conversion_factor }}</td></tr>{% endfor %}</tbody>
     </table>
     </div>
     {% endif %}

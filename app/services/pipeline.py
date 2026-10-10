@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from flask import current_app
 
 from app.engine.canonical import get_path
-from app.engine.issues import BLOCKING, Issue, has_blocking
+from app.engine.issues import BLOCKING, Issue, aggregate_line_issues, has_blocking
 from app.engine.suggest import (FIELDS_BY_KEY, conversion_guess, draft_rules, field_candidates, learned_pairs,
                                 load_synonyms, product_candidates, suffix_match, supplier_candidates,
                                 tax_ids_match, unit_candidates)
@@ -128,6 +128,7 @@ def _enrich(issues: list[Issue], tree: SourceTree, rules: dict, inv: dict, synon
     learned = learned_pairs(active_rule_sets())
     line_path = rules.get("line_path")
     products = None
+    new_code = None  # wolny indeks liczony raz, nie dla każdej pozycji (EDGE-5)
     for issue in issues:
         code = issue.code
         if code == "unknown_supplier":
@@ -155,8 +156,9 @@ def _enrich(issues: list[Issue], tree: SourceTree, rules: dict, inv: dict, synon
         elif code == "unmapped_product" and issue.line_no:
             line = inv["lines"][issue.line_no - 1]
             products = products if products is not None else lookups.products_brief()
+            new_code = new_code or next_product_code()
             issue.suggestions = product_candidates(line, products) + [{
-                "kind": "create_product", "code": next_product_code(), "name": line.get("name"),
+                "kind": "create_product", "code": new_code, "name": line.get("name"),
                 "unit": line.get("unit"), "confidence": 0.3, "reason": "nowy towar w kartotece"}]
         elif code == "missing_conversion" and issue.line_no:
             line = inv["lines"][issue.line_no - 1]
@@ -168,6 +170,19 @@ def _fit(column, value):
     if value is None:
         return None
     return str(value)[:column.type.length]
+
+
+def _too_many_lines(tree: SourceTree, rules: dict | None) -> str | None:
+    """Limit liczby pozycji (SEC-1) — komunikat odrzucenia albo None."""
+    line_path = (rules or {}).get("line_path")
+    limit = int(current_app.config.get("MAX_LINES", 5000))
+    if not line_path:
+        return None
+    count = len(tree.nodes_at(line_path))
+    if count <= limit:
+        return None
+    return (f"Faktura ma zbyt wiele pozycji ({count}, limit {limit}) — podziel ją na mniejsze pliki "
+            "albo poproś administratora o podniesienie limitu MAX_LINES.")
 
 
 def process(doc: Document) -> Document:
@@ -193,10 +208,15 @@ def process(doc: Document) -> Document:
         rules = doc.draft_rules
     if ident.supplier:
         doc.supplier_id = ident.supplier.id
+    too_many = _too_many_lines(tree, rules)
+    if too_many:
+        doc.status, doc.error, doc.result = STATUS_REJECTED, too_many, None
+        doc.issues = [Issue("too_many_lines", BLOCKING, too_many, field="line_path").to_dict()]
+        return doc
     lookups = DbLookups()
     result = apply_template(tree, rules, lookups, doc.supplier_id, doc.overrides or {})
     inv = result.invoice
-    issues = list(result.issues) + validate_invoice(inv)
+    issues = aggregate_line_issues(list(result.issues) + validate_invoice(inv))
     if ident.supplier is None:
         issues.insert(0, Issue("unknown_supplier", BLOCKING,
                                "Nie rozpoznano dostawcy — utwórz nowego z danych faktury albo wskaż istniejącego.",

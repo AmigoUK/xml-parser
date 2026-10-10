@@ -28,7 +28,7 @@ lines:
   supplier_code: [TowarKod, KodTowaru, Indeks, Kod, SellersItemIdentification/ID, sku, ProductCode]
   gtin: [TowarKodEan, KodEAN, EAN, GTIN, StandardItemIdentification/ID, ean, gtin]
   name: [TowarNazwa, NazwaTowaru, Nazwa, P_7, Item/Name, description, ProductName]
-  qty: [Ilosc, P_8B, InvoicedQuantity, quantity, Quantity]
+  qty: [Ilosc, P_8B, InvoicedQuantity, quantity, Quantity, qty]
   unit: [TowarJm, JM, Jm, JednostkaMiary, P_8A, InvoicedQuantity/@unitCode, uom, unit]
   unit_price_net: [CenaNetto, P_9A, Price/PriceAmount, unit_price, UnitPrice]
   net: [WartoscNetto, P_11, LineExtensionAmount, net_amount, NetAmount]

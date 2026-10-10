@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- Limity wczytywania konfigurowane z env: `MAX_TREE_NODES` (domyślnie 200 000 węzłów drzewa — elementy, atrybuty, komórki CSV) i `MAX_LINES` (domyślnie 5 000 pozycji). Przekroczenie odrzuca dokument z czytelnym komunikatem po polsku zamiast przeciążać serwer; XML jest parsowany przyrostowo, więc limit przerywa wczytywanie przed załadowaniem całego pliku (SEC-1).
+- Problemy z pozycji tego samego rodzaju są łączone w jeden z licznikiem i listą pierwszych 20 numerów pozycji (np. 10 000 × „brak przelicznika dla worek” → 1 problem „dotyczy 10 000 pozycji”); dotyczy braków przelicznika, nieprzypisanych towarów (ten sam kod/nazwa), błędów wartości i niezgodności sum pozycji (EDGE-5).
+
+### Changed
+- Widok szczegółów dokumentu pokazuje maks. 50 kart problemów, 3 000 wierszy drzewa pliku i 500 pozycji wyniku (pełne dane w JSON) — strona dużej faktury nie ma już dziesiątek MB (EDGE-5).
+- Wybór elementu z pozycjami: najpierw ścieżka pozycji z wyuczonych szablonów, potem grupa zawierająca typowe pola pozycji (ilość/cena + inne wg synonimów), dopiero potem najliczniejsza powtarzalna grupa. Synonim `qty` dla ilości (EDGE-4).
+
+### Fixed
+- Faktura z jedną pozycją i inną powtarzalną grupą (raty `TerminPlatnosci`, `AdditionalDocumentReference`, `payments`) nie dostaje już rat jako pozycji; pojedyncza pozycja pod kluczem spoza listy podpowiedzi (np. `products`) jest rozpoznawana (EDGE-4).
+- CSV z separatorem grupy GS1 (`\x1d`, także `\x1e`) nie jest już odrzucany jako plik binarny (EDGE-12).
+- Przetwarzanie dużych faktur: wyniki słowników (jednostki, przeliczniki, mapowania towarów) zapamiętywane na czas przetworzenia, wolny indeks nowego towaru liczony raz — 4 000 pozycji: ingest 11,3 s → 0,7 s (EDGE-5).
+
+### Security
+- DoS przez złożoność kwadratową: wykrywanie grupy pozycji działa w jednym przejściu drzewa, a podpowiedzi mapowań korzystają z indeksu sufiksów ścieżek (rozpoznawanie po samym typie wartości tylko dla pierwszych 1 000 ścieżek). Szeroki JSON 1,15 MB: 35,6 s → 1,0 s; XML 1,5 MB: 162 s → 1,5 s (SEC-1).
 
 ## [0.1.1] — 2026-10-10
 

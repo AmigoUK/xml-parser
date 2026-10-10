@@ -1,8 +1,10 @@
+import io
+
 from lxml import etree
 
 from app.engine.tree import Node, SourceTree
 
-from . import ReaderError
+from . import NodeBudget, ReaderError
 
 _PARSER_KW = dict(
     resolve_entities=False, no_network=True, huge_tree=False,
@@ -24,12 +26,22 @@ def _convert(el) -> Node:
     return node
 
 
-def read_xml(data: bytes) -> SourceTree:
+def _parse(data: bytes, budget: NodeBudget | None):
+    if budget is None:
+        return etree.fromstring(data, etree.XMLParser(**_PARSER_KW))
+    # parsowanie przyrostowe: limit węzłów przerywa wczytywanie, zanim cały plik trafi do pamięci (SEC-1)
+    ctx = etree.iterparse(io.BytesIO(data), events=("start",), **_PARSER_KW)
+    for _, el in ctx:
+        budget.take(1 + len(el.attrib))
+    return ctx.root
+
+
+def read_xml(data: bytes, budget: NodeBudget | None = None) -> SourceTree:
     head = data[:4096].upper()
     if b"<!DOCTYPE" in head or b"<!ENTITY" in data.upper():
         raise ReaderError("Pliki XML z deklaracją DOCTYPE/ENTITY są odrzucane ze względów bezpieczeństwa.")
     try:
-        root = etree.fromstring(data, etree.XMLParser(**_PARSER_KW))
+        root = _parse(data, budget)
     except etree.XMLSyntaxError as exc:
         raise ReaderError(f"Niepoprawny XML: {exc.msg} (linia {exc.lineno}).") from exc
     info = root.getroottree().docinfo

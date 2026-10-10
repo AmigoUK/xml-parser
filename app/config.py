@@ -18,6 +18,9 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
     STORAGE_DIR = os.environ.get("STORAGE_DIR", "storage")
     MAX_DOCUMENT_BYTES = int(os.environ.get("MAX_DOCUMENT_BYTES", 10 * 1024 * 1024))
+    # limity przeciw DoS (SEC-1): liczba węzłów drzewa (elementy + atrybuty / komórki) i liczba pozycji
+    MAX_TREE_NODES = int(os.environ.get("MAX_TREE_NODES", 200_000))
+    MAX_LINES = int(os.environ.get("MAX_LINES", 5_000))
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
     DEMO_MODE = _bool("DEMO_MODE", "1")

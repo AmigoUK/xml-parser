@@ -62,7 +62,13 @@ def learned_pairs(rule_sets: Iterable[dict]) -> dict[tuple[str, str], str]:
         for key, rule in ((rules or {}).get("lines") or {}).items():
             if (rule or {}).get("path"):
                 out[("lines", rule["path"].lower())] = key
+        if (rules or {}).get("line_path"):
+            out[("line_path", rules["line_path"])] = "line_path"
     return out
+
+
+def learned_line_paths(learned: dict | None) -> set[str]:
+    return {k[1] for k in (learned or {}) if k[0] == "line_path"}
 
 
 def _gs1_ais(value: str) -> dict[str, str]:
@@ -124,29 +130,93 @@ def _preview(value: str | None, transforms: list) -> str | None:
         return None
 
 
-def _score(pool: dict[str, str], f: FieldDef, syns: list[str], learned: dict, scope: str) -> list[Candidate]:
-    out = []
-    for path, value in pool.items():
-        score, reason, transforms = 0.0, "", []
-        key = _tail(path) if scope == "header" else path.lower()
-        if learned.get((scope, key)) == f.key:
-            score, reason = 0.95, "z wcześniejszego szablonu"
-        for idx, syn in enumerate(syns):
-            if suffix_match(path, syn):
-                s = max(0.6, 0.9 - 0.02 * idx)
-                if s > score:
-                    score, reason = s, f"synonim „{syn}”"
-                break
-        if score:
-            transforms = _infer_transforms(f, value)
+# Rozpoznawanie pola po samym typie wartości (data, liczba, GTIN…) jest drogie — dla bardzo szerokich
+# plików ograniczamy je do pierwszych N ścieżek w kolejności dokumentu (SEC-1). Synonimy i wyuczone
+# ścieżki działają dla wszystkich ścieżek przez indeks sufiksów.
+DETECT_LIMIT = 1000
+_INDEX_SEGS = 4
+
+
+class _Pool:
+    """Ścieżka → pierwsza wartość, z indeksami do szybkiego dopasowania synonimów i wyuczonych ścieżek."""
+
+    def __init__(self, items: dict[str, str], scope: str):
+        self.items = items
+        self.pos = {p: i for i, p in enumerate(items)}
+        self.by_suffix: dict[tuple[str, ...], list[str]] = {}
+        self.by_key: dict[str, list[str]] = {}
+        for p in items:
+            segs = p.lower().split("/")
+            for n in range(1, min(len(segs), _INDEX_SEGS) + 1):
+                self.by_suffix.setdefault(tuple(segs[-n:]), []).append(p)
+            self.by_key.setdefault(_tail(p) if scope == "header" else p.lower(), []).append(p)
+
+    def with_suffix(self, syn: str) -> list[str]:
+        t = tuple(syn.lower().split("/"))
+        if len(t) <= _INDEX_SEGS:
+            return self.by_suffix.get(t, [])
+        return [p for p in self.items if suffix_match(p, syn)]
+
+
+def _score(pool: _Pool, f: FieldDef, syns: list[str], learned: dict, scope: str) -> list[Candidate]:
+    hits: dict[str, tuple[float, str]] = {}
+    for (sc, key), fk in learned.items():
+        if sc == scope and fk == f.key:
+            for p in pool.by_key.get(key, ()):
+                hits[p] = (0.95, "z wcześniejszego szablonu")
+    syn_hits: dict[str, tuple[float, str]] = {}
+    for idx, syn in enumerate(syns):  # liczy się pierwszy pasujący synonim danej ścieżki
+        for p in pool.with_suffix(syn):
+            syn_hits.setdefault(p, (max(0.6, 0.9 - 0.02 * idx), f"synonim „{syn}”"))
+    for p, (sc, why) in syn_hits.items():
+        if sc > hits.get(p, (0.0, ""))[0]:
+            hits[p] = (sc, why)
+    out: list[tuple[int, Candidate]] = []
+    for p, (sc, why) in hits.items():
+        value = pool.items[p]
+        transforms = _infer_transforms(f, value)
+        out.append((pool.pos[p], Candidate(p, transforms, round(sc, 2), why, _preview(value, transforms))))
+    for i, (p, value) in enumerate(pool.items.items()):
+        if i >= DETECT_LIMIT:
+            break
+        if p in hits:
+            continue
+        det = _detect(f, value)
+        if det:
+            sc, transforms = det
+            out.append((i, Candidate(p, transforms, round(sc, 2), "rozpoznany typ wartości",
+                                     _preview(value, transforms))))
+    out.sort(key=lambda x: x[0])
+    return [c for _, c in out]
+
+
+def _sample(tree: SourceTree) -> dict[str, str]:
+    key = ("suggest-sample",)
+    if key not in tree.cache:
+        sample: dict[str, str] = {}
+        for p, v in tree.leaf_items():
+            sample.setdefault(p, v)
+        tree.cache[key] = sample
+    return tree.cache[key]
+
+
+def _pool(tree: SourceTree, kind: str, line_path: str | None) -> _Pool:
+    """Pule ścieżek liczone raz na drzewo: 'lines' (względne w pozycji), 'header', 'inside'."""
+    key = ("suggest-pool", kind, line_path)
+    if key not in tree.cache:
+        sample = _sample(tree)
+        if kind == "lines":
+            items: dict[str, str] = {}
+            for p, v in sample.items():
+                rel = relative_path(p, line_path)
+                if rel:
+                    items.setdefault(rel, v)
         else:
-            det = _detect(f, value)
-            if det:
-                score, transforms = det
-                reason = "rozpoznany typ wartości"
-        if score:
-            out.append(Candidate(path, transforms, round(score, 2), reason, _preview(value, transforms)))
-    return out
+            prefix = (line_path + "/") if line_path else None
+            want_inside = kind == "inside"
+            items = {p: v for p, v in sample.items() if bool(prefix and p.startswith(prefix)) == want_inside}
+        tree.cache[key] = _Pool(items, "lines" if kind == "lines" else "header")
+    return tree.cache[key]
 
 
 def field_candidates(tree: SourceTree, field_key: str, line_path: str | None, synonyms: dict,
@@ -155,32 +225,23 @@ def field_candidates(tree: SourceTree, field_key: str, line_path: str | None, sy
     scope = "lines" if field_key in LINE_KEYS else "header"
     learned = learned or {}
     syns = (synonyms.get(scope) or {}).get(field_key) or []
-    sample: dict[str, str] = {}
-    for p, v in tree.leaf_items():
-        sample.setdefault(p, v)
     if scope == "lines":
         if not line_path:
             return []
-        pool: dict[str, str] = {}
-        for p, v in sample.items():
-            rel = relative_path(p, line_path)
-            if rel:
-                pool.setdefault(rel, v)
-        cands = _score(pool, f, syns, learned, scope)
+        cands = _score(_pool(tree, "lines", line_path), f, syns, learned, scope)
     else:
-        inside = lambda p: bool(line_path) and p.startswith(line_path + "/")  # noqa: E731
-        cands = _score({p: v for p, v in sample.items() if not inside(p)}, f, syns, learned, scope)
+        cands = _score(_pool(tree, "header", line_path), f, syns, learned, scope)
         if not cands and line_path:
             cands = [Candidate(c.path, c.transforms, round(c.confidence * 0.8, 2),
                                c.reason + " (wartość z pierwszej pozycji)", c.preview)
-                     for c in _score({p: v for p, v in sample.items() if inside(p)}, f, syns, learned, scope)]
+                     for c in _score(_pool(tree, "inside", line_path), f, syns, learned, scope)]
     cands.sort(key=lambda c: -c.confidence)
     return cands[:limit]
 
 
 def draft_rules(tree: SourceTree, synonyms: dict, learned: dict | None = None,
                 threshold: float = 0.5) -> dict:
-    line_path = tree.detect_line_group()
+    line_path = tree.detect_line_group(synonyms, learned_line_paths(learned))
     rules = {"line_path": line_path, "header": {"doc_type": {"constant": "invoice"}}, "lines": {},
              "defaults": {}, "line_defaults": {}}
     for fields, section in ((HEADER_FIELDS, "header"), (LINE_FIELDS, "lines")):
