@@ -25,3 +25,8 @@ services:
 volumes:
   dbdata:
   storage:
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${XP_SUBNET:-10.210.10.0/24}
