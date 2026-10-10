@@ -63,4 +63,13 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             raise SystemExit(1)
         click.echo("Demo zresetowane")
 
+    from flask import render_template
+    from .api import bp as api_bp
+    csrf.exempt(api_bp)
+    app.register_blueprint(api_bp)
+
+    @app.get("/api/docs")
+    def api_docs():
+        return render_template("api_docs.html")
+
     return app

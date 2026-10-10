@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: XML Parser faktur — API
+  version: "1"
+  description: |
+    Wysyłasz fakturę (XML / JSON / CSV), dostajesz znormalizowany JSON.
+    Status `needs_review` oznacza, że operator musi rozwiązać problemy w panelu,
+    a `approved` — że faktura została odczytana automatycznie.
+servers: [{ url: /api/v1 }]
+security: [{ ApiKey: [] }]
+components:
+  securitySchemes:
+    ApiKey: { type: apiKey, in: header, name: X-API-Key }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties: { code: { type: string }, message: { type: string } }
+    Issue:
+      type: object
+      properties:
+        code: { type: string, example: unknown_unit }
+        severity: { type: string, enum: [blocking, warning] }
+        message: { type: string }
+        field: { type: string, nullable: true }
+        line_no: { type: integer, nullable: true }
+        source_value: { type: string, nullable: true }
+        suggestions: { type: array, items: { type: object } }
+    Document:
+      type: object
+      properties:
+        id: { type: integer }
+        status: { type: string, enum: [received, approved, needs_review, duplicate, rejected] }
+        status_label: { type: string }
+        format: { type: string, enum: [xml, json, csv], nullable: true }
+        number: { type: string, nullable: true }
+        supplier: { type: object, nullable: true }
+        template_version: { type: integer, nullable: true }
+        invoice: { type: object, description: Dokument kanoniczny (kwoty jako stringi) }
+        issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
+paths:
+  /documents:
+    post:
+      summary: Wyślij fakturę
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, properties: { file: { type: string, format: binary } } }
+          application/xml: { schema: { type: string } }
+          application/json: { schema: { type: object } }
+          text/csv: { schema: { type: string } }
+      responses:
+        "201": { description: Przyjęto, content: { application/json: { schema: { $ref: "#/components/schemas/Document" } } } }
+        "400": { description: Pusty plik, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: Brak klucza API }
+        "413": { description: Plik za duży }
+    get:
+      summary: Lista dokumentów
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+      responses: { "200": { description: OK } }
+  /documents/{id}:
+    get:
+      summary: Szczegóły dokumentu
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Document" } } } }
+        "404": { description: Nie znaleziono }
+  /documents/{id}/reprocess:
+    post:
+      summary: Przetwórz ponownie aktywną wersją szablonu
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+  /suppliers:
+    get:
+      summary: Lista dostawców
+      responses: { "200": { description: OK } }

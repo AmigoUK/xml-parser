@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8"><title>API · XML Parser</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/swagger-ui.css') }}">
+</head>
+<body>
+  <div id="swagger"></div>
+  <script src="{{ url_for('static', filename='vendor/swagger-ui-bundle.js') }}"></script>
+  <script>
+    SwaggerUIBundle({ url: "{{ url_for('static', filename='openapi.yaml') }}", dom_id: "#swagger" });
+  </script>
+</body>
+</html>
