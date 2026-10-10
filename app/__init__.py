@@ -37,4 +37,25 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def healthz():
         return jsonify(status="ok", version=__version__)
 
+    from . import models  # noqa: F401  (rejestracja modeli dla Alembic)
+    from .services.seed import reset_demo, seed_base, seed_demo
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        return db.session.get(models.User, int(user_id))
+
+    @app.cli.command("seed")
+    def seed_cmd():
+        """Jednostki, konto admin, klucz demo (+ kartoteka demo w DEMO_MODE)."""
+        seed_base()
+        if app.config["DEMO_MODE"]:
+            seed_demo()
+        print("Seed OK")
+
+    @app.cli.command("reset-demo")
+    def reset_demo_cmd():
+        """Czyści dane i przywraca stan demo."""
+        reset_demo()
+        print("Demo zresetowane")
+
     return app
