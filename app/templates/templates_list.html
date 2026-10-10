@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Szablony{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Szablony dostawców</h1>
+<p class="small text-muted">Szablon powstaje automatycznie przy pierwszej fakturze dostawcy. Każda zmiana tworzy nową wersję.</p>
+<table class="table table-sm table-hover bg-white">
+  <thead><tr><th>Nazwa</th><th>Dostawca</th><th>Aktywna wersja</th><th>Dokumenty</th><th class="text-end">Akcje</th></tr></thead>
+  <tbody>{% for r in rows %}
+    <tr><td>{{ r.t.name }}</td><td>{{ r.t.supplier.name if r.t.supplier else '—' }}</td>
+      <td>v{{ r.active.version if r.active else '—' }}</td><td>{{ r.docs }}</td>
+      <td class="text-end text-nowrap">
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('templates_views.detail', tid=r.t.id) }}">Wersje</a>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('templates_views.editor_for_template', tid=r.t.id) }}">Edytuj</a>
+        <form method="post" action="{{ url_for('templates_views.delete', tid=r.t.id) }}" class="d-inline" onsubmit="return confirm('Usunąć szablon?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Usuń</button></form>
+      </td></tr>
+  {% else %}<tr><td colspan="5" class="text-muted">Brak szablonów — wgraj pierwszą fakturę.</td></tr>{% endfor %}</tbody>
+</table>
+{% endblock %}

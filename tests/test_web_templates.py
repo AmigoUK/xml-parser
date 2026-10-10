@@ -1,0 +1,91 @@
+from app.extensions import db
+from app.models import Document, Template
+from app.services.negotiation import resolve
+from app.services.pipeline import ingest
+from tests.conftest import sample_bytes
+
+
+def make_doc_with_template():
+    d = ingest(sample_bytes("alfa-1.xml"), "alfa-1.xml")
+    resolve(d, "create_supplier", {"name": "Hurtownia Alfa", "tax_id": "PL9990000011"}, True, "admin")
+    return d
+
+
+def test_list_detail_and_diff(auth_client):
+    d = make_doc_with_template()
+    resolve(d, "map_field", {"field": "currency", "value": "PLN"}, True, "admin")
+    t = Template.query.one()
+    assert "Hurtownia Alfa" in auth_client.get("/szablony").get_data(as_text=True)
+    v1, v2 = t.versions
+    html = auth_client.get(f"/szablony/{t.id}?a={v1.id}&b={v2.id}").get_data(as_text=True)
+    assert "+" in html and "PLN" in html and "v2" in html
+
+
+def test_restore_creates_new_version(auth_client):
+    d = make_doc_with_template()
+    resolve(d, "map_field", {"field": "currency", "value": "PLN"}, True, "admin")
+    t = Template.query.one()
+    v1 = t.versions[0]
+    auth_client.post(f"/szablony/{t.id}/przywroc/{v1.id}")
+    db.session.refresh(t)
+    assert t.active_version.version == 3 and t.active_version.rules == v1.rules
+    assert "Przywrócono wersję 1" in t.active_version.comment
+
+
+def test_editor_renders_full_screen_without_footer(auth_client):
+    d = make_doc_with_template()
+    html = auth_client.get(f"/szablony/dokument/{d.id}/edytor").get_data(as_text=True)
+    assert "Edytor mapowań" in html and "TowarKodEan128" in html
+    assert "Project &amp; Development" not in html
+
+
+def test_preview_and_save(auth_client):
+    d = make_doc_with_template()
+    rules = Template.query.one().active_version.rules
+    rules = {**rules, "defaults": {"currency": "EUR"}}
+    r = auth_client.post(f"/szablony/dokument/{d.id}/podglad", json={"rules": rules})
+    body = r.get_json()
+    assert r.status_code == 200 and body["invoice"]["currency"] == "EUR"
+    assert all(i["field"] != "currency" for i in body["issues"])
+    r = auth_client.post(f"/szablony/dokument/{d.id}/zapisz", json={"rules": rules, "comment": "Waluta EUR"})
+    assert r.get_json()["ok"] is True
+    t = Template.query.one()
+    assert t.active_version.version == 2 and t.active_version.comment == "Waluta EUR"
+    assert db.session.get(Document, d.id).result["currency"] == "EUR"
+
+
+def test_preview_rejects_bad_rules(auth_client):
+    d = make_doc_with_template()
+    r = auth_client.post(f"/szablony/dokument/{d.id}/podglad", json={"rules": "nie-słownik"})
+    assert r.status_code == 400
+
+
+def test_delete_blocked_when_documents(auth_client):
+    make_doc_with_template()
+    t = Template.query.one()
+    r = auth_client.post(f"/szablony/{t.id}/usun", follow_redirects=True)
+    assert "Nie można usunąć" in r.get_data(as_text=True)
+
+
+def test_save_rejects_unknown_transform_and_bad_regex(auth_client):
+    d = make_doc_with_template()
+    rules = Template.query.one().active_version.rules
+    for bad in (["__import__"], [{"regex_extract": {"pattern": "("}}], [{"regex_extract": {"pattern": "a" * 500}}],
+                [{"trim": 1, "upper": 2}], "trim"):
+        r = auth_client.post(f"/szablony/dokument/{d.id}/zapisz",
+                             json={"rules": {**rules, "header": {"currency": {"path": "x", "transforms": bad}}}})
+        assert r.status_code == 400 and r.get_json()["error"]
+    r = auth_client.post(f"/szablony/dokument/{d.id}/zapisz", json={"rules": {**rules, "header": "x"}, "comment": 5})
+    assert r.status_code == 400
+    assert Template.query.one().active_version.version == 1
+
+
+def test_views_require_login(client):
+    assert client.get("/szablony").status_code in (302, 401)
+    assert client.post("/szablony/dokument/1/zapisz", json={}).status_code in (302, 400, 401)
+
+
+def test_editor_config_json_is_escaped(auth_client):
+    d = make_doc_with_template()
+    html = auth_client.get(f"/szablony/dokument/{d.id}/edytor").get_data(as_text=True)
+    assert "x-data='editor(" in html and "</script>" not in html.split("x-data='editor(")[1].split(")'")[0]
