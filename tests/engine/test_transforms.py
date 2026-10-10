@@ -84,3 +84,10 @@ def test_bad_argument_shapes_raise_transform_error():
     ):
         with pytest.raises(TransformError):
             apply_chain("a b", chain, TransformContext(tree=SourceTree(Node("R"), "xml")))
+
+
+def test_split_empty_sep_and_bad_index():
+    with pytest.raises(TransformError):
+        apply_chain("a b", [{"split": {"sep": "", "index": 0}}])
+    with pytest.raises(TransformError):
+        apply_chain("a b", [{"split": {"index": "x"}}])

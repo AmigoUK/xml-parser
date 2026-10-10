@@ -1,10 +1,11 @@
 """Biała lista transformacji wartości. Każda: (value, arg, ctx) -> str | None."""
 from __future__ import annotations
 
-import regex
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
+
+import regex
 
 from .gs1 import DATE_AIS, GS1Error, gs1_date, parse_gs1
 from .tree import Node, SourceTree
@@ -185,6 +186,6 @@ def apply_chain(value: str | None, chain: list, ctx: TransformContext | None = N
             value = fn(value, arg, ctx)
         except TransformError:
             raise
-        except (AttributeError, TypeError, IndexError, KeyError) as exc:
+        except (ValueError, AttributeError, TypeError, IndexError, KeyError) as exc:
             raise TransformError(f"Niepoprawny argument transformacji {name!r}.") from exc
     return value
