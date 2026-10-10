@@ -1,14 +1,23 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
-    image: mariadb:11.4
+    image: mariadb:11.4.13
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Ustaw MARIADB_ROOT_PASSWORD w .env}
       MARIADB_DATABASE: ${MARIADB_DATABASE:-xmlparser}
       MARIADB_USER: ${MARIADB_USER:-xmlparser}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Ustaw MARIADB_PASSWORD w .env}
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     volumes: [dbdata:/var/lib/mysql]
+    mem_limit: ${DB_MEM_LIMIT:-1g}
+    cpus: ${DB_CPUS:-1.0}
+    logging: *logging
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
@@ -20,8 +29,18 @@ services:
     depends_on:
       db: { condition: service_healthy }
     ports:
-      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-5010}:5010"
+      # Domyślnie tylko localhost. Dla dostępu przez Tailscale ustaw APP_BIND=<IP tailscale0>.
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-18506}:5010"
     volumes: [storage:/data/storage]
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    cpus: ${APP_CPUS:-2.0}
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5010/healthz', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 60s
 volumes:
   dbdata:
   storage:

@@ -24,3 +24,6 @@ htmlcov/
 .idea/
 .DS_Store
 .superpowers/
+
+# Kopie zapasowe (dump bazy + storage)
+backups/
