@@ -129,6 +129,42 @@ def editor_for_document(doc_id):
     return _render_editor(doc, current_rules(doc), f"Edytor mapowań — dokument #{doc.id}")
 
 
+def _is_number(v) -> bool:
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, (int, float)):
+        return True
+    if isinstance(v, str):
+        try:
+            float(v.replace(",", "."))
+            return True
+        except ValueError:
+            return False
+    return False
+
+
+def _check_arg(name: str, arg, key: str) -> str | None:
+    if name == "map" and not isinstance(arg, dict):
+        return f"Transformacja 'map' w polu '{key}' wymaga słownika."
+    if name == "convert" and not _is_number(arg):
+        return f"Transformacja 'convert' w polu '{key}' wymaga liczby."
+    if name == "date" and not (isinstance(arg, str) and arg):
+        return f"Transformacja 'date' w polu '{key}' wymaga formatu daty (tekst)."
+    if name == "split":
+        if arg is not None and not isinstance(arg, dict):
+            return f"Transformacja 'split' w polu '{key}' wymaga obiektu (sep, index)."
+        arg = arg or {}
+        if not isinstance(arg.get("sep", " "), str) or isinstance(arg.get("index", 0), bool) \
+                or not isinstance(arg.get("index", 0), int):
+            return f"Transformacja 'split' w polu '{key}': sep musi być tekstem, a index liczbą całkowitą."
+    if name == "concat":
+        if not isinstance(arg, dict) or not isinstance(arg.get("paths", []), list) \
+                or not all(isinstance(x, str) for x in arg.get("paths", [])) \
+                or not isinstance(arg.get("sep", " "), str):
+            return f"Transformacja 'concat' w polu '{key}' wymaga obiektu z listą 'paths' i tekstem 'sep'."
+    return None
+
+
 def validate_rules(rules: dict) -> str | None:
     """Zwraca polski komunikat błędu albo None, gdy reguły są poprawne (biała lista transformacji, limity regex)."""
     if rules.get("line_path") is not None and not isinstance(rules["line_path"], str):
@@ -159,6 +195,9 @@ def validate_rules(rules: dict) -> str | None:
                     return f"Niepoprawny krok transformacji w polu '{key}'."
                 if name not in REGISTRY:
                     return f"Nieznana transformacja '{name}' w polu '{key}'."
+                msg = _check_arg(name, arg, key)
+                if msg:
+                    return msg
                 if name == "regex_extract":
                     pattern = arg.get("pattern", "") if isinstance(arg, dict) else None
                     if not isinstance(pattern, str):
@@ -214,6 +253,12 @@ def save(doc_id):
     raw_comment = payload.get("comment")
     comment = (raw_comment.strip() if isinstance(raw_comment, str) else "") or "Zmiana w edytorze mapowań"
     comment = comment[:500]
+    try:  # próba na sucho: wyjątek = 400 i nic nie zapisujemy (błędy transformacji to zwykłe issues)
+        apply_template(load_tree(doc), rules, DbLookups(), doc.supplier_id, doc.overrides or {})
+    except (ReaderError, OSError):
+        return jsonify(error="Nie można odczytać pliku źródłowego dokumentu."), 400
+    except Exception:  # noqa: BLE001
+        return jsonify(error="Reguły nie dają się zastosować do tego dokumentu."), 400
     if doc.template_id:
         v = new_version(db.session.get(Template, doc.template_id), rules, current_user.email, comment)
         audit("edit", "template", doc.template_id, {"version": v.version, "comment": comment})

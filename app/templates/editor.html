@@ -12,7 +12,7 @@
   <div class="row g-0 flex-grow-1" style="min-height:0">
     <div class="col-3 border-end overflow-auto p-2 bg-white">
       <div class="small text-muted mb-1">1. Kliknij element w pliku</div>
-      <template x-for="r in cfg.rows" :key="r.path + r.depth">
+      <template x-for="(r, idx) in cfg.rows" :key="idx">
         <div class="tree-row" :style="`padding-left:${r.depth*12}px; cursor:pointer`"
              :class="{'bg-primary-subtle': selected === r.path, 'fw-semibold': cfg.groups.includes(r.path)}"
              @click="selected = r.path" :title="r.path">

@@ -89,3 +89,37 @@ def test_editor_config_json_is_escaped(auth_client):
     d = make_doc_with_template()
     html = auth_client.get(f"/szablony/dokument/{d.id}/edytor").get_data(as_text=True)
     assert "x-data='editor(" in html and "</script>" not in html.split("x-data='editor(")[1].split(")'")[0]
+
+
+def test_save_rejects_bad_transform_args(auth_client):
+    d = make_doc_with_template()
+    rules = Template.query.one().active_version.rules
+    for bad in ([{"map": 5}], [{"convert": "x"}], [{"split": {"index": "a"}}], [{"concat": 3}], [{"date": 4}]):
+        r = auth_client.post(f"/szablony/dokument/{d.id}/zapisz",
+                             json={"rules": {**rules, "header": {"currency": {"path": "x", "transforms": bad}}}})
+        assert r.status_code == 400, bad
+    assert len(Template.query.one().versions) == 1
+
+
+def test_csrf_enforced_on_json_endpoints(app, auth_client):
+    d = make_doc_with_template()
+    rules = Template.query.one().active_version.rules
+    app.config["WTF_CSRF_ENABLED"] = True
+    url = f"/szablony/dokument/{d.id}/podglad"
+    assert auth_client.post(url, json={"rules": rules}).status_code == 400
+    import re
+    page = auth_client.get(f"/szablony/dokument/{d.id}/edytor").get_data(as_text=True)
+    token = re.search(r'name="csrf-token" content="([^"]+)"', page).group(1)
+    assert auth_client.post(url, json={"rules": rules}, headers={"X-CSRFToken": token}).status_code == 200
+
+
+def test_editor_escapes_hostile_value(auth_client):
+    hostile = "'</script><img src=x onerror=alert(1)>"
+    raw = sample_bytes("alfa-1.xml").decode()
+    import re
+    m = re.search(r">([^<>\s][^<>]*)</", raw[raw.index("<", raw.index("?>") + 2):])
+    raw = raw.replace(m.group(0), f">{hostile.replace('<', '&lt;').replace('>', '&gt;')}</", 1)
+    d = ingest(raw.encode(), "alfa-x.xml")
+    html = auth_client.get(f"/szablony/dokument/{d.id}/edytor").get_data(as_text=True)
+    assert hostile not in html and "<img src=x" not in html
+    assert "\\u003c/script\\u003e" in html
