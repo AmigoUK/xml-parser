@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import struct
 from functools import lru_cache
 from pathlib import Path
 
@@ -30,6 +31,10 @@ INTEGRATION_EXAMPLES = [  # (język bloku kodu, tytuł, plik)
     ("bash", "Powłoka — curl i jq", "integracja.sh"),
 ]
 SAMPLE_RESPONSE_FILE = "odpowiedz-zatwierdzona.json"
+
+# Zrzuty ekranu w tematach Pomocy (makro help/_shot.html) — te same pliki, co w README.
+SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent / "static" / "screenshots"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 QUICK_START = [
     ("Zaloguj się", "Panel wymaga konta; tryb demo pokazuje e-mail konta na stronie „O demo”."),
@@ -115,6 +120,24 @@ def integration_examples(api_base: str) -> list[dict]:
     return [{"lang": lang, "title": title, "file": name,
              "code": _example_text(name).replace(API_BASE_MARK, api_base).rstrip("\n")}
             for lang, title, name in INTEGRATION_EXAMPLES]
+
+
+# Globalna funkcja szablonów, a nie zmienna z context processora: makro help/_shot.html jest importowane bez
+# „with context”, a taki import widzi tylko globale Jinja.
+@bp.app_template_global()
+@lru_cache(maxsize=64)
+def screenshot_size(file: str) -> tuple[int, int] | None:
+    """(szerokość, wysokość) pliku PNG z app/static/screenshots/ odczytane z nagłówka IHDR — atrybuty width/height
+    obrazka rezerwują miejsce przed doczytaniem (loading="lazy") i układ nie skacze. None, gdy pliku nie ma
+    albo nie jest PNG (strona ma się wyrenderować bez wymiarów, nie wywrócić)."""
+    try:
+        header = (SCREENSHOTS_DIR / file).read_bytes()[:24]
+    except OSError:
+        return None
+    if len(header) < 24 or not header.startswith(PNG_SIGNATURE) or header[12:16] != b"IHDR":
+        return None
+    width, height = struct.unpack(">II", header[16:24])
+    return width, height
 
 
 def _neighbours(slug: str):

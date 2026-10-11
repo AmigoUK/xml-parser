@@ -8,7 +8,7 @@ Każda pozycja faktury powinna wskazywać towar z **naszej kartoteki** (pole `pr
 
 Towar ma **indeks** (unikalny, maks. 64 znaki), nazwę (maks. 255 znaków), opcjonalny GTIN/EAN i jednostkę. GTIN jest sprawdzany (cyfra kontrolna, długość) i zapisywany jako 14 cyfr. Przy dodawaniu towaru z negocjacji podpowiadany jest kolejny wolny indeks `TOW-nnnn` (gdy wpisany indeks jest zajęty, nadawany jest kolejny wolny). Towaru użytego w dokumentach, mającego mapowania lub przeliczniki nie można usunąć.
 
-![Kartoteka towarów demo: indeks, nazwa, GTIN i jednostka (JM) każdego towaru; „Import CSV” i „Dodaj” w prawym górnym rogu.](../../app/static/screenshots/06-kartoteka.png)
+![Tabela kartoteki towarów z kolumnami indeks, nazwa, GTIN i jednostka](../../app/static/screenshots/06-kartoteka.png)
 
 *Kartoteka towarów demo: indeks, nazwa, GTIN i jednostka (JM) każdego towaru; „Import CSV” i „Dodaj” w prawym górnym rogu.*
 

@@ -34,13 +34,16 @@ def _markdown(html: str) -> str:
 
 
 def test_figure_exported_as_repo_image_with_caption():
-    """Zrzut z Pomocy: obrazek ze ścieżką względną do pliku w repo (GitHub ją renderuje) i podpis kursywą pod nim;
-    link wokół obrazka (pełny rozmiar w panelu) nie powiela adresu."""
+    """Zrzut z Pomocy (HTML jak w help/_shot.html): obrazek z atrybutu alt (innego niż podpis) ze ścieżką względną do
+    pliku w repo (GitHub ją renderuje) i podpis kursywą pod nim; link wokół obrazka (pełny rozmiar w panelu) nie powiela
+    adresu, a wskazówka „w nowej karcie” dla czytnika ekranu (span.visually-hidden) nie trafia do Markdown."""
     src = "/static/screenshots/02-pulpit.png"
-    md = _markdown(f'<p>Tekst.</p><figure class="help-shot"><a href="{src}" target="_blank" rel="noopener">'
-                   f'<img src="{src}" alt="Pulpit po nauczeniu [alfa]" class="img-fluid"></a>'
+    md = _markdown(f'<p>Tekst.</p><figure class="help-shot"><a href="{src}" target="_blank" rel="noopener" '
+                   'title="Pełny rozmiar — otwiera się w nowej karcie">'
+                   f'<img src="{src}" alt="Pulpit: liczniki statusów" width="1400" height="900" class="img-fluid">'
+                   '<span class="visually-hidden"> (pełny rozmiar otwiera się w nowej karcie)</span></a>'
                    '<figcaption class="small">Pulpit po nauczeniu [alfa]</figcaption></figure><p>Dalej.</p>')
-    assert md == ("Tekst.\n\n![Pulpit po nauczeniu \\[alfa\\]](../../app/static/screenshots/02-pulpit.png)\n\n"
+    assert md == ("Tekst.\n\n![Pulpit: liczniki statusów](../../app/static/screenshots/02-pulpit.png)\n\n"
                   "*Pulpit po nauczeniu \\[alfa\\]*\n\nDalej.\n")
     assert (COMMITTED / "../../app/static/screenshots/02-pulpit.png").resolve().is_file()
 

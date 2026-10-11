@@ -112,8 +112,10 @@ def _image(el) -> str:
 
 
 def _only_image(el) -> bool:
-    """Link, którego jedyną treścią jest obrazek (podgląd zrzutu otwierający pełny rozmiar)."""
-    children = [ch for ch in el if isinstance(ch.tag, str)]
+    """Link, którego jedyną treścią jest obrazek (podgląd zrzutu otwierający pełny rozmiar). Ukryta wskazówka dla
+    czytnika ekranu (span.visually-hidden, np. „otwiera się w nowej karcie”) nie liczy się — w Markdown nie ma jej po co
+    powtarzać."""
+    children = [ch for ch in el if isinstance(ch.tag, str) and "visually-hidden" not in (ch.get("class") or "").split()]
     return (len(children) == 1 and children[0].tag == "img" and not (el.text or "").strip()
             and not (children[0].tail or "").strip())
 

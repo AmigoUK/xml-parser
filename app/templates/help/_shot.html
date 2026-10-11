@@ -1,9 +1,11 @@
 {# Zrzut ekranu w temacie Pomocy. Pliki: app/static/screenshots/ (tools/screenshots.py) — to samo źródło co README.
-   Podgląd ma ograniczoną wysokość (app.css), kliknięcie otwiera pełny obraz w nowej karcie. Podpis służy też za alt. #}
-{% macro shot(file, caption) -%}
+   alt opisuje, co widać (czytnik ekranu), caption to podpis pod obrazkiem — celowo różne teksty. width/height z nagłówka PNG
+   rezerwują miejsce przy loading="lazy". full=True: bez przycinania do 30rem (np. pionowy diagram). #}
+{% macro shot(file, caption, alt, full=False) -%}
 {%- set src = url_for('static', filename='screenshots/' ~ file) -%}
-<figure class="help-shot">
-  <a href="{{ src }}" target="_blank" rel="noopener"><img src="{{ src }}" alt="{{ caption }}" class="img-fluid border rounded" loading="lazy"></a>
+{%- set size = screenshot_size(file) -%}
+<figure class="help-shot{% if full %} help-shot-full{% endif %}">
+  <a href="{{ src }}" target="_blank" rel="noopener" title="Pełny rozmiar — otwiera się w nowej karcie"><img src="{{ src }}" alt="{{ alt }}"{% if size %} width="{{ size[0] }}" height="{{ size[1] }}"{% endif %} class="img-fluid border rounded" loading="lazy"><span class="visually-hidden"> (pełny rozmiar otwiera się w nowej karcie)</span></a>
   <figcaption class="small text-muted mt-1">{{ caption }}</figcaption>
 </figure>
 {%- endmacro %}

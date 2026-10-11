@@ -12,7 +12,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 TOOL = ROOT / "tools" / "screenshots.py"
 SCREENSHOTS = ROOT / "app" / "static" / "screenshots"
-NOT_SCREENSHOTS = {"diagram-przetwarzania"}  # renderowany z Mermaid (docs/screenshots/*.mmd), nie zrzut ekranu
+# diagramy renderowane z Mermaid (docs/screenshots/*.mmd), nie zrzuty ekranu
+NOT_SCREENSHOTS = {"diagram-przetwarzania", "diagram-przetwarzania-td"}
 
 
 @pytest.fixture

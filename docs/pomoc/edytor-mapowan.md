@@ -6,7 +6,7 @@ Edytor mapowań to pełnoekranowy widok do ręcznej edycji reguł szablonu na pr
 
 ## Układ
 
-![Edytor mapowań dokumentu gamma-ubl.xml: po lewej drzewo pliku, w środku pola z przypisanymi ścieżkami, wartościami domyślnymi i podpowiedziami z procentem pewności, po prawej podgląd problemów i wyniku.](../../app/static/screenshots/05-edytor-mapowan.png)
+![Edytor mapowań w trzech kolumnach: drzewo pliku, pola docelowe z podpowiedziami, podgląd problemów i wyniku](../../app/static/screenshots/05-edytor-mapowan.png)
 
 *Edytor mapowań dokumentu gamma-ubl.xml: po lewej drzewo pliku, w środku pola z przypisanymi ścieżkami, wartościami domyślnymi i podpowiedziami z procentem pewności, po prawej podgląd problemów i wyniku.*
 

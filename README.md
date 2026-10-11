@@ -37,7 +37,7 @@ Bez LLM: deterministyczne reguły i transformacje z białej listy.
 
 ![Przetwarzanie faktury: plik → format i drzewo → rozpoznanie dostawcy → szablon → walidacja → zatwierdzona albo do wyjaśnienia; negocjacja w panelu wraca do szablonu](app/static/screenshots/diagram-przetwarzania.png)
 
-<sub>Źródło diagramu (Mermaid): [`docs/screenshots/diagram-przetwarzania.mmd`](docs/screenshots/diagram-przetwarzania.mmd). Pomoc w panelu („Jak to działa”) pokazuje ten sam obrazek: [`app/static/screenshots/diagram-przetwarzania.png`](app/static/screenshots/diagram-przetwarzania.png).</sub>
+<sub>Źródło diagramu (Mermaid): [`docs/screenshots/diagram-przetwarzania.mmd`](docs/screenshots/diagram-przetwarzania.mmd). Pomoc w panelu („Jak to działa”) pokazuje wariant pionowy: [`app/static/screenshots/diagram-przetwarzania-td.png`](app/static/screenshots/diagram-przetwarzania-td.png).</sub>
 
 Szczegóły krok po kroku: [docs/pomoc/jak-to-dziala.md](docs/pomoc/jak-to-dziala.md).
 
@@ -168,13 +168,18 @@ python tools/screenshots.py --only 08-pomoc 11-api-docs # wybrane zrzuty; --port
 ```
 
 Playwright może mieć osobny venv (`/ścieżka/pw-venv/bin/python tools/screenshots.py`) — serwer aplikacji i tak działa
-w podprocesie z `.venv/bin/python` (albo z interpretera podanego w `--app-python`). Diagram `diagram-przetwarzania.png`
-nie jest zrzutem: Mermaid CLI renderuje go ze źródła `docs/screenshots/diagram-przetwarzania.mmd`, które ma ustawienia
+w podprocesie z `.venv/bin/python` (albo z interpretera podanego w `--app-python`). Diagramy `diagram-przetwarzania.png`
+(poziomy, w README) i `diagram-przetwarzania-td.png` (pionowy) nie są zrzutami: Mermaid CLI renderuje je ze źródeł
+`docs/screenshots/diagram-przetwarzania.mmd` i `docs/screenshots/diagram-przetwarzania-td.mmd`, które mają ustawienia
 renderu w nagłówku (Mermaid 11.4.1, skala 2):
 
 ```bash
 npx -y -p @mermaid-js/mermaid-cli@11.4.2 -p mermaid@11.4.1 mmdc -i docs/screenshots/diagram-przetwarzania.mmd -o app/static/screenshots/diagram-przetwarzania.png -s 2 -b white
+npx -y -p @mermaid-js/mermaid-cli@11.4.2 -p mermaid@11.4.1 mmdc -i docs/screenshots/diagram-przetwarzania-td.mmd -o app/static/screenshots/diagram-przetwarzania-td.png -s 2 -b white
 ```
+
+Pomoc w panelu pokazuje wariant pionowy (`diagram-przetwarzania-td.png`), czytelny w wąskiej kolumnie; README zostaje
+przy poziomym.
 
 ## Dane prywatne
 

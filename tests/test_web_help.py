@@ -1,6 +1,7 @@
 """Sekcja „Pomoc”: strony publiczne, integracja z panelem, spójność rejestrów z kodem źródłowym."""
 import json
 import re
+import struct
 from pathlib import Path
 
 import pytest
@@ -113,9 +114,11 @@ def test_issue_card_link_only_for_registered_code(app):
 
 # --- zrzuty ekranu ---
 
+SCREENSHOTS_DIR = ROOT / "app" / "static" / "screenshots"
+
 # temat → zrzuty z app/static/screenshots/ w kolejności na stronie (tools/screenshots.py; diagram renderowany z Mermaid)
 HELP_SHOTS = {
-    "jak-to-dziala": ["diagram-przetwarzania.png", "02-pulpit.png"],
+    "jak-to-dziala": ["diagram-przetwarzania-td.png", "02-pulpit.png"],
     "pierwsza-faktura": ["03-kolejka.png", "04-dokument.png"],
     "edytor-mapowan": ["05-edytor-mapowan.png"],
     "szablony": ["10-szablony.png"],
@@ -133,18 +136,67 @@ def _shots(html: str) -> list:
     return [f for f in figures if "help-shot" in (f.get("class") or "").split()]
 
 
+def _png_size(name: str) -> tuple[int, int]:
+    header = (SCREENSHOTS_DIR / name).read_bytes()[:24]
+    return struct.unpack(">II", header[16:24])
+
+
 @pytest.mark.parametrize("slug, files", HELP_SHOTS.items())
 def test_topic_screenshots_with_captions(client, slug, files):
-    """Zrzut to figure.help-shot: podgląd z alt równym podpisowi, link do pełnego obrazu w nowej karcie, podpis."""
+    """Zrzut to figure.help-shot: obrazek z wymiarami pliku (bez skoku układu) i własnym alt różnym od podpisu,
+    link do pełnego obrazu w nowej karcie z wskazówką także dla czytnika ekranu, podpis."""
     figures = _shots(client.get(f"/pomoc/{slug}").get_data(as_text=True))
     assert [f.xpath(".//img/@src")[0].rsplit("/", 1)[-1] for f in figures] == files
-    for f in figures:
+    for f, name in zip(figures, files):
         (img,), (link,), (caption,) = f.xpath(".//img"), f.xpath(".//a"), f.xpath(".//figcaption")
         text = " ".join(caption.text_content().split())
-        assert text and img.get("alt") == text, slug
+        assert text and img.get("alt") and img.get("alt") != text, name  # alt opisuje obrazek, podpis go omawia
+        assert (int(img.get("width")), int(img.get("height"))) == _png_size(name), name
         assert img.get("src").startswith("/static/screenshots/") and link.get("href") == img.get("src")
         assert link.get("target") == "_blank" and link.get("rel") == "noopener"
+        assert "nowej karcie" in link.get("title"), name
+        hints = link.xpath('./span[contains(@class, "visually-hidden")]')  # wskazówka dla czytnika ekranu w linku
+        assert len(hints) == 1 and "nowej karcie" in hints[0].text_content(), name
         assert "img-fluid" in img.get("class").split() and img.get("loading") == "lazy"
+        assert ("help-shot-full" in f.get("class").split()) == (name == "diagram-przetwarzania-td.png"), name
+
+
+def test_screenshot_size_reads_png_header_and_tolerates_missing_file(app):
+    from app.web.help import screenshot_size
+    assert screenshot_size("02-pulpit.png") == _png_size("02-pulpit.png")
+    assert screenshot_size("nie-ma-takiego.png") is None
+
+
+def test_screenshot_size_ignores_files_that_are_not_png(app, monkeypatch, tmp_path):
+    """Plik, który nie jest pełnym PNG (urwany, bez sygnatury, bez bloku IHDR), daje None — strona bez wymiarów."""
+    from app.web import help as help_module
+    signature, ihdr = b"\x89PNG\r\n\x1a\n", b"\x00\x00\x00\x0dIHDR"
+    files = {
+        "ok.png": (SCREENSHOTS_DIR / "02-pulpit.png").read_bytes(),
+        "urwany.png": signature + ihdr,                         # przed wymiarami
+        "bez-sygnatury.png": b"\x00" * 8 + ihdr + b"\x00" * 8,  # blok IHDR, ale to nie PNG
+        "bez-ihdr.png": signature + b"\x00" * 16,               # sygnatura PNG, ale inny pierwszy blok
+        "tekst.png": b"to nie jest obraz, tylko tekst dluzszy niz dwadziescia cztery bajty",
+    }
+    for name, data in files.items():
+        (tmp_path / name).write_bytes(data)
+    monkeypatch.setattr(help_module, "SCREENSHOTS_DIR", tmp_path)
+    help_module.screenshot_size.cache_clear()  # wyniki są pamiętane po nazwie pliku
+    try:
+        assert help_module.screenshot_size("ok.png") == _png_size("02-pulpit.png")
+        for name in set(files) - {"ok.png"}:
+            assert help_module.screenshot_size(name) is None, name
+    finally:
+        help_module.screenshot_size.cache_clear()
+
+
+def test_shot_macro_without_file_renders_without_dimensions(app):
+    """Brakujący plik zrzutu nie wywraca strony: obrazek bez width/height, reszta figury jak zwykle."""
+    with app.test_request_context():
+        html = app.jinja_env.from_string(
+            '{% from "help/_shot.html" import shot %}{{ shot("nie-ma.png", "Podpis.", "Opis obrazka") }}').render()
+    assert 'alt="Opis obrazka"' in html and "width=" not in html and "height=" not in html
+    assert "<figcaption" in html and "Podpis." in html
 
 
 def test_topics_without_screenshots(client):

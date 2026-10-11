@@ -4,7 +4,7 @@
 
 REST API v1 pozwala innym systemom wysyłać faktury i odbierać wynik w formacie kanonicznym (JSON). Pełna specyfikacja: dokumentacja interaktywna (Swagger) (`/api/docs`) i plik [openapi.yaml](../../app/static/openapi.yaml). Adres bazowy tej instancji: `http://localhost:18506/api/v1`.
 
-![Dokumentacja interaktywna (/api/docs, Swagger UI): endpointy REST API v1 z opisem parametrów i odpowiedzi; przycisk „Authorize” pozwala wpisać klucz API wysyłany w nagłówku X-API-Key.](../../app/static/screenshots/11-api-docs.png)
+![Swagger UI z listą endpointów REST API v1](../../app/static/screenshots/11-api-docs.png)
 
 *Dokumentacja interaktywna (/api/docs, Swagger UI): endpointy REST API v1 z opisem parametrów i odpowiedzi; przycisk „Authorize” pozwala wpisać klucz API wysyłany w nagłówku X-API-Key.*
 

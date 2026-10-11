@@ -22,4 +22,5 @@ body.full-screen main.editor-main { padding: 0; height: 100vh; overflow: hidden;
 /* zrzuty ekranu w Pomocy: podgląd wycięty od góry (zrzuty całostronicowe są wysokie), pełny obraz po kliknięciu */
 .help-shot { margin: 1rem 0 1.5rem; }
 .help-shot a { cursor: zoom-in; }
-.help-shot img { width: 100%; max-height: 30rem; object-fit: cover; object-position: top; background: #fff; }
+.help-shot img { width: 100%; height: auto; max-height: 30rem; object-fit: cover; object-position: top; background: #fff; }
+.help-shot-full img { max-height: none; object-fit: contain; }

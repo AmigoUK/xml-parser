@@ -6,7 +6,7 @@ Parser zamienia fakturę strukturalną dowolnego dostawcy na jeden **dokument ka
 
 ## Krok po kroku
 
-![Przebieg przetwarzania: plik XML, JSON lub CSV → wykrycie formatu i drzewo ścieżek → rozpoznanie dostawcy (NIP/VAT lub odcisk) → szablon → walidacja → „Zatwierdzona” albo „Do wyjaśnienia”; negocjacja w panelu z „zapamiętaj w szablonie” wraca do szablonu.](../../app/static/screenshots/diagram-przetwarzania.png)
+![Schemat blokowy: plik, wykrycie formatu, rozpoznanie dostawcy, szablon, walidacja, zatwierdzona albo do wyjaśnienia](../../app/static/screenshots/diagram-przetwarzania-td.png)
 
 *Przebieg przetwarzania: plik XML, JSON lub CSV → wykrycie formatu i drzewo ścieżek → rozpoznanie dostawcy (NIP/VAT lub odcisk) → szablon → walidacja → „Zatwierdzona” albo „Do wyjaśnienia”; negocjacja w panelu z „zapamiętaj w szablonie” wraca do szablonu.*
 
@@ -29,6 +29,6 @@ System nie zgaduje w tle — uczy się wyłącznie z decyzji operatora. Gdy rozw
 
 Reguły zapisane w szablonach podpowiadają też ścieżki dla *nowych* dostawców o podobnej strukturze plików. Bez zaznaczenia decyzja dotyczy **tylko tej faktury**.
 
-![Pulpit po nauczeniu na alfa-1.xml: alfa-2.xml tego samego dostawcy zatwierdzona automatycznie, a pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) czekają ze statusem „Do wyjaśnienia”.](../../app/static/screenshots/02-pulpit.png)
+![Pulpit panelu: liczniki statusów dokumentów i lista ostatnich dokumentów](../../app/static/screenshots/02-pulpit.png)
 
 *Pulpit po nauczeniu na alfa-1.xml: alfa-2.xml tego samego dostawcy zatwierdzona automatycznie, a pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) czekają ze statusem „Do wyjaśnienia”.*
