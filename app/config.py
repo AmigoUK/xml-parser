@@ -3,7 +3,10 @@ from datetime import timedelta
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Testy i skrypty narzędziowe ustawiają PYTHON_DOTENV_DISABLED=1, żeby lokalny .env nie wpływał na wynik
+# (wyłączają te same wartości co w samym python-dotenv: 1, true, t, yes, y).
+if os.environ.get("PYTHON_DOTENV_DISABLED", "").casefold() not in {"1", "true", "t", "yes", "y"}:
+    load_dotenv()
 
 DEV_SECRET_KEY = "dev-only-change-me"
 PLACEHOLDER_SECRET_KEYS = {DEV_SECRET_KEY, "zmien-mnie", ""}

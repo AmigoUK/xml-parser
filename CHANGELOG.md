@@ -32,6 +32,7 @@ Przed wdrożeniem przeczytaj wpis **BREAKING** w sekcji „Changed”. Kolejnoś
 ### Fixed
 - `GET /api/v1/documents?since=…` uwzględnia strefę czasową: `+02:00`, `-05:00` i `Z` są przeliczane na UTC (dotąd strefa była pomijana przy porównaniu z czasem w bazie, więc `since=2026-10-11T08:00:00+02:00` przesuwał okno o 2 godziny); czas bez strefy i sama data nadal oznaczają UTC. Błędna wartość (także poza zakresem dat po przeliczeniu) daje 400 z przykładami formatu. Parsowanie i formatowanie czasu API jest we wspólnym module `app/api/timeutil.py`.
 - Data ze strefą bez godziny (`2026-10-11+02:00`, `2026-10-11-05:00` — forma `xs:date` z UBL) w `since` i `updated_since` daje 400 zamiast cichego przesunięcia okna: `datetime.fromisoformat` przyjmuje dowolny znak jako separator daty i czasu, więc strefa była czytana jako godzina (`2026-10-11+02:00` → 02:00 UTC zamiast północy w strefie +02:00). Po dacie musi stać `T` (także `t`) albo spacja i czas, a separator spacją wymaga pełnego `HH:MM:SS` — dlatego także surowy `+` w adresie (`2026-10-11+02:00` po dekodowaniu to `2026-10-11 02:00`) daje 400.
+- Testy nie wczytują już lokalnego `.env` (`PYTHON_DOTENV_DISABLED=1` w `tests/conftest.py`; ta sama zmienna wyłącza `load_dotenv()` w narzędziach), więc lokalne ustawienia (np. `TRUSTED_PROXY_COUNT`) nie zmieniają wyniku testów.
 
 ## [0.4.0] — 2026-10-11
 

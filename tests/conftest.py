@@ -1,9 +1,15 @@
-from pathlib import Path
+import os
 
-import pytest
+# Lokalny .env nie może zmieniać wyniku testów (np. TRUSTED_PROXY_COUNT): app/config.py pomija load_dotenv() przy
+# PYTHON_DOTENV_DISABLED=1, a conftest ładuje się przed modułami testów — więc przed pierwszym importem aplikacji.
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 
-from app import create_app
-from app.extensions import db
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+
+from app import create_app  # noqa: E402
+from app.extensions import db  # noqa: E402
 
 
 @pytest.fixture

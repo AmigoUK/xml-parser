@@ -9,6 +9,7 @@ Dzięki temu wersja w repozytorium nie rozjeżdża się z panelem; pilnuje tego 
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -298,8 +299,7 @@ def html_to_markdown(root) -> str:
 
 def _build_client():
     """Aplikacja w pamięci z konfiguracją domyślną; .env nie jest wczytywany."""
-    import dotenv
-    dotenv.load_dotenv = lambda *a, **k: False  # przed pierwszym importem app.config
+    os.environ["PYTHON_DOTENV_DISABLED"] = "1"  # przed pierwszym importem app.config (pomija wtedy load_dotenv)
     from app import create_app
     from app.extensions import db
 
