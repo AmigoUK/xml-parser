@@ -5,7 +5,7 @@ oznacza UTC, a odpowiedzi zawsze niosą jawne UTC (`…Z`). Czysty moduł pomocn
 """
 from datetime import datetime, timezone
 
-DATE_TIME_SEPARATORS = "Tt "  # po dacie YYYY-MM-DD: T (także t) albo spacja, a za nim czas
+DATE_TIME_SEPARATORS = "Tt "  # po dacie YYYY-MM-DD (albo YYYYMMDD): T (także t) albo spacja, a za nim czas
 
 
 def _to_naive_utc(dt: datetime) -> datetime:
@@ -24,11 +24,13 @@ def parse_api_datetime(text: str) -> datetime:
 
     ValueError dla:
     - błędnego formatu, pustego tekstu i nie-stringa;
-    - daty `YYYY-MM-DD`, po której stoi inny znak niż `T`, `t` lub spacja — w tym daty ze strefą bez godziny
-      (`2026-10-11+02:00`, `2026-10-11-05:00`, forma xs:date z UBL): `datetime.fromisoformat` przyjmuje dowolny
-      znak jako separator daty i czasu, więc przeczytałby strefę jako godzinę (02:00 UTC zamiast północy w +02:00);
-    - separatora spacją bez pełnego czasu `HH:MM:SS` (`2026-10-11 02:00` — tak wygląda `2026-10-11+02:00`
-      wklejone do adresu URL z surowym `+`, który po dekodowaniu jest spacją);
+    - daty `YYYY-MM-DD` (także w formacie podstawowym `YYYYMMDD`), po której stoi inny znak niż `T`, `t` lub spacja —
+      w tym daty ze strefą bez godziny (`2026-10-11+02:00`, `2026-10-11-05:00`, forma xs:date z UBL, także w formacie
+      podstawowym `20261011+0200`): `datetime.fromisoformat` przyjmuje dowolny znak jako separator daty i czasu,
+      więc przeczytałby strefę jako godzinę (02:00 UTC zamiast północy w +02:00);
+    - separatora spacją bez pełnego czasu `HH:MM:SS` albo — w formacie podstawowym — `HHMMSS` (`2026-10-11 02:00`
+      i `20261011 0200` — tak wygląda `2026-10-11+02:00` i `20261011+0200` wklejone do adresu URL z surowym `+`,
+      który po dekodowaniu jest spacją);
     - czasu, który po przeliczeniu na UTC wypada poza zakres dat (przed rokiem 1 albo po roku 9999).
 
     Pozostały zakres akceptowanych zapisów (np. format podstawowy `20261011T080000+0200`) wyznacza
@@ -41,6 +43,11 @@ def parse_api_datetime(text: str) -> datetime:
             raise ValueError("Po dacie musi stać „T” albo spacja i czas — sama data nie może mieć strefy.")
         if text[10] == " " and len(text) < 19:  # 19 = len("2026-10-11 06:00:00")
             raise ValueError("Po spacji musi stać pełny czas HH:MM:SS (surowy „+” w adresie URL to spacja).")
+    if len(text) > 8 and text[:8].isdigit():  # format podstawowy YYYYMMDD: te same zasady separatora po dacie
+        if text[8] not in DATE_TIME_SEPARATORS:
+            raise ValueError("Po dacie musi stać „T” albo spacja i czas — sama data nie może mieć strefy.")
+        if text[8] == " " and len(text) < 15:  # 15 = len("20261011 060000")
+            raise ValueError("Po spacji musi stać pełny czas HHMMSS (surowy „+” w adresie URL to spacja).")
     parsed = datetime.fromisoformat(text)  # ValueError: zły format, pusty tekst, data spoza kalendarza
     try:
         return _to_naive_utc(parsed)

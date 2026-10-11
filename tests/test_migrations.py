@@ -4,8 +4,8 @@ i 2eff54106035 (indeks listy synchronizacji API: documents (api_key_id, updated_
 
 Migracje uruchamiane w podprocesie (`flask db upgrade`) — konfiguracja logowania Alembica nie wpływa na
 resztę testów; dane wstawiane surowym SQL w schemacie z rewizji b7f3c2a91d40. Testy oznaczone `needs_mariadb`
-działają na prawdziwej, pustej bazie MariaDB (`TEST_MARIADB_URL`, nazwa bazy musi zawierać „test”); bez niej są
-pomijane."""
+działają na prawdziwej, pustej bazie MariaDB (`TEST_MARIADB_URL`, nazwa bazy musi zawierać człon „test”); lokalnie bez
+niej są pomijane, a w CI (`CI=true`) jej brak to błąd. Fixtury i strażnik nazwy bazy: `tests/conftest.py`."""
 import json
 import os
 import sqlite3
@@ -24,6 +24,7 @@ from sqlalchemy.schema import CreateTable
 
 from app.extensions import db
 from app.models import Document
+from tests.conftest import mariadb_url, needs_mariadb, require_test_database  # noqa: F401 (fixture)
 
 ROOT = Path(__file__).resolve().parent.parent
 BEFORE = "b7f3c2a91d40"
@@ -174,11 +175,6 @@ def test_downgrade_and_upgrade_again(old_db, tmp_path):
 
 # ---------------------------------------------------------------- mikrosekundy w czasie dokumentów (86ccf8021da9)
 
-needs_mariadb = pytest.mark.skipif(
-    not os.environ.get("TEST_MARIADB_URL"),
-    reason="test na prawdziwej MariaDB — ustaw TEST_MARIADB_URL (pusta baza testowa)")
-
-
 @pytest.mark.parametrize("dialect", [mysql.dialect(), MariaDBDialect()], ids=["mysql", "mariadb"])
 def test_document_times_have_microseconds_on_mysql_family(dialect):
     ddl = str(CreateTable(Document.__table__).compile(dialect=dialect))
@@ -263,48 +259,26 @@ def test_sync_index_migration_on_sqlite(tmp_path):
     _check_sync_index_migration(lambda *args: _ok(_flask(db_path, tmp_path, *args)), f"sqlite:///{db_path}")
 
 
-# ---- prawdziwa MariaDB (pusta baza testowa z TEST_MARIADB_URL; bez niej testy są pomijane)
-
-def _wipe_mariadb(url):
-    """Czyści bazę testową: tabele aplikacji (jak `db.drop_all()`) oraz `alembic_version`."""
-    engine = sa.create_engine(url)
-    try:
-        with engine.begin() as conn:
-            conn.execute(sa.text("SET FOREIGN_KEY_CHECKS = 0"))  # kolejność kasowania bez znaczenia, także po awarii
-            db.metadata.drop_all(conn)
-            conn.execute(sa.text("DROP TABLE IF EXISTS alembic_version"))
-    finally:
-        engine.dispose()
-
-
-def _require_test_database(url):
-    """Testy czyszczą całą bazę — odmowa, gdy nazwa bazy w URL nie zawiera „test” (np. omyłkowo wskazana baza demo)."""
-    if "test" not in (sa.make_url(url).database or "").lower():
-        pytest.fail("TEST_MARIADB_URL musi wskazywać bazę testową (nazwa bazy zawiera „test”) — testy MariaDB "
-                    "usuwają wszystkie tabele.", pytrace=False)
-
+# ---- prawdziwa MariaDB (pusta baza testowa z TEST_MARIADB_URL; fixtury i strażnik: tests/conftest.py)
 
 @pytest.mark.parametrize("url", [
     pytest.param("mysql+pymysql://u:p@db:3306/xmlparser?charset=utf8mb4", id="baza-demo"),
     pytest.param("mysql+pymysql://tester:test@test-db:3306/xmlparser", id="test-tylko-poza-nazwa-bazy"),
     pytest.param("mysql+pymysql://u:p@db:3306", id="bez-nazwy-bazy"),
+    pytest.param("mysql+pymysql://u:p@db:3306/latest", id="test-jako-fragment-slowa"),
 ])
 def test_mariadb_tests_refuse_database_without_test_in_name(url):
     with pytest.raises(pytest.fail.Exception):
-        _require_test_database(url)
+        require_test_database(url)
 
 
-def test_mariadb_tests_accept_test_database():
-    _require_test_database("mysql+pymysql://root:pw@127.0.0.1:18519/xp_test?charset=utf8mb4")
-
-
-@pytest.fixture
-def mariadb_url():
-    url = os.environ["TEST_MARIADB_URL"]
-    _require_test_database(url)
-    _wipe_mariadb(url)
-    yield url
-    _wipe_mariadb(url)  # także po nieudanym teście
+@pytest.mark.parametrize("url", [
+    pytest.param("mysql+pymysql://root:pw@127.0.0.1:18519/xp_test?charset=utf8mb4", id="test-po-podkresleniu"),
+    pytest.param("mysql+pymysql://root:pw@127.0.0.1:18519/test-db", id="test-przed-myslnikiem"),
+    pytest.param("mysql+pymysql://root:pw@127.0.0.1:18519/test", id="sama-nazwa-test"),
+])
+def test_mariadb_tests_accept_test_database(url):
+    require_test_database(url)
 
 
 def _time_precision(engine):

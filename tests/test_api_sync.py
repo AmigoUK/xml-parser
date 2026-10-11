@@ -2,13 +2,15 @@
 `next_cursor` = pozycja ostatniego zwróconego dokumentu, dostawa „co najmniej raz”. Kursor: `app/api/cursor.py`.
 
 Gdy liczy się tylko czas zmiany i liczba dokumentów, dokumenty są wstawiane wprost do bazy (bez `ingest` — 1 203
-plików byłoby zbyt wolne). Dane fikcyjne. Test oznaczony `needs_mariadb` działa na prawdziwej, pustej bazie MariaDB
-(`TEST_MARIADB_URL`); bez niej jest pomijany."""
+plików byłoby zbyt wolne). Dane fikcyjne. Testy oznaczone `needs_mariadb` działają na prawdziwej, pustej bazie MariaDB
+(`TEST_MARIADB_URL`); lokalnie bez niej są pomijane, a w CI (`CI=true`) jej brak to błąd."""
 import base64
 import re
 from datetime import datetime, timedelta
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy import event
 
 from app.api.cursor import decode_cursor, encode_cursor
 from app.api.timeutil import format_api_datetime
@@ -16,9 +18,8 @@ from app.extensions import db
 from app.models import Document, utcnow
 from app.services.apikeys import create_key, verify_key
 from app.services.pipeline import touch
-from tests.conftest import sample_bytes
+from tests.conftest import mariadb_url, needs_mariadb, sample_bytes  # noqa: F401 (fixture)
 from tests.test_learning import resolve_with_top_suggestions
-from tests.test_migrations import mariadb_url, needs_mariadb  # noqa: F401 (fixture)
 
 KEY = {"X-API-Key": "xp_test_demo_key"}
 BASE = datetime(2026, 1, 1, 6, 0, 0)  # wcześniej niż „teraz” — touch() zawsze przesuwa dokument na koniec
@@ -101,6 +102,15 @@ def test_three_pages_return_every_document_once_in_keyset_order(demo_key, client
     assert bodies[-1]["next_cursor"] is None
     # każdy z 1 203 dokładnie raz, rosnąco po (updated_at, id) — tutaj czas rośnie razem z id
     assert [i for b in bodies for i in _ids(b["items"])] == ids
+
+
+def test_full_last_page_ends_with_null_cursor(client, demo_key):
+    """4 dokumenty i limit=2: dwie pełne strony, na drugiej next_cursor = null — bez trzeciej, pustej strony
+    (serwer pobiera limit+1 i widzi, że za drugą stroną nic nie ma)."""
+    _bulk(demo_key, 4)
+    bodies = _pages(client, updated_since=SINCE_BASE, limit=2)
+    assert [len(b["items"]) for b in bodies] == [2, 2]
+    assert bodies[0]["next_cursor"] is not None and bodies[1]["next_cursor"] is None
 
 
 def test_document_changed_while_paging_is_delivered_again_and_none_is_lost(demo_key, client):
@@ -245,7 +255,7 @@ def test_decode_rejects_bad_cursor_with_value_error(text):
         decode_cursor(text)
 
 
-# --- prawdziwa MariaDB (pusta baza testowa z TEST_MARIADB_URL; bez niej test jest pomijany) -------------------------
+# --- prawdziwa MariaDB (pusta baza testowa z TEST_MARIADB_URL; lokalnie bez niej testy są pomijane) -----------------
 
 @needs_mariadb
 def test_keyset_pages_writes_from_the_same_second_on_mariadb(mariadb_url, tmp_path):
@@ -274,5 +284,69 @@ def test_keyset_pages_writes_from_the_same_second_on_mariadb(mariadb_url, tmp_pa
             keys = [(item["updated_at"], item["id"]) for item in listed]
             assert keys == sorted(keys)
         finally:
+            db.session.remove()  # zwolnienie transakcji — inaczej DROP TABLE w fixture czeka na blokadę metadanych
+            db.engine.dispose()
+
+
+@needs_mariadb
+def test_sync_query_uses_index_without_filesort_on_mariadb(mariadb_url, tmp_path):
+    """Zapytanie listy synchronizacji, w każdym wariancie parametrów, czyta indeks `ix_documents_api_key_updated`
+    zakresem i nie sortuje plikiem. Test bierze SQL, który wykonało API, i robi z niego EXPLAIN — na 600 dokumentach
+    dwóch kluczy, po `ANALYZE TABLE`. Gdy optymalizator wybierze inny plan (inny indeks, skan tabeli, filesort),
+    asercja podaje wariant i cały wiersz EXPLAIN."""
+    from app import create_app
+    from app.services.seed import seed_base, seed_demo
+
+    app = create_app({"TESTING": True, "SECRET_KEY": "x", "SQLALCHEMY_DATABASE_URI": mariadb_url,
+                      "STORAGE_DIR": str(tmp_path / "s"), "DEMO_MODE": True, "DEMO_API_KEY": "xp_test_demo_key",
+                      "ADMIN_PASSWORD": ""})
+    captured = []  # (statement, parameters) zapytań o listę dokumentów, w kolejności wykonania
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if "FROM documents" in statement and "ORDER BY" in statement:
+            captured.append((statement, parameters))
+
+    with app.app_context():
+        event.listen(db.engine, "before_cursor_execute", capture)
+        try:
+            db.create_all()
+            seed_base()
+            seed_demo()
+            key_id = verify_key("xp_test_demo_key").id
+            other, _ = create_key("inny", "xp_other_key_000000000000")
+            db.session.commit()
+            other_id = other.id
+            db.session.execute(sa.insert(Document), [
+                {"source": "api", "filename": f"d{i}.xml", "sha256": f"{i:064x}",
+                 "status": "approved" if i % 3 else "rejected", "api_key_id": key_id if i % 4 else other_id,
+                 "issues": [], "overrides": {}, "created_at": BASE, "updated_at": BASE + timedelta(seconds=i)}
+                for i in range(600)])
+            db.session.commit()
+            with db.engine.begin() as conn:
+                conn.execute(sa.text("ANALYZE TABLE documents"))  # statystyki indeksów jak na działającej bazie
+
+            client = app.test_client()
+            since = format_api_datetime(BASE + timedelta(seconds=300))  # druga połowa: 300 dokumentów, 225 klucza demo
+            cursor = _page(client, updated_since=since, limit=100)["next_cursor"]  # pozycja po pierwszej setce
+            variants = {
+                "bez-status": {"updated_since": since, "limit": 100},
+                "status": {"updated_since": since, "status": "approved", "limit": 100},
+                "cursor": {"updated_since": since, "cursor": cursor, "limit": 100},
+                "cursor-status": {"updated_since": since, "cursor": cursor, "status": "approved", "limit": 100},
+            }
+            for name, params in variants.items():
+                captured.clear()
+                _page(client, **params)  # każda odpowiedź 200, klucz demo
+                assert captured, f"{name}: API nie wykonało zapytania o listę dokumentów"
+                statement, parameters = captured[-1]
+                with db.engine.connect() as conn:
+                    plan = [dict(r) for r in conn.exec_driver_sql("EXPLAIN " + statement, parameters).mappings()]
+                assert len(plan) == 1 and plan[0]["table"] == "documents", f"{name}: {plan}"
+                row = plan[0]
+                assert row["key"] == "ix_documents_api_key_updated", f"{name}: {row}"
+                assert row["type"] == "range", f"{name}: {row}"
+                assert "Using filesort" not in (row["Extra"] or ""), f"{name}: {row}"
+        finally:
+            event.remove(db.engine, "before_cursor_execute", capture)
             db.session.remove()  # zwolnienie transakcji — inaczej DROP TABLE w fixture czeka na blokadę metadanych
             db.engine.dispose()

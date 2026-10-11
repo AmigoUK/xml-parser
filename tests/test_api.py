@@ -71,7 +71,9 @@ def test_list_filter_and_reprocess(seeded, client):
 def test_suppliers_and_docs_page(seeded, client):
     assert client.get("/api/v1/suppliers", headers=KEY).get_json() == {"items": []}
     assert client.get("/api/docs").status_code == 200
-    assert client.get("/static/openapi.yaml").status_code == 200
+    r = client.get("/static/openapi.yaml")
+    assert r.status_code == 200
+    r.close()  # send_file trzyma otwarty plik, dopóki odpowiedź nie zostanie zamknięta (inaczej ResourceWarning)
 
 
 def test_too_large_http_limit_json(seeded, app, client):

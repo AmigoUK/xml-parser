@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+- CI uruchamia testy na prawdziwej MariaDB 11.4 (tymczasowy kontener); fixtury MariaDB w `tests/conftest.py`; strażnik nazwy bazy testowej dopasowuje człon `test`; test planu zapytania synchronizacji (EXPLAIN: indeks `ix_documents_api_key_updated`, bez filesort).
+
+### Fixed
+- API: zapis daty w formacie podstawowym ze strefą bez godziny (`20261011+0200`) jest odrzucany (400) zamiast czytany jako godzina 02:00 UTC — tak jak `2026-10-11+02:00`.
 
 ## [0.5.0] — 2026-10-11
 

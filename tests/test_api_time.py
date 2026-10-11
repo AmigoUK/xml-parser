@@ -89,6 +89,22 @@ def test_parse_rejects_bad_input_with_value_error(bad):
         parse_api_datetime(bad)
 
 
+@pytest.mark.parametrize("text", [
+    pytest.param("20261011+0200", id="podstawowy-data-ze-strefa-bez-godziny"),
+    pytest.param("20261011 0200", id="podstawowy-spacja-bez-pelnego-czasu"),
+])
+def test_basic_format_date_with_zone_or_short_time_is_rejected(text):
+    """Format podstawowy ISO (bez myślników) podlega tym samym zasadom co rozszerzony: po dacie T albo spacja
+    i pełny czas — inaczej fromisoformat przeczytałby strefę `+0200` jako godzinę 02:00 UTC."""
+    with pytest.raises(ValueError):
+        parse_api_datetime(text)
+
+
+def test_basic_format_with_time_and_zone_still_accepted():
+    assert parse_api_datetime("20261011T080000+0200") == datetime(2026, 10, 11, 6, 0, 0)
+    assert parse_api_datetime("20261011") == datetime(2026, 10, 11, 0, 0, 0)
+
+
 # --- format_api_datetime --------------------------------------------------------------------------------------
 
 def test_format_none_is_none():
@@ -160,18 +176,26 @@ def _listed_ids(client, **params):
 @pytest.mark.parametrize("since, expected", [
     # 08:00+02:00 == 01:00-05:00 == 06:00Z, więc okno zaczyna się o 06:00 UTC
     # (kryterium planu: since=T+02:00 zwraca to samo co since=T-2h bez strefy)
-    pytest.param("2026-10-11T08:00:00+02:00", ["after", "boundary"], id="plus-2h"),
-    pytest.param("2026-10-11T01:00:00-05:00", ["after", "boundary"], id="minus-5h"),
+    pytest.param("2026-10-11T08:00:00+02:00", ["after", "boundary"], id="strefa-plus-2h"),
+    pytest.param("2026-10-11T01:00:00-05:00", ["after", "boundary"], id="strefa-minus-5h"),
     pytest.param("2026-10-11T06:00:00", ["after", "boundary"], id="bez-strefy"),
-    pytest.param("2026-10-11T06:00:00Z", ["after", "boundary"], id="Z"),
+    pytest.param("2026-10-11T06:00:00Z", ["after", "boundary"], id="strefa-z"),
     # naiwny = 08:00 UTC, czyli po ostatnim dokumencie: puste. W kontraście do plus-2h dowodzi, że przesunięcie
     # strefy jest uwzględniane, a nie pomijane (pominięte dałoby dla +02:00 też 08:00, czyli puste).
     pytest.param("2026-10-11T08:00:00", [], id="bez-strefy-08-utc-puste"),
     pytest.param("2026-10-11", ["after", "boundary", "before"], id="sama-data-polnoc-utc"),
 ])
 def test_since_converts_zone_to_utc(docs, client, since, expected):
-    # porównanie list (nie zbiorów) pilnuje też, że sortowanie malejąco po id zostało bez zmian
+    # listy, nie zbiory: porównanie sprawdza też kolejność — jak w trybie zwykłym listy, czyli malejąco po id
+    # (order_by(Document.id.desc()) w list_documents; w fixture `docs` id rosną razem z created_at)
     assert _listed_ids(client, since=since) == [docs[k] for k in expected]
+
+
+def test_since_basic_format_date_with_zone_is_400(seeded, client):
+    """`20261011+0200` (format podstawowy, poprawnie zakodowane %2B) to data ze strefą bez godziny — 400, a nie okno
+    od 02:00 UTC."""
+    r = client.get("/api/v1/documents?since=20261011%2B0200", headers=KEY)
+    assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request"
 
 
 def test_since_combines_with_limit(docs, client):

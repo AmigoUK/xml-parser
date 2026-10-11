@@ -17,7 +17,21 @@ jobs:
             requirements.txt
             requirements-dev.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest -q
+      - name: MariaDB testowa (tymczasowy kontener, jak w docker-compose.yml)
+        run: |
+          docker run -d --name mariadb-test -e MARIADB_ROOT_PASSWORD=ci-root -e MARIADB_DATABASE=xp_test \
+            -p 127.0.0.1:3306:3306 mariadb:11.4.13 \
+            --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+          for i in $(seq 1 60); do
+            docker exec mariadb-test healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          echo "MariaDB nie wystartowała w 60 s" >&2
+          docker logs mariadb-test >&2
+          exit 1
+      - run: pytest -q -rs
+        env:
+          TEST_MARIADB_URL: mysql+pymysql://root:ci-root@127.0.0.1:3306/xp_test?charset=utf8mb4
 
   no-private-files:
     runs-on: ubuntu-latest

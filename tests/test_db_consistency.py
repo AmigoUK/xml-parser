@@ -11,6 +11,7 @@ from app.services import pipeline
 from app.services.negotiation import NegotiationError, resolve
 from app.services.pipeline import ingest, process
 from app.services.storage import get_storage
+from tests.conftest import mariadb_url, needs_mariadb  # noqa: F401 (fixture)
 from tests.test_negotiation_statuses import KEY, TAX, codes, inv, line, supplier  # noqa: F401 (fixture)
 
 OTHER_TAX = "1110000111"
@@ -486,52 +487,49 @@ def test_later_copy_in_other_scope_not_demoted_by_earlier_reprocess(seeded):
     assert db.session.get(Document, b.id).status == "approved"
 
 
-@pytest.mark.skipif(not __import__("os").environ.get("TEST_MARIADB_URL"),
-                    reason="wyścig na prawdziwej MariaDB — ustaw TEST_MARIADB_URL (pusta baza testowa)")
-def test_parallel_ingest_race_on_mariadb(tmp_path):
+@needs_mariadb
+def test_parallel_ingest_race_on_mariadb(mariadb_url, tmp_path):
     """Równoległe przyjęcie tej samej faktury (wątki, osobne transakcje, REPEATABLE READ): jeden żywy."""
-    import os
     import threading
 
     from app import create_app
-    from tests.test_migrations import _require_test_database
-    url = os.environ["TEST_MARIADB_URL"]
-    _require_test_database(url)  # niżej drop_all — tylko na bazie testowej (nazwa bazy zawiera „test”)
-    app = create_app({"TESTING": True, "SECRET_KEY": "x", "SQLALCHEMY_DATABASE_URI": url,
+    app = create_app({"TESTING": True, "SECRET_KEY": "x", "SQLALCHEMY_DATABASE_URI": mariadb_url,
                       "STORAGE_DIR": str(tmp_path / "s"), "DEMO_MODE": True, "ADMIN_PASSWORD": ""})
-    with app.app_context():
-        db.drop_all()
-        db.create_all()
-        from app.services.seed import seed_base, seed_demo
-        seed_base()
-        seed_demo()
-        d = ingest(inv("T/1"), "t1.json")
-        resolve(d, "create_supplier", {"name": "Testowy Dostawca", "tax_id": TAX}, True, "qa")
-    n = 4
-    barrier = threading.Barrier(n)
-    real = pipeline._resolve_duplicate
-
-    def gated(doc, invoice):  # wszyscy po odczytach, przed zapisem klucza — maksymalne nakładanie
-        try:
-            barrier.wait(timeout=20)
-        except threading.BrokenBarrierError:
-            pass
-        return real(doc, invoice)
-    statuses = []
-
-    def worker(i):
-        with app.app_context():
-            try:
-                statuses.append(ingest(inv("RACE/1") + b" " * (i + 1), f"r{i}.json").status)
-            finally:
-                db.session.remove()
-    pipeline._resolve_duplicate = gated
     try:
-        ts = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
-        [t.start() for t in ts]
-        [t.join() for t in ts]
+        with app.app_context():
+            db.create_all()
+            from app.services.seed import seed_base, seed_demo
+            seed_base()
+            seed_demo()
+            d = ingest(inv("T/1"), "t1.json")
+            resolve(d, "create_supplier", {"name": "Testowy Dostawca", "tax_id": TAX}, True, "qa")
+        n = 4
+        barrier = threading.Barrier(n)
+        real = pipeline._resolve_duplicate
+
+        def gated(doc, invoice):  # wszyscy po odczytach, przed zapisem klucza — maksymalne nakładanie
+            try:
+                barrier.wait(timeout=20)
+            except threading.BrokenBarrierError:
+                pass
+            return real(doc, invoice)
+        statuses = []
+
+        def worker(i):
+            with app.app_context():
+                try:
+                    statuses.append(ingest(inv("RACE/1") + b" " * (i + 1), f"r{i}.json").status)
+                finally:
+                    db.session.remove()
+        pipeline._resolve_duplicate = gated
+        try:
+            ts = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+            [t.start() for t in ts]
+            [t.join() for t in ts]
+        finally:
+            pipeline._resolve_duplicate = real
+        assert sorted(statuses) == ["approved"] + ["duplicate"] * (n - 1)
     finally:
-        pipeline._resolve_duplicate = real
-    assert sorted(statuses) == ["approved"] + ["duplicate"] * (n - 1)
-    with app.app_context():
-        db.drop_all()
+        with app.app_context():
+            db.session.remove()  # zwolnienie transakcji — inaczej DROP TABLE w fixture czeka na blokadę metadanych
+            db.engine.dispose()

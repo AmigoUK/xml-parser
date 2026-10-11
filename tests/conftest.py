@@ -7,11 +7,13 @@ os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 # tylko FLASK_SKIP_DOTENV (PYTHON_DOTENV_DISABLED działa wyłącznie na dotenv.load_dotenv).
 os.environ.setdefault("FLASK_SKIP_DOTENV", "1")
 
+import re  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
+import sqlalchemy as sa  # noqa: E402
 
-from app import create_app  # noqa: E402
+from app import create_app, models  # noqa: E402, F401 (models: tabele w db.metadata — potrzebne wipe_mariadb)
 from app.extensions import db  # noqa: E402
 
 
@@ -59,3 +61,46 @@ def seeded(app):
 def auth_client(seeded, client):
     client.post("/login", data={"email": "admin@example.com", "password": "haslo123"})
     return client
+
+
+# ---- prawdziwa MariaDB (pusta baza testowa z TEST_MARIADB_URL)
+
+TEST_MARIADB_URL = os.environ.get("TEST_MARIADB_URL")
+# GitHub Actions ustawia CI=true i uruchamia MariaDB (ci.yml): tam brak TEST_MARIADB_URL to błąd konfiguracji,
+# a nie powód do pominięcia — test ma się wywrócić w fixture mariadb_url, nie zniknąć jako „skipped”.
+needs_mariadb = pytest.mark.skipif(
+    not TEST_MARIADB_URL and not os.environ.get("CI"),
+    reason="test na prawdziwej MariaDB — ustaw TEST_MARIADB_URL (pusta baza testowa)")
+
+
+def require_test_database(url: str) -> None:
+    """Testy czyszczą całą bazę — odmowa, gdy nazwa bazy w URL nie zawiera słowa „test” jako osobnego członu
+    (xp_test, test-db, test — tak; latest, contest, baza demo — nie)."""
+    name = (sa.make_url(url).database or "").lower()
+    if "test" not in re.split(r"[^a-z0-9]+", name):
+        pytest.fail("TEST_MARIADB_URL musi wskazywać bazę testową (nazwa bazy zawiera człon „test”) — testy MariaDB "
+                    "usuwają wszystkie tabele.", pytrace=False)
+
+
+def wipe_mariadb(url: str) -> None:
+    """Czyści bazę testową: tabele aplikacji (jak `db.drop_all()`) oraz `alembic_version`."""
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.text("SET FOREIGN_KEY_CHECKS = 0"))  # kolejność kasowania bez znaczenia, także po awarii
+            db.metadata.drop_all(conn)
+            conn.execute(sa.text("DROP TABLE IF EXISTS alembic_version"))
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture
+def mariadb_url():
+    url = os.environ.get("TEST_MARIADB_URL")
+    if not url:
+        pytest.fail("Brak TEST_MARIADB_URL, a CI=true — w CI testy MariaDB są obowiązkowe "
+                    "(patrz .github/workflows/ci.yml).", pytrace=False)
+    require_test_database(url)
+    wipe_mariadb(url)
+    yield url
+    wipe_mariadb(url)  # także po nieudanym teście
