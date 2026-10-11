@@ -5,6 +5,7 @@
 set -euo pipefail
 BASE="__API_BASE__/api/v1"
 : "${XP_API_KEY:?Ustaw zmienną środowiskową XP_API_KEY}"
+for t in curl jq; do command -v "$t" > /dev/null || { echo "Brak programu $t — zainstaluj go (curl 7.76+, jq 1.6+)." >&2; exit 1; }; done
 DELAY="${DELAY:-5}"          # pierwsza przerwa między odpytaniami (s)
 MAX_WAIT="${MAX_WAIT:-3600}"  # ile najdłużej czekać na operatora (s)
 SYNC_START="1970-01-01T00:00:00Z"  # pierwszy przebieg: pełna synchronizacja (albo data wdrożenia)
@@ -19,7 +20,7 @@ sync_approved() {
   local state="${1:-xp-sync.json}" since cursor="" page doc id status updated_at
   local -a args
   [[ -f "$state" ]] || echo '{"last_sync": null, "seen": {}}' > "$state"
-  jq -e 'type == "object" and (.seen | type == "object")' "$state" > /dev/null 2>&1 \
+  jq -e 'type == "object" and (.seen | type == "object")' "$state" > /dev/null \
     || { echo "Plik stanu $state ma zły format (oczekiwano obiektu z polem seen) — usuń go albo popraw." >&2; return 1; }
   # last_sync − margines (jq liczy w pełnych sekundach — przy 5-minutowym marginesie ułamek nie ma znaczenia)
   since=$(jq -r --argjson m "$SYNC_MARGIN" \

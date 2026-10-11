@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - API: zapis daty w formacie podstawowym ze strefą bez godziny (`20261011+0200`) jest odrzucany (400) zamiast czytany jako godzina 02:00 UTC — tak jak `2026-10-11+02:00`.
 - `tools/screenshots.py`: błąd uruchomienia interpretera serwera albo przeglądarki daje czytelny komunikat i kod wyjścia 2 zamiast tracebacku; testy `server_env()` i trybu `--serve`.
-- Przykład bash: plik stanu o złym kształcie kończy synchronizację czytelnym błędem zamiast cichych błędów `jq`.
+- Przykład bash: brak `curl`/`jq` kończy się czytelnym komunikatem, a plik stanu o złym kształcie — błędem zamiast cichych błędów `jq`.
 
 ## [0.5.0] — 2026-10-11
 
