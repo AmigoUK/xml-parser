@@ -6,7 +6,7 @@
   <code>{{ api_base }}/api/v1</code>.</p>
 <p>Podłączasz własny system? Zacznij od przewodnika
   <a href="{{ url_for('help.topic', slug='integracja') }}">Integracja z własną aplikacją</a> — model działania,
-  odbiór wyniku, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.</p>
+  odbiór wyniku i synchronizacja zmian statusów, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.</p>
 
 <h2 class="h5 mt-4">Klucze API</h2>
 <ul>
@@ -32,17 +32,45 @@
   {{ api_base }}/api/v1/documents</pre>
 <p>Odpowiedź <code>201</code> zawiera dokument: <code>id</code>, <code>status</code>, <code>status_label</code>, <code>format</code>,
   <code>filename</code>, <code>number</code>, <code>issue_date</code>, <code>doc_type</code>, <code>supplier</code>,
-  <code>template_version</code>, <code>created_at</code>, <code>issues_count</code>, <code>invoice</code> (wynik kanoniczny)
-  i <code>issues</code> (problemy). Status <code>approved</code> oznacza fakturę odczytaną automatycznie,
-  <code>needs_review</code> — czekającą na operatora w panelu.</p>
+  <code>template_version</code>, <code>created_at</code>, <code>updated_at</code>, <code>issues_count</code>,
+  <code>invoice</code> (wynik kanoniczny) i <code>issues</code> (problemy). Status <code>approved</code> oznacza fakturę
+  odczytaną automatycznie, <code>needs_review</code> — czekającą na operatora w panelu.</p>
+<p><code>created_at</code> to chwila przyjęcia dokumentu, a <code>updated_at</code> — chwila ostatniej zmiany statusu lub
+  wyniku (przetworzenie, decyzja operatora w panelu, „Odrzuć”, „Przywróć”, <code>reprocess</code>). Oba czasy są
+  w ISO 8601 w UTC z mikrosekundami i <code>Z</code>, np. <code>2026-10-11T06:04:38.312308Z</code>.</p>
 
 <h2 class="h5 mt-4">Lista dokumentów — <code>GET /api/v1/documents</code></h2>
+<p>Lista ma dwa tryby. <strong>Synchronizacja</strong> — zalecana do odbioru zmian statusów, włącza ją parametr
+  <code>updated_since</code> (albo <code>cursor</code>):</p>
 <pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
-  "{{ api_base }}/api/v1/documents?status=approved&amp;since=2026-10-01T00:00:00&amp;limit=50"</pre>
-<p>Filtry (opcjonalne): <code>status</code> (jeden ze statusów:
+  "{{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;status=approved&amp;limit={{ limits.list_max }}"
+# kolejna strona: te same parametry i cursor z pola next_cursor poprzedniej odpowiedzi
+curl -H "X-API-Key: TWÓJ_KLUCZ" \
+  "{{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;status=approved&amp;limit={{ limits.list_max }}&amp;cursor=MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw"</pre>
+<ul>
+  <li><code>updated_since</code> (ISO 8601) — dokumenty zmienione (<code>updated_at</code>) w tej chwili lub później,
+    rosnąco po <code>updated_at</code>, a przy równym czasie po <code>id</code>.</li>
+  <li><code>cursor</code> — wartość <code>next_cursor</code> z poprzedniej odpowiedzi; pozostałe parametry powtórz bez
+    zmian (kursor niesie tylko pozycję ostatniego zwróconego dokumentu).</li>
+  <li>Odpowiedź: <code>{"items": [...], "next_cursor": …}</code>; <code>next_cursor</code> = <code>null</code> oznacza
+    ostatnią stronę. Pełną synchronizację od początku zaczynasz od <code>updated_since=1970-01-01T00:00:00Z</code>.</li>
+  <li>Dostawa „co najmniej raz”: dokument zmieniony w trakcie stronicowania wraca na dalszej stronie, a dokument
+    z <code>updated_at</code> równym <code>updated_since</code> — w kolejnym przebiegu; odrzucaj powtórzenia po
+    <code>id</code> i <code>updated_at</code>. Algorytm z marginesem bezpieczeństwa i gotowy kod:
+    <a href="{{ url_for('help.topic', slug='integracja') }}#odbior">Integracja z własną aplikacją</a>.</li>
+</ul>
+<p><strong>Tryb zwykły</strong> (bez <code>updated_since</code> i <code>cursor</code>) — od najnowszych (malejąco po
+  <code>id</code>), odpowiedź <code>{"items": [...]}</code> bez <code>next_cursor</code> i bez stronicowania:</p>
+<pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
+  "{{ api_base }}/api/v1/documents?status=approved&amp;since=2026-10-01T00:00:00Z&amp;limit=50"</pre>
+<p>Filtry wspólne obu trybów (opcjonalne, łączone warunkiem „i”): <code>status</code> (jeden ze statusów:
   {% for code, label, text in statuses %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %}),
-  <code>since</code> (data ISO 8601 — dokumenty przyjęte od tej chwili), <code>limit</code> (domyślnie {{ limits.list_default }},
-  maks. {{ limits.list_max }}). Wyniki od najnowszych, w polu <code>items</code>, bez <code>invoice</code> i <code>issues</code>.</p>
+  <code>since</code> (ISO 8601 — dokumenty <strong>przyjęte</strong> od tej chwili, po <code>created_at</code>; nie widzi
+  późniejszych zmian statusu), <code>limit</code> (liczba wyników na żądanie: domyślnie {{ limits.list_default }},
+  maks. {{ limits.list_max }}). Czas ze strefą (<code>+02:00</code>, <code>Z</code>) jest przeliczany na UTC, czas bez
+  strefy oznacza UTC, a sama data — północ UTC; znak <code>+</code> w adresie zapisz jako <code>%2B</code>. Pusty
+  parametr (np. <code>updated_since=</code>) oznacza brak parametru. Wyniki są w polu <code>items</code>, bez
+  <code>invoice</code> i <code>issues</code>.</p>
 
 <h2 class="h5 mt-4">Szczegóły dokumentu — <code>GET /api/v1/documents/{id}</code></h2>
 <pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
@@ -69,7 +97,7 @@
     <tr><td>200</td><td>—</td><td>poprawne pobranie lub ponowne przetworzenie</td></tr>
     <tr><td>201</td><td>—</td><td>faktura przyjęta — także gdy wymaga wyjaśnienia, jest duplikatem albo została odrzucona jako nieczytelna (patrz <code>status</code> i <code>issues</code>)</td></tr>
     <tr><td>400</td><td><code>empty_body</code></td><td>pusty plik / pusta treść żądania</td></tr>
-    <tr><td>400</td><td><code>bad_request</code></td><td>zły parametr listy (<code>status</code>, <code>since</code>, <code>limit</code>)</td></tr>
+    <tr><td>400</td><td><code>bad_request</code></td><td>zły parametr listy (<code>status</code>, <code>since</code>, <code>updated_since</code>, <code>limit</code>) albo uszkodzony <code>cursor</code></td></tr>
     <tr><td>401</td><td><code>unauthorized</code></td><td>brak, błędny lub wyłączony klucz API</td></tr>
     <tr><td>404</td><td><code>not_found</code></td><td>brak dokumentu (albo dokument innego klucza) lub nieznany adres</td></tr>
     <tr><td>405</td><td><code>method_not_allowed</code></td><td>metoda niedozwolona dla adresu</td></tr>
@@ -85,13 +113,14 @@
   <li>Plik faktury: maks. {{ limits.max_document }}.</li>
   <li>Pozycji na fakturze: maks. {{ limits.max_lines }} (więcej — dokument odrzucony z problemem <code>too_many_lines</code>).</li>
   <li>Węzłów drzewa: maks. {{ limits.max_tree_nodes }} (więcej — problem <code>unreadable</code>).</li>
-  <li>Lista dokumentów: maks. {{ limits.list_max }} wyników na żądanie.</li>
+  <li>Lista dokumentów: maks. {{ limits.list_max }} wyników na żądanie (w trybie synchronizacji — na stronę).</li>
 </ul>
 
 <h2 class="h5 mt-4">Powiadomienia (webhook)</h2>
-<p>Aplikacja nie wysyła obecnie webhooków. Aby dowiedzieć się o zmianie statusu (np. po rozwiązaniu problemów w panelu),
-  odpytuj <code>GET /api/v1/documents?since=…</code> albo <code>GET /api/v1/documents/{id}</code> — jak robić to bezpiecznie,
-  opisuje <a href="{{ url_for('help.topic', slug='integracja') }}#odbior">Integracja z własną aplikacją</a>.</p>
+<p>Aplikacja nie wysyła obecnie webhooków (planowane w kolejnej wersji). Aby dowiedzieć się o zmianie statusu (np. po
+  rozwiązaniu problemów w panelu), synchronizuj listę <code>GET /api/v1/documents?updated_since=…</code> z kursorem
+  (zalecane) albo odpytuj <code>GET /api/v1/documents/{id}</code> — jak robić to bezpiecznie, opisuje
+  <a href="{{ url_for('help.topic', slug='integracja') }}#odbior">Integracja z własną aplikacją</a>.</p>
 
 <h2 class="h5 mt-4">Stan usługi</h2>
 <p><code>GET {{ api_base }}/healthz</code> (bez klucza) zwraca wersję aplikacji i stan połączenia z bazą; przy awarii bazy — 503.</p>

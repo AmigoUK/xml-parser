@@ -48,7 +48,7 @@ Klucze API, przykłady curl dla każdego endpointu, kody odpowiedzi i limity.
 
 ### [Integracja z własną aplikacją](integracja.md)
 
-Przewodnik krok po kroku: wysyłka, odbiór wyniku, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.
+Przewodnik krok po kroku: wysyłka, odbiór wyniku, synchronizacja zmian statusów, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.
 
 ### [Najczęstsze pytania](faq.md)
 

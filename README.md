@@ -22,6 +22,7 @@ Bez LLM: deterministyczne reguły i transformacje z białej listy.
 | Obszar | Co potrafi |
 |---|---|
 | Wejście | Upload w panelu (drag & drop) lub `POST /api/v1/documents`; XML, JSON, CSV (`;`/`,`, UTF-8 i Windows-1250); wykrywanie formatu po treści |
+| Synchronizacja | przyrostowe pobieranie zmian statusów przez API — `GET /api/v1/documents?updated_since=…` z kursorem `next_cursor` (także faktury zatwierdzone przez operatora później), stronicowanie po `(updated_at, id)`, dostawa „co najmniej raz”; gotowy kod w 4 językach w [przewodniku integracji](docs/pomoc/integracja.md) |
 | Rozpoznanie dostawcy | po NIP/VAT, a gdy go brak — po „odcisku” struktury pliku (podobieństwo ścieżek) |
 | Szablony | mapowanie ścieżka → pole, łańcuchy transformacji, wartości domyślne; wersjonowanie, historia i przywracanie wersji |
 | Transformacje | m.in. `decimal` (przecinek/kropka, tysiące, nawiasy = ujemna), `date`, `regex_extract` z limitem czasu, `map`, `convert`, `negate`, `gs1`, `strip_ai_prefix`, `concat`, `split` (pełna lista w [pomocy](docs/pomoc/edytor-mapowan.md)) |
@@ -51,6 +52,7 @@ Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples
 | ![Kartoteka towarów](docs/screenshots/06-kartoteka.png)<br/>**Kartoteka towarów** | ![Przeliczniki](docs/screenshots/07-przeliczniki.png)<br/>**Przeliczniki jednostek** |
 | ![Pomoc](docs/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](docs/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
 | ![O demo](docs/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](docs/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
+| ![Przewodnik integracji](docs/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | |
 
 ## API w 30 sekund
 
@@ -62,8 +64,17 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" -F file=@demo/samples/alfa-1.xml http://localho
 curl -H "X-API-Key: TWÓJ_KLUCZ" http://localhost:18506/api/v1/documents/1
 curl -H "X-API-Key: TWÓJ_KLUCZ" "http://localhost:18506/api/v1/documents?status=approved"
 curl -X POST -H "X-API-Key: TWÓJ_KLUCZ" http://localhost:18506/api/v1/documents/1/reprocess
+
+# synchronizacja: dokumenty zmienione od podanej chwili (także zatwierdzone później przez operatora),
+# rosnąco po (updated_at, id); kolejna strona: te same parametry + cursor=<next_cursor>, aż next_cursor = null
+curl -H "X-API-Key: TWÓJ_KLUCZ" "http://localhost:18506/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500"
+# → 200 {"items": [{"id": 1, "status": "approved", "updated_at": "2026-10-11T06:04:38.412811Z", ...}], "next_cursor": null}
 ```
 
+Czasy w odpowiedziach (`created_at`, `updated_at`) są w ISO 8601 w UTC z mikrosekundami i `Z`
+(`2026-10-11T06:04:38.312308Z`); parametry czasu przyjmują strefę (`+` w adresie zapisz jako `%2B`).
+Zalecany algorytm synchronizacji (margines 5 min, deduplikacja po `id`) i gotowy kod w Pythonie, PHP,
+JavaScripcie i powłoce: [docs/pomoc/integracja.md](docs/pomoc/integracja.md).
 Pełny opis endpointów, kodów odpowiedzi i limitów: [docs/pomoc/api.md](docs/pomoc/api.md),
 w panelu: `/api/docs` (OpenAPI: [`app/static/openapi.yaml`](app/static/openapi.yaml)).
 

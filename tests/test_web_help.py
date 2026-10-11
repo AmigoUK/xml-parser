@@ -216,6 +216,69 @@ def test_integration_topic_after_api_and_linked(client):
     assert 'href="/pomoc/integracja"' in client.get("/pomoc/api").get_data(as_text=True)
     faq = client.get("/pomoc/faq").get_data(as_text=True)
     assert "Jak podłączyć swoją aplikację?" in faq and 'href="/pomoc/integracja"' in faq
+    assert "Jak dowiedzieć się, że operator zatwierdził fakturę wysłaną przez API?" in faq
+
+
+def _text(html: str) -> str:
+    """Tekst strony z ujednoliconymi odstępami (zdania w szablonach są łamane między wierszami)."""
+    import lxml.html
+    return " ".join(lxml.html.fromstring(html).text_content().split())
+
+
+@pytest.mark.parametrize("path", ["/pomoc/integracja", "/pomoc/api"])
+def test_help_describes_sync_mode_and_time_format(client, path):
+    """Pomoc opisuje tryb synchronizacji listy (v0.5.0) i czas z „Z”, bez ostrzeżeń sprzed v0.5.0."""
+    text = _text(client.get(path).get_data(as_text=True))
+    for term in ("updated_since", "cursor", "next_cursor", "updated_at", "1970-01-01T00:00:00Z", "%2B",
+                 "2026-10-11T06:04:38.312308Z"):
+        assert term in text, term
+    assert "jest pomijane" not in text  # dawniej: przesunięcie strefy w since „jest pomijane”
+    assert "UTC bez strefy" not in text and "Nie ma stronicowania" not in text
+
+
+def test_integration_recommends_sync_with_margin_and_keeps_history_note(client):
+    text = _text(client.get(INTEGRATION).get_data(as_text=True))
+    assert "Sposób B (zalecany do synchronizacji): updated_since + cursor" in text
+    assert "last_sync − 5 min" in text and "co najmniej raz" in text
+    assert "Przed v0.5.0 lista filtrowała tylko po czasie przyjęcia (since)" in text
+    assert "planowane w kolejnej wersji" in text
+
+
+def test_integration_examples_sync_in_four_languages(client):
+    """Każdy przykład ma synchronizację przyrostową z marginesem; PHP i Node wypisują id oryginału duplikatu."""
+    blocks = _code_blocks(client.get(INTEGRATION).get_data(as_text=True))
+    code = {"python": blocks["python"][0], "php": blocks["php"][0], "javascript": blocks["javascript"][0],
+            "bash": blocks["bash"][-1]}
+    sync = {"python": "def sync_approved(state_path", "php": "function sync_approved(string $statePath",
+            "javascript": "async function syncApproved(statePath", "bash": "sync_approved() {"}
+    margin = {"python": "timedelta(minutes=5)", "php": "'-5 minutes'", "javascript": "5 * 60 * 1000",
+              "bash": "SYNC_MARGIN=300"}
+    for lang, text in code.items():
+        for term in (sync[lang], margin[lang], "--sync", "updated_since", "next_cursor", "1970-01-01T00:00:00Z"):
+            assert term in text, (lang, term)
+    assert "original_id($doc)" in code["php"] and "originalId(doc)" in code["javascript"]
+
+
+def test_openapi_matches_documents_api(seeded, client):
+    """openapi.yaml wymienia dokładnie pola i parametry, które ma prawdziwe API listy i dokumentu."""
+    import io
+
+    import yaml
+    from tests.conftest import sample_bytes
+    spec = yaml.safe_load((ROOT / "app" / "static" / "openapi.yaml").read_text(encoding="utf-8"))
+    schemas = spec["components"]["schemas"]
+    key = {"X-API-Key": "xp_test_demo_key"}
+    created = client.post("/api/v1/documents", headers=key,
+                          data={"file": (io.BytesIO(sample_bytes("alfa-1.xml")), "alfa-1.xml")}).get_json()
+    synced = client.get("/api/v1/documents", headers=key,
+                        query_string={"updated_since": "1970-01-01T00:00:00Z"}).get_json()
+    summary = set(schemas["DocumentSummary"]["properties"])
+    assert summary == set(synced["items"][0])
+    assert summary | set(schemas["Document"]["allOf"][1]["properties"]) == set(created)
+    assert set(schemas["DocumentList"]["properties"]) == set(synced) == {"items", "next_cursor"}
+    listing = spec["paths"]["/documents"]["get"]
+    assert {p["name"] for p in listing["parameters"]} == {"status", "since", "updated_since", "cursor", "limit"}
+    assert "400" in listing["responses"]
 
 
 def test_integration_examples_four_languages_with_request_host(client):

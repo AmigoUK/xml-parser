@@ -9,6 +9,15 @@ info:
 
     Dokumenty są ograniczone do klucza API: widzisz, pobierasz i przetwarzasz ponownie
     tylko dokumenty wysłane tym samym kluczem (cudze zwracają 404).
+
+    **Czas:** w odpowiedziach (`created_at`, `updated_at`) zawsze ISO 8601 w UTC z mikrosekundami
+    i `Z`, np. `2026-10-11T06:04:38.312308Z`. Parametry czasu (`since`, `updated_since`) przyjmują
+    strefę (`+02:00`, `Z` — przeliczaną na UTC); czas bez strefy oznacza UTC, a sama data
+    (`2026-10-11`) — północ UTC. Znak `+` w adresie URL zapisz jako `%2B`.
+
+    **Synchronizacja zmian statusów:** `GET /documents?updated_since=…&status=approved&limit=500`,
+    a kolejne strony z tymi samymi parametrami i `cursor=<next_cursor>`, aż `next_cursor` = `null`.
+    Opis algorytmu: Pomoc → „Integracja z własną aplikacją”.
 servers: [{ url: /api/v1 }]
 security: [{ ApiKey: [] }]
 components:
@@ -20,7 +29,9 @@ components:
       properties:
         error:
           type: object
-          properties: { code: { type: string }, message: { type: string } }
+          properties:
+            code: { type: string, example: bad_request }
+            message: { type: string }
     Issue:
       type: object
       properties:
@@ -81,18 +92,62 @@ components:
         totals: { type: object }
         lines: { type: array, items: { $ref: "#/components/schemas/InvoiceLine" } }
       additionalProperties: true
-    Document:
+    DocumentSummary:
       type: object
+      description: Dokument bez wyniku i problemów — pozycja listy `GET /documents`.
       properties:
-        id: { type: integer }
-        status: { type: string, enum: [received, approved, needs_review, duplicate, rejected] }
-        status_label: { type: string }
-        format: { type: string, enum: [xml, json, csv], nullable: true }
-        number: { type: string, nullable: true }
-        supplier: { type: object, nullable: true }
-        template_version: { type: integer, nullable: true }
-        invoice: { allOf: [{ $ref: "#/components/schemas/Invoice" }], nullable: true }
-        issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
+        id: { type: integer, example: 2 }
+        status: { type: string, enum: [received, approved, needs_review, duplicate, rejected], example: approved }
+        status_label: { type: string, example: Zatwierdzona }
+        format: { type: string, enum: [xml, json, csv], nullable: true, example: xml }
+        filename: { type: string, nullable: true, example: alfa-2.xml }
+        number: { type: string, nullable: true, example: FA/2026/10/002 }
+        issue_date: { type: string, format: date, nullable: true, example: "2026-10-10" }
+        doc_type: { type: string, nullable: true, example: invoice }
+        supplier:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer, example: 1 }
+            name: { type: string, example: Hurtownia Alfa Sp. z o.o. }
+        template_version: { type: integer, nullable: true, example: 2 }
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-10-11T06:04:38.312308Z"
+          description: Chwila przyjęcia dokumentu (UTC, mikrosekundy, `Z`) — po niej filtruje `since`.
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-10-11T06:04:38.412811Z"
+          description: |
+            Chwila ostatniej zmiany statusu lub wyniku (UTC, mikrosekundy, `Z`) — po niej filtruje
+            `updated_since`. Zmienia ją każde przetworzenie (przyjęcie, decyzja operatora w panelu,
+            „Przetwórz ponownie”, `reprocess`) — także gdy wynik wyszedł taki sam — oraz „Odrzuć”
+            i „Przywróć” w panelu. Samo pobranie dokumentu jej nie zmienia.
+        issues_count: { type: integer, example: 0 }
+    Document:
+      description: Dokument z wynikiem kanonicznym (`invoice`) i listą problemów (`issues`).
+      allOf:
+        - { $ref: "#/components/schemas/DocumentSummary" }
+        - type: object
+          properties:
+            invoice: { allOf: [{ $ref: "#/components/schemas/Invoice" }], nullable: true }
+            issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
+    DocumentList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/DocumentSummary" } }
+        next_cursor:
+          type: string
+          nullable: true
+          example: MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw
+          description: |
+            Tylko w trybie synchronizacji (żądanie z `updated_since` lub `cursor`) — w trybie zwykłym
+            pola nie ma. Nieprzezroczysty token pozycji ostatniego zwróconego dokumentu: kolejną stronę
+            pobierasz z tymi samymi `status`, `since`, `updated_since` i `limit` oraz `cursor=<next_cursor>`.
+            `null` = to ostatnia strona.
 paths:
   /documents:
     post:
@@ -110,12 +165,55 @@ paths:
         "401": { description: Brak klucza API }
         "413": { description: Plik za duży }
     get:
-      summary: Lista dokumentów
+      summary: Lista dokumentów i synchronizacja zmian
+      description: |
+        **Tryb zwykły** (bez `updated_since` i `cursor`): od najnowszych (malejąco po `id`), odpowiedź
+        `{"items": [...]}` bez `next_cursor`, bez stronicowania.
+
+        **Tryb synchronizacji** (z `updated_since` lub `cursor`): dokumenty o `updated_at` ≥ `updated_since`,
+        rosnąco po (`updated_at`, `id`), odpowiedź `{"items": [...], "next_cursor": "…" | null}`. Dostawa
+        „co najmniej raz”: dokument zmieniony w trakcie stronicowania wraca na dalszej stronie z nowym
+        `updated_at`, a dokument z `updated_at` równym `updated_since` wraca w kolejnym przebiegu —
+        odrzucaj powtórzenia po `id` i `updated_at`.
+
+        `status` i `since` działają w obu trybach (łączone warunkiem „i”). Pusty parametr (np. `updated_since=`)
+        oznacza brak parametru.
       parameters:
-        - { name: status, in: query, schema: { type: string } }
-        - { name: since, in: query, schema: { type: string, format: date-time } }
-        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
-      responses: { "200": { description: OK } }
+        - name: status
+          in: query
+          description: Tylko dokumenty w tym statusie.
+          schema: { type: string, enum: [received, approved, needs_review, duplicate, rejected] }
+        - name: since
+          in: query
+          description: |
+            Dokumenty **przyjęte** (`created_at`) w tej chwili lub później. Filtruje po czasie przyjęcia,
+            więc nie widzi późniejszych zmian statusu — do synchronizacji używaj `updated_since`.
+          schema: { type: string, format: date-time, example: "2026-10-01T00:00:00Z" }
+        - name: updated_since
+          in: query
+          description: |
+            Włącza tryb synchronizacji: dokumenty zmienione (`updated_at`) w tej chwili lub później.
+            Pełna synchronizacja od początku: `1970-01-01T00:00:00Z`.
+          schema: { type: string, format: date-time, example: "2026-10-11T06:00:00Z" }
+        - name: cursor
+          in: query
+          description: |
+            Kolejna strona trybu synchronizacji: wartość `next_cursor` z poprzedniej odpowiedzi (sam `cursor`
+            też włącza ten tryb). Kursor niesie tylko pozycję — powtórz pozostałe parametry; zakres zawsze
+            wyznacza klucz API z nagłówka.
+          schema: { type: string }
+        - name: limit
+          in: query
+          description: Liczba wyników (na stronę) — większe wartości są obcinane do 500, mniejsze od 1 podnoszone do 1.
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Dokumenty klucza API (bez `invoice` i `issues`).
+          content: { application/json: { schema: { $ref: "#/components/schemas/DocumentList" } } }
+        "400":
+          description: Zły parametr (`status`, `since`, `updated_since`, `limit`) albo uszkodzony `cursor` — kod `bad_request`.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "401": { description: Brak klucza API }
   /documents/{id}:
     get:
       summary: Szczegóły dokumentu

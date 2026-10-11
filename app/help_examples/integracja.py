@@ -1,13 +1,21 @@
-"""Wysyłka faktury do parsera i odbiór dokumentu kanonicznego (Python 3.9+, pakiet requests)."""
+"""Wysyłka faktury do parsera, odbiór dokumentu kanonicznego i synchronizacja zmian (Python 3.9+, pakiet requests).
+
+Użycie:  python3 faktura.py faktura.xml       — wysyłka i odbiór wyniku (sposób A)
+         python3 faktura.py --sync [stan.json] — jeden przebieg synchronizacji (sposób B)
+"""
+import json
 import os
 import sys
 import time
+from datetime import datetime, timedelta
 
 import requests
 
 BASE_URL = "__API_BASE__/api/v1"
 API_KEY = os.environ["XP_API_KEY"]  # klucz trzymaj w zmiennej środowiskowej, nie w kodzie
 FINAL = {"approved", "duplicate", "rejected"}  # statusy, na których kończymy odpytywanie
+SYNC_START = "1970-01-01T00:00:00Z"  # pierwszy przebieg: pełna synchronizacja (albo data wdrożenia integracji)
+SYNC_MARGIN = timedelta(minutes=5)  # zapas na zmiany zatwierdzone w bazie w innej kolejności niż ich updated_at
 
 
 class ApiError(Exception):
@@ -70,7 +78,50 @@ def wait_for_result(doc_id, first_delay=5, max_delay=300, timeout=3600):
         delay = min(delay * 2, max_delay)
 
 
+def _minus_margin(api_time):
+    """'2026-10-11T06:04:38.312308Z' minus SYNC_MARGIN, w tym samym formacie (fromisoformat < 3.11 nie zna 'Z')."""
+    t = datetime.fromisoformat(api_time.replace("Z", "+00:00")) - SYNC_MARGIN
+    return t.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def sync_approved(state_path="xp-sync.json"):
+    """Jeden przebieg synchronizacji: dokumenty zatwierdzone (także przez operatora w panelu) od ostatniego
+    przebiegu. Stan w pliku: last_sync = największy odebrany updated_at, seen = przetworzone pary id → updated_at.
+    Dostawa „co najmniej raz” — pary już przetworzone są pomijane, import ma być idempotentny (po id)."""
+    try:
+        with open(state_path, encoding="utf-8") as fh:
+            state = json.load(fh)
+    except FileNotFoundError:
+        state = {"last_sync": None, "seen": {}}
+    since = _minus_margin(state["last_sync"]) if state["last_sync"] else SYNC_START
+    params = {"updated_since": since, "status": "approved", "limit": 500}
+    while True:
+        page = _call("GET", "/documents", params=params)
+        for item in page["items"]:
+            if state["seen"].get(str(item["id"])) == item["updated_at"]:
+                continue  # już przetworzony: powtórka z marginesu albo z granicy updated_since
+            doc = _call("GET", f"/documents/{item['id']}")  # pełny wynik z invoice
+            invoice = doc["invoice"] or {}
+            print(f"#{doc['id']} {doc['status']} {item['updated_at']} {invoice.get('number') or ''}")
+            # tu zaimportuj doc["invoice"] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
+            state["seen"][str(item["id"])] = item["updated_at"]
+            # czas zawsze w formacie API (6 cyfr ułamka i Z), więc porównanie tekstów = porównanie czasu
+            state["last_sync"] = max(state["last_sync"] or "", item["updated_at"])
+        if state["last_sync"]:  # pary sprzed okna marginesu już nie wrócą — plik stanu zostaje mały
+            cutoff = _minus_margin(state["last_sync"])
+            state["seen"] = {k: v for k, v in state["seen"].items() if v >= cutoff}
+        with open(state_path + ".tmp", "w", encoding="utf-8") as fh:
+            json.dump(state, fh)
+        os.replace(state_path + ".tmp", state_path)  # stan po każdej stronie; zapis atomowy
+        if page["next_cursor"] is None:
+            return state
+        params["cursor"] = page["next_cursor"]  # kolejna strona: te same parametry + kursor
+
+
 if __name__ == "__main__":
+    if sys.argv[1] == "--sync":
+        sync_approved(*sys.argv[2:3])
+        sys.exit(0)
     doc = send_invoice(sys.argv[1])
     print(f"Dokument #{doc['id']}: {doc['status']} ({doc['status_label']})")
     if doc["status"] == "duplicate":

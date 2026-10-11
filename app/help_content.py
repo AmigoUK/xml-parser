@@ -24,8 +24,8 @@ TOPICS: list[dict] = [
     {"slug": "api", "title": "REST API",
      "summary": "Klucze API, przykłady curl dla każdego endpointu, kody odpowiedzi i limity."},
     {"slug": "integracja", "title": "Integracja z własną aplikacją",
-     "summary": "Przewodnik krok po kroku: wysyłka, odbiór wyniku, ponowienia i gotowy kod w Pythonie, PHP, "
-                "JavaScripcie i powłoce."},
+     "summary": "Przewodnik krok po kroku: wysyłka, odbiór wyniku, synchronizacja zmian statusów, ponowienia "
+                "i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce."},
     {"slug": "faq", "title": "Najczęstsze pytania",
      "summary": "Krótkie odpowiedzi na pytania, które pojawiają się najczęściej."},
 ]
@@ -288,6 +288,14 @@ FAQ: list[dict] = [
     {"q": "Jak podłączyć swoją aplikację?",
      "a": "Utwórz klucz w „Klucze API”, wysyłaj faktury przez POST /api/v1/documents z nagłówkiem X-API-Key "
           "i zapisuj zwrócone id. Status approved oznacza gotowy dokument kanoniczny w polu invoice; "
-          "needs_review — odpytuj później GET /api/v1/documents/{id} (webhooków nie ma). Przewodnik z gotowym "
-          "kodem w Pythonie, PHP, JavaScripcie i powłoce.", "link": "integracja"},
+          "needs_review — wynik przyjdzie później. Zmiany statusów odbieraj synchronizacją "
+          "GET /api/v1/documents?updated_since=… z kursorem next_cursor albo odpytując GET /api/v1/documents/{id} "
+          "(webhooków nie ma). Przewodnik z gotowym kodem w Pythonie, PHP, JavaScripcie i powłoce.",
+     "link": "integracja"},
+    {"q": "Jak dowiedzieć się, że operator zatwierdził fakturę wysłaną przez API?",
+     "a": "Synchronizuj listę: GET /api/v1/documents?updated_since=…&status=approved zwraca dokumenty zatwierdzone "
+          "od podanej chwili — także przyjęte wcześniej, a zatwierdzone przez operatora w panelu dopiero teraz. "
+          "Kolejne strony pobierasz z cursor=<next_cursor>, aż next_cursor będzie null; każdy przebieg zaczynaj "
+          "od ostatniego odebranego updated_at minus 5 minut, a powtórzenia odrzucaj po id. Parametr since tu nie "
+          "pomoże — filtruje po czasie przyjęcia faktury.", "link": "integracja"},
 ]

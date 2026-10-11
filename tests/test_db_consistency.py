@@ -494,7 +494,9 @@ def test_parallel_ingest_race_on_mariadb(tmp_path):
     import threading
 
     from app import create_app
+    from tests.test_migrations import _require_test_database
     url = os.environ["TEST_MARIADB_URL"]
+    _require_test_database(url)  # niżej drop_all — tylko na bazie testowej (nazwa bazy zawiera „test”)
     app = create_app({"TESTING": True, "SECRET_KEY": "x", "SQLALCHEMY_DATABASE_URI": url,
                       "STORAGE_DIR": str(tmp_path / "s"), "DEMO_MODE": True, "ADMIN_PASSWORD": ""})
     with app.app_context():

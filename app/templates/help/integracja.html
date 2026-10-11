@@ -1,8 +1,8 @@
 {% extends "help/_layout.html" %}
 {% block help_content %}
 <p>Ten przewodnik prowadzi krok po kroku przez podłączenie Twojego systemu (ERP, magazyn, sklep, skrypt) do parsera:
-  od klucza API, przez wysyłkę faktury i odbiór wyniku, po ponowienia i gotowy kod w czterech językach. Szczegóły
-  każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie
+  od klucza API, przez wysyłkę faktury, odbiór wyniku i synchronizację zmian statusów, po ponowienia i gotowy kod
+  w czterech językach. Szczegóły każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie
   <a href="{{ url_for('help.topic', slug='api') }}">REST API</a>. Adres bazowy tej instancji:
   <code>{{ api_base }}/api/v1</code>.</p>
 
@@ -18,23 +18,25 @@
       <li><code>approved</code> — faktura odczytana automatycznie; pole <code>invoice</code> zawiera dokument kanoniczny,
         który importujesz do swojego systemu. Koniec.</li>
       <li><code>needs_review</code> — są problemy blokujące (najczęściej pierwsza faktura nowego dostawcy). Operator
-        rozwiązuje je w panelu (<em>Kolejka</em>), a dokument po każdej decyzji jest przetwarzany ponownie. Ty
-        odpytujesz go później (krok 4), aż status się zmieni.</li>
+        rozwiązuje je w panelu (<em>Kolejka</em>), a dokument po każdej decyzji jest przetwarzany ponownie. O zmianie
+        statusu dowiesz się z synchronizacji zmian albo odpytując dokument (rozdział 4).</li>
       <li><code>duplicate</code> — tę fakturę wysłano już wcześniej tym samym kluczem; użyj wyniku oryginału (rozdział 6).</li>
       <li><code>rejected</code> — pliku nie da się odczytać albo ma zbyt wiele pozycji (przyczyna jest w <code>issues</code>),
         albo operator odrzucił dokument w panelu.</li>
     </ul>
   </li>
 </ol>
-<pre class="bg-light border p-2 small"><code class="language-text">Twoja aplikacja                          Parser faktur
-  POST /api/v1/documents (plik)  ───────►  odczyt → szablon → walidacja
-                                 ◄───────  201 {id, status, invoice, issues}
+<pre class="bg-light border p-2 small"><code class="language-text">Twoja aplikacja                                 Parser faktur
+  POST /api/v1/documents (plik)         ───────►  odczyt → szablon → walidacja
+                                        ◄───────  201 {id, status, invoice, issues}
   status = approved      → importujesz invoice
   status = needs_review  → operator rozwiązuje problemy w panelu
-  GET /api/v1/documents/{id} (co jakiś czas) ─► aż status ≠ needs_review
-  status = approved      → importujesz invoice</code></pre>
-<div class="alert alert-warning small"><strong>Webhooków nie ma.</strong> Parser nie powiadamia Twojej aplikacji
-  o zmianie statusu — o wyniku dowiadujesz się wyłącznie, odpytując API.</div>
+  GET /api/v1/documents?updated_since=… ───────►  dokumenty zmienione od ostatniego przebiegu
+  (cyklicznie; kolejne strony z cursor) ◄───────  {items, next_cursor}
+  status = approved      → GET /api/v1/documents/{id} → importujesz invoice</code></pre>
+<div class="alert alert-warning small"><strong>Webhooków nie ma</strong> (planowane w kolejnej wersji). Parser nie
+  powiadamia Twojej aplikacji o zmianie statusu — o wyniku dowiadujesz się wyłącznie z API: synchronizacją zmian
+  albo odpytując dokument (rozdział 4).</div>
 
 <h2 class="h5 mt-4" id="przygotowanie">2. Przygotowanie</h2>
 <ul>
@@ -81,47 +83,98 @@
 
 <h2 class="h5 mt-4" id="odbior">4. Odbiór wyniku</h2>
 <p>Jeżeli wysyłka zwróciła <code>approved</code>, wynik masz od razu w odpowiedzi. Dokumenty
-  <code>needs_review</code> trzeba sprawdzać później — na dwa sposoby.</p>
-<h3 class="h6 mt-3">Sposób A (zalecany): odpytywanie po <code>id</code></h3>
-<p>Trzymaj u siebie listę <code>id</code> dokumentów oczekujących i co jakiś czas wywołuj
-  <code>GET {{ api_base }}/api/v1/documents/{id}</code>, aż status przestanie być <code>needs_review</code>.
-  Rozwiązanie problemów zależy od człowieka, więc może trwać minuty albo dni — zacznij od kilku sekund i podwajaj
-  przerwę do kilku minut (np. 5 s, 10 s, 20 s … maks. 5 min), a po godzinie przenieś dokument do zadania
-  okresowego (np. raz na 15 min). Przykłady kodu poniżej robią dokładnie to.</p>
-<h3 class="h6 mt-3">Sposób B: lista z filtrem <code>since</code></h3>
-<p><code>GET {{ api_base }}/api/v1/documents?since=…&amp;status=…&amp;limit=…</code> zwraca dokumenty Twojego klucza
-  w polu <code>items</code> — bez <code>invoice</code> i <code>issues</code> (po pełny wynik sięgnij
-  <code>GET /documents/{id}</code>). Dokładna semantyka:</p>
+  <code>needs_review</code> zmieniają status później — po decyzjach operatora w panelu, które mogą zająć minuty albo
+  dni. Wynik odbierasz na dwa sposoby: synchronizacją zmian (sposób B, zalecany) albo odpytując pojedynczy dokument
+  (sposób A — gdy wynik jest potrzebny zaraz po wysyłce).</p>
+<h3 class="h6 mt-3" id="sposob-a">Sposób A: odpytywanie po <code>id</code> — natychmiastowy wynik</h3>
+<p>Gdy wynik jest potrzebny od razu (np. użytkownik czeka na ekranie), wywołuj
+  <code>GET {{ api_base }}/api/v1/documents/{id}</code>, aż status przestanie być <code>needs_review</code>. Zacznij od
+  kilku sekund i podwajaj przerwę do kilku minut (np. 5 s, 10 s, 20 s … maks. 5 min). Rozwiązanie problemów zależy od
+  człowieka — jeśli po godzinie dokument nadal czeka, zostaw go synchronizacji (sposób B), która jednym przebiegiem
+  obejmuje wszystkie oczekujące dokumenty. Tak działają przykłady kodu poniżej uruchomione z plikiem faktury.</p>
+<h3 class="h6 mt-3" id="synchronizacja">Sposób B (zalecany do synchronizacji): <code>updated_since</code> + <code>cursor</code></h3>
+<p><code>GET {{ api_base }}/api/v1/documents?updated_since=…</code> zwraca dokumenty Twojego klucza, które
+  <strong>zmieniły się</strong> w podanej chwili lub później — także przyjęte dawno, a zatwierdzone przez operatora
+  dopiero teraz. Pozycje listy (<code>items</code>) nie zawierają <code>invoice</code> ani <code>issues</code>; pełny
+  wynik pobierasz przez <code>GET /documents/{id}</code>. Dokładna semantyka:</p>
 <ul>
-  <li><code>since</code> — dokumenty <strong>przyjęte</strong> (pole <code>created_at</code>) w tej chwili lub później
-    (porównanie „≥”). Filtr dotyczy chwili wysłania, <strong>nie chwili zmiany statusu</strong>.</li>
-  <li>Czas jest w <strong>UTC bez strefy</strong>: tak zwracane jest <code>created_at</code> (np.
-    <code>2026-10-11T06:04:38.312308</code>) i tak podawaj <code>since</code>. Sama data (<code>2026-10-11</code>)
-    oznacza północ UTC. Przesunięcie strefy w <code>since</code> (np. <code>+02:00</code>) jest pomijane — godzina
-    i tak liczona jest jako UTC — więc zawsze przeliczaj czas na UTC przed wysłaniem.</li>
-  <li><code>status</code> — jeden z: {% for code, label, text in statuses %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</li>
-  <li><code>limit</code> — domyślnie {{ limits.list_default }}, maks. {{ limits.list_max }} (większe wartości są
-    obcinane do {{ limits.list_max }}, mniejsze od 1 — podnoszone do 1).</li>
-  <li>Kolejność: od najnowszych (malejąco po <code>id</code>). <strong>Nie ma stronicowania</strong> (offsetu ani
-    kursora): jeśli od <code>since</code> przyjęto więcej dokumentów niż <code>limit</code>, dostaniesz tylko
-    najnowsze, a starszych tym zapytaniem nie pobierzesz.</li>
+  <li><code>updated_since</code> — dokumenty, których <code>updated_at</code> jest równe podanemu czasowi lub
+    późniejsze (porównanie „≥”). <code>updated_at</code> zmienia każde przetworzenie dokumentu (przyjęcie, decyzja
+    operatora w panelu, „Przetwórz ponownie”, <code>reprocess</code> przez API) — także gdy wynik wyszedł taki sam —
+    oraz „Odrzuć” i „Przywróć” w panelu. Samo pobranie dokumentu go nie zmienia.</li>
+  <li>Kolejność: rosnąco po <code>updated_at</code>, a przy równym czasie po <code>id</code> — najpierw dokumenty
+    zmienione najdawniej.</li>
+  <li><code>next_cursor</code> — odpowiedź ma postać <code>{"items": [...], "next_cursor": …}</code>. Gdy wyników jest
+    więcej niż <code>limit</code>, <code>next_cursor</code> zawiera kursor kolejnej strony: pobierasz ją
+    z <strong>tymi samymi</strong> parametrami (<code>updated_since</code>, <code>status</code>, <code>limit</code>)
+    i dodatkowo <code>cursor=&lt;next_cursor&gt;</code>. <code>null</code> oznacza ostatnią stronę.</li>
+  <li>Kursor to nieprzezroczysty token: wskazuje pozycję ostatniego zwróconego dokumentu — nie odczytuj go i nie składaj
+    sam. Nie przechowuje filtrów (dlatego powtarzasz je przy każdej stronie) ani danych wrażliwych, a zakres zawsze
+    wyznacza klucz z nagłówka <code>X-API-Key</code>. Uszkodzony kursor → <code>400 bad_request</code>.</li>
+  <li><code>status</code> — jeden z: {% for code, label, text in statuses %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+    Z <code>status=approved</code> dostajesz dokumenty zatwierdzone, także przez operatora po czasie. Bez
+    <code>status</code> przychodzą wszystkie zmiany, również <code>needs_review</code>, <code>duplicate</code>
+    i <code>rejected</code> (np. do raportowania).</li>
+  <li><code>limit</code> — liczba wyników na stronę: domyślnie {{ limits.list_default }}, maks. {{ limits.list_max }}
+    (większe wartości są obcinane do {{ limits.list_max }}, mniejsze od 1 — podnoszone do 1).</li>
+  <li>Czas podajesz w ISO 8601: czas ze strefą (<code>+02:00</code>, <code>Z</code>) jest przeliczany na UTC, czas bez
+    strefy oznacza UTC, a sama data (<code>2026-10-11</code>) — północ UTC. <strong>Znak <code>+</code> zapisz w adresie
+    jako <code>%2B</code></strong> — surowy <code>+</code> w URL oznacza spację i API zwróci <code>400</code>; najprościej
+    podawaj czas w UTC z <code>Z</code>, tak jak zwraca go API. Błędny format → <code>400 bad_request</code>.</li>
+  <li>Pusty parametr (<code>updated_since=</code> albo <code>cursor=</code> bez wartości) jest traktowany jak jego brak —
+    bez żadnego z nich odpowiedź przychodzi w trybie zwykłym (od najnowszych, bez <code>next_cursor</code>). Pełną
+    synchronizację od początku zaczynasz jawną wartością: <code>updated_since=1970-01-01T00:00:00Z</code> (albo datą
+    wdrożenia integracji).</li>
 </ul>
-<div class="alert alert-info small"><strong>Jak nie zgubić dokumentów.</strong> Zapytanie
-  <code>status=approved&amp;since=&lt;ostatnie sprawdzenie&gt;</code> <strong>pominie</strong> fakturę wysłaną przed
-  ostatnim sprawdzeniem, którą operator zatwierdził później — jej <code>created_at</code> się nie zmienia. Dlatego:
+<p>Kolejne strony jednego przebiegu (wartości przykładowe):</p>
+<pre class="bg-light border p-2 small"><code class="language-text">GET {{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;status=approved&amp;limit={{ limits.list_max }}
+→ {"items": [… {{ limits.list_max }} dokumentów …], "next_cursor": "MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw"}
+GET {{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;status=approved&amp;limit={{ limits.list_max }}&amp;cursor=MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw
+→ {"items": [… reszta …], "next_cursor": null}</code></pre>
+<div class="alert alert-info small"><strong>Dostawa „co najmniej raz”.</strong> Ten sam dokument może przyjść więcej
+  niż raz:
   <ul class="mb-0">
-    <li>podstawą jest <code>id</code> z odpowiedzi na wysyłkę i sposób A;</li>
-    <li>listy używaj do uzgadniania: <code>since</code> = najstarszy <code>created_at</code> wśród Twoich
-      dokumentów wciąż oczekujących (albo np. „7 dni temu”), bez filtra <code>status</code>, i porównuj statusy
-      po <code>id</code>;</li>
-    <li>dokument z <code>created_at</code> równym <code>since</code> wraca ponownie — odrzucaj powtórzenia po <code>id</code>;</li>
-    <li>gdy dostaniesz dokładnie <code>limit</code> pozycji, mogło ich być więcej — sprawdzaj częściej albo skróć okno.</li>
+    <li>dokument zmieniony w trakcie stronicowania pojawia się ponownie na dalszej stronie, z nowym <code>updated_at</code>;</li>
+    <li>dokument z <code>updated_at</code> równym <code>updated_since</code> wraca w kolejnym przebiegu;</li>
+    <li>margines bezpieczeństwa (niżej) celowo pobiera ponownie dokumenty z ostatnich minut.</li>
   </ul>
-</div>
+  Odrzucaj powtórzenia po <code>id</code> (para <code>id</code> + <code>updated_at</code> już przetworzona — pomiń)
+  i importuj idempotentnie, np. aktualizuj rekord o danym <code>id</code> zamiast dopisywać nowy.</div>
+<p><strong>Zalecany algorytm</strong> (tak działa synchronizacja w przykładach kodu — argument <code>--sync</code>):</p>
+<ol>
+  <li><strong>Stan</strong>: trzymaj u siebie <code>last_sync</code> — największy <code>updated_at</code> spośród
+    odebranych dokumentów — oraz już przetworzone pary <code>id</code> + <code>updated_at</code> z ostatnich minut.
+    Bez stanu (pierwszy przebieg) zacznij od <code>1970-01-01T00:00:00Z</code> albo od daty wdrożenia integracji.</li>
+  <li><strong>Początek przebiegu</strong>: <code>updated_since = last_sync − 5 min</code> (margines bezpieczeństwa).</li>
+  <li><strong>Strony</strong>: <code>GET /api/v1/documents?updated_since=…&amp;status=approved&amp;limit={{ limits.list_max }}</code>,
+    potem te same parametry z <code>cursor=&lt;next_cursor&gt;</code>, aż <code>next_cursor</code> będzie
+    <code>null</code>.</li>
+  <li><strong>Każda strona</strong>: pomiń pary już przetworzone; pozostałe dokumenty pobierz w całości
+    (<code>GET /documents/{id}</code>), zaimportuj i zapamiętaj ich pary.</li>
+  <li><strong>Po stronie</strong>: zapisz <code>last_sync = max(updated_at)</code> odebranych dokumentów — nie
+    „teraz”: liczy się czas serwera, a zegar Twojej aplikacji nie ma znaczenia. Pary starsze niż
+    <code>last_sync − 5 min</code> możesz zapomnieć — już nie wrócą.</li>
+</ol>
+<div class="alert alert-warning small"><strong>Dlaczego margines 5 minut.</strong> <code>updated_at</code> jest
+  nadawane w chwili zmiany, zanim baza zatwierdzi transakcję. Dwie równoległe zmiany mogą zostać zatwierdzone
+  w odwrotnej kolejności niż ich znaczniki czasu — dokument z wcześniejszym <code>updated_at</code> staje się wtedy
+  widoczny dopiero po dokumencie z późniejszym. Gdyby kolejny przebieg zaczynał się dokładnie od
+  <code>last_sync</code>, taki dokument zostałby pominięty. Zaczynając od <code>last_sync − 5 min</code>, pobierzesz go
+  w następnym przebiegu, a powtórzenia z tego okna odrzucisz po <code>id</code> i <code>updated_at</code>.</div>
 <p>Status może się zmienić także <strong>po</strong> osiągnięciu statusu końcowego, jeśli operator działa w panelu
   (np. użyje „Przetwórz ponownie” po zmianie szablonu albo przy duplikacie wybierze „To nie duplikat — przetwórz”
-  lub „Odrzuć”). Jeśli to dla Ciebie ważne, okresowo
-  uzgadniaj statusy dokumentów z ostatnich dni.</p>
+  lub „Odrzuć”). Każda taka zmiana przesuwa <code>updated_at</code>, więc synchronizacja ją dostarczy. Z
+  <code>status=approved</code> zobaczysz dokument, który <strong>stał się</strong> zatwierdzony, ale nie ten, który
+  przestał nim być — jeśli to dla Ciebie ważne, synchronizuj bez filtra <code>status</code> i porównuj statusy
+  po <code>id</code>.</p>
+<p><strong>Lista bez <code>updated_since</code> i <code>cursor</code></strong> (tryb zwykły) działa jak dotąd:
+  <code>since</code> filtruje po czasie <strong>przyjęcia</strong> (<code>created_at</code>, porównanie „≥”), wyniki są
+  od najnowszych (malejąco po <code>id</code>), bez <code>next_cursor</code> i bez stronicowania. Do synchronizacji się
+  nie nadaje: faktura przyjęta wcześniej, a zatwierdzona przez operatora później, nie spełni warunku
+  <code>since</code>. W trybie synchronizacji <code>since</code> też działa (warunek „i”), ale nie jest potrzebne.</p>
+<p class="small text-muted">Przed v0.5.0 lista filtrowała tylko po czasie przyjęcia (<code>since</code>), nie miała
+  kursora, a strefa w <code>since</code> była pomijana — jeśli integrowałeś się ze starszą wersją, przejdź na
+  <code>updated_since</code> + <code>cursor</code>.</p>
 
 <h2 class="h5 mt-4" id="wynik">5. Struktura wyniku</h2>
 <p>Rzeczywista odpowiedź tej aplikacji dla fikcyjnej próbki demo <code>alfa-2.xml</code> (po nauczeniu dostawcy na
@@ -141,12 +194,16 @@
     <tr><td><code>number</code>, <code>issue_date</code>, <code>doc_type</code></td><td>tekst lub <code>null</code></td><td>numer, data wystawienia (<code>RRRR-MM-DD</code>) i rodzaj dokumentu — kopia z <code>invoice</code></td></tr>
     <tr><td><code>supplier</code></td><td>obiekt lub <code>null</code></td><td><code>{id, name}</code> dostawcy z kartoteki; <code>null</code>, dopóki dostawca nie jest rozpoznany</td></tr>
     <tr><td><code>template_version</code></td><td>liczba lub <code>null</code></td><td>numer wersji szablonu, którą odczytano fakturę</td></tr>
-    <tr><td><code>created_at</code></td><td>tekst</td><td>chwila przyjęcia, ISO 8601 w UTC bez strefy</td></tr>
+    <tr><td><code>created_at</code></td><td>tekst</td><td>chwila przyjęcia dokumentu — ISO 8601 w UTC z mikrosekundami i <code>Z</code>, np. <code>2026-10-11T06:04:38.312308Z</code>; po niej filtruje <code>since</code></td></tr>
+    <tr><td><code>updated_at</code></td><td>tekst</td><td>chwila ostatniej zmiany statusu lub wyniku (przetworzenie, decyzja operatora, „Odrzuć”, „Przywróć”, <code>reprocess</code>), ten sam format; po niej filtruje <code>updated_since</code> (rozdział 4)</td></tr>
     <tr><td><code>issues_count</code>, <code>issues</code></td><td>liczba, lista</td><td>problemy (blokujące i ostrzeżenia); lista tylko w odpowiedzi z pojedynczym dokumentem</td></tr>
     <tr><td><code>invoice</code></td><td>obiekt lub <code>null</code></td><td>dokument kanoniczny; <code>null</code> dla dokumentu odrzuconego automatycznie (plik nieczytelny albo zbyt wiele pozycji). Przy <code>needs_review</code> może być niepełny — <strong>importuj go wyłącznie przy <code>approved</code></strong></td></tr>
   </tbody>
 </table>
 </div>
+<p class="small">Czas w odpowiedziach ma zawsze ten sam format: UTC, 6 cyfr ułamka sekundy i <code>Z</code>. Parsuj go
+  jako czas ze strefą, a <code>updated_at</code> do synchronizacji zapamiętuj jako tekst — po zamianie na
+  <code>Date</code> w JavaScripcie stracisz mikrosekundy.</p>
 
 <h3 class="h6 mt-3">Nagłówek faktury (<code>invoice</code>)</h3>
 <div class="table-responsive">
@@ -203,6 +260,8 @@
     plik ponownie. Jeśli pierwsze żądanie dotarło, dostaniesz <code>duplicate</code> ze wskazaniem oryginału i dalej
     pracujesz na jego <code>id</code>; jeśli nie — normalny nowy dokument. Ponawiaj po błędach sieci i 5xx z rosnącą
     przerwą; po <code>400</code>, <code>401</code> i <code>413</code> nie ponawiaj bez poprawki.</li>
+  <li><strong>Import z synchronizacji</strong> (sposób B) musi być idempotentny: ten sam dokument może przyjść więcej
+    niż raz (rozdział 4), więc zapisuj go po <code>id</code> — aktualizacja zamiast dopisania.</li>
   <li><strong>Ponowne przetworzenie</strong> — <code>POST /api/v1/documents/{id}/reprocess</code> przetwarza dokument
     aktywną wersją szablonu i zwraca <code>200</code> z aktualnym wynikiem. Zwykle nie jest potrzebne: decyzje
     operatora w panelu same przetwarzają dokument ponownie. Dokument <strong>odrzucony ręcznie</strong> przez operatora
@@ -211,9 +270,16 @@
 </ul>
 
 <h2 class="h5 mt-4" id="przyklady">7. Przykłady kodu</h2>
-<p>Kompletne programy: wysyłają plik podany w argumencie, czekają na wynik z rosnącą przerwą i wypisują pozycje
-  zatwierdzonej faktury. Adres tej instancji jest już wstawiony; klucz czytany jest ze zmiennej środowiskowej:</p>
-<pre class="bg-light border p-2 small"><code class="language-bash">export XP_API_KEY='xp_…'   # Twój klucz z „Klucze API”</code></pre>
+<p>Kompletne programy w dwóch trybach. Z plikiem w argumencie wysyłają go, czekają na wynik z rosnącą przerwą
+  (sposób A) i wypisują pozycje zatwierdzonej faktury, a przy duplikacie — <code>id</code> oryginału. Z argumentem
+  <code>--sync</code> wykonują jeden przebieg synchronizacji (sposób B): stan (<code>last_sync</code> i przetworzone
+  pary) trzymają w pliku <code>xp-sync.json</code> albo w pliku podanym po <code>--sync</code>, stronicują kursorem
+  i wypisują <code>id</code>, status i <code>updated_at</code> nowych lub zmienionych dokumentów. Synchronizację
+  uruchamiaj cyklicznie, np. co 5 minut z harmonogramu zadań. Adres tej instancji jest już wstawiony; klucz czytany
+  jest ze zmiennej środowiskowej:</p>
+<pre class="bg-light border p-2 small"><code class="language-bash">export XP_API_KEY='xp_…'   # Twój klucz z „Klucze API”
+python3 faktura.py faktura.xml   # wysyłka i odbiór wyniku (sposób A)
+python3 faktura.py --sync        # jeden przebieg synchronizacji (sposób B)</code></pre>
 {% for ex in examples %}
 <h3 class="h6 mt-3" id="przyklad-{{ ex.lang }}">{{ ex.title }}</h3>
 <pre class="bg-light border p-2 small"><code class="language-{{ ex.lang }}">{{ ex.code }}</code></pre>
@@ -226,7 +292,10 @@
   <li>Obsługujesz wszystkie statusy: <code>approved</code>, <code>needs_review</code>, <code>duplicate</code>, <code>rejected</code>.</li>
   <li><code>invoice</code> importujesz tylko przy <code>approved</code>; kwoty parsujesz jako liczby dziesiętne.</li>
   <li>Pozycje łączysz z towarami po <code>product_index</code>, a ilość i cenę bierzesz w jednostce <code>unit</code>.</li>
-  <li>Dokumenty <code>needs_review</code> odpytujesz z rosnącą przerwą (sposób A), a listą z <code>since</code> w UTC tylko uzgadniasz.</li>
+  <li>Zmiany statusów odbierasz synchronizacją <code>updated_since</code> + <code>cursor</code> (sposób B): stronicujesz, aż <code>next_cursor</code> = <code>null</code>, a każdy przebieg zaczynasz od <code>last_sync − 5 min</code>.</li>
+  <li><code>last_sync</code> to <code>max(updated_at)</code> odebranych dokumentów, nie czas z zegara Twojej aplikacji; pierwszy przebieg zaczynasz od jawnej wartości (<code>1970-01-01T00:00:00Z</code> albo data wdrożenia).</li>
+  <li>Powtórzenia odrzucasz po <code>id</code> i <code>updated_at</code>, a import jest idempotentny.</li>
+  <li>Sposobu A (odpytywanie po <code>id</code>) używasz tylko wtedy, gdy wynik jest potrzebny zaraz po wysyłce.</li>
   <li>Ponawiasz po błędach sieci i 5xx; przy <code>duplicate</code> przechodzisz na <code>id</code> oryginału.</li>
   <li>Ktoś po Twojej stronie wie, że faktury nowych dostawców czekają na operatora w panelu.</li>
   <li>Monitorujesz dostępność usługi przez <code>GET {{ api_base }}/healthz</code> (bez klucza).</li>
@@ -240,9 +309,19 @@
   <li><strong>Pole formularza o innej nazwie</strong> niż <code>file</code> (np. <code>plik</code>, <code>invoice</code>) → <code>400 empty_body</code>.</li>
   <li><strong>Import przy <code>needs_review</code></strong> — <code>invoice</code> jest wtedy niepełny (np. bez
     <code>product_index</code> lub <code>unit</code>).</li>
-  <li><strong>Lista <code>status=approved&amp;since=…</code> jako jedyne źródło</strong> — gubi faktury zatwierdzone
-    przez operatora później (rozdział 4).</li>
-  <li><strong>Czas lokalny w <code>since</code></strong> — przesunięcie strefy jest pomijane; podawaj UTC.</li>
+  <li><strong><code>since</code> zamiast <code>updated_since</code> do synchronizacji</strong> — <code>since</code> filtruje
+    po czasie przyjęcia, więc gubi faktury zatwierdzone przez operatora później (rozdział 4).</li>
+  <li><strong>Brak deduplikacji po <code>id</code></strong> przy dostawie „co najmniej raz” — powtórzenia z marginesu,
+    z granicy <code>updated_since</code> i ze zmian w trakcie stronicowania dublują import.</li>
+  <li><strong>Zapamiętywanie czasu z własnego zegara</strong> zamiast <code>max(updated_at)</code> odebranych
+    dokumentów — różnica zegarów i czas trwania przebiegu przesuwają okno, a dokumenty giną.</li>
+  <li><strong>Kolejna strona bez powtórzenia parametrów</strong> — kursor nie pamięta filtrów: strona pobrana z samym
+    <code>cursor</code> zwraca dokumenty we wszystkich statusach, po {{ limits.list_default }} na stronę.</li>
+  <li><strong>Puste <code>updated_since=</code></strong> — jest traktowane jak brak parametru, więc lista przychodzi
+    w trybie zwykłym (bez <code>next_cursor</code>); pierwszy przebieg zacznij od <code>1970-01-01T00:00:00Z</code>.</li>
+  <li><strong>Surowy <code>+</code> w czasie</strong> (np. <code>updated_since=2026-10-11T08:00:00+02:00</code> wklejone
+    do adresu) — w URL <code>+</code> oznacza spację, więc API zwraca <code>400 bad_request</code>; zapisz go jako
+    <code>%2B</code> albo podawaj czas z <code>Z</code>.</li>
   <li><strong>Liczby zmiennoprzecinkowe</strong> zamiast dziesiętnych — błędy zaokrągleń w kwotach.</li>
   <li><strong>Szukanie dokumentu innym kluczem</strong> — każdy klucz widzi tylko swoje dokumenty (<code>404</code>).</li>
   <li><strong>Odpytywanie w ciasnej pętli</strong> — operator potrzebuje minut lub godzin; stosuj rosnącą przerwę.</li>
