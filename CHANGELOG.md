@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.5.0] — 2026-10-11
+
 ### Added
 - Pole `updated_at` w odpowiedziach API (`POST/GET /documents`, lista) — czas ostatniej zmiany statusu lub wyniku dokumentu. Jest ustawiane jawnie (`touch()` w `app/services/pipeline.py`), a nie tylko przez `onupdate` bazy, który nie widzi zmian bez zmiany kolumny: odświeża je każde przetworzenie dokumentu (przyjęcie, `POST /documents/{id}/reprocess`, rozwiązywanie problemów w panelu — także gdy wynik wychodzi taki sam), odrzucenie i przywrócenie. Samo pobranie dokumentu go nie zmienia.
 - Synchronizacja przyrostowa w `GET /api/v1/documents` — parametry `updated_since` i `cursor` włączają tryb synchronizacji: filtr `updated_at >= updated_since` (czas jak w `since`: strefa przeliczana na UTC, bez strefy = UTC), sortowanie rosnąco po `(updated_at, id)` ze stronicowaniem keyset i pole `next_cursor` w odpowiedzi (kursor kolejnej strony; `null` = koniec). Klient nie gubi już faktur zatwierdzonych przez operatora po czasie przyjęcia (`since` filtruje po czasie przyjęcia) ani dokumentów ponad limit 500 na stronę. `status` i `since` łączą się z nowymi parametrami; kursor nie przechowuje filtrów (klient powtarza je przy każdej stronie) ani danych wrażliwych, a zakres zawsze wyznacza klucz API z nagłówka. Dostawa „co najmniej raz”: dokument zmieniony w trakcie stronicowania pojawia się ponownie na dalszej stronie z nowym `updated_at`. Błędny `updated_since`, uszkodzony lub niepoprawny składniowo kursor oraz pusta wartość `updated_since=` albo `cursor=` → 400 `bad_request` (pusta wartość nie oznacza braku parametru, więc nie przełącza listy po cichu w tryb zwykły, w którym klient przesunąłby `last_sync` i pominął starsze zmiany). Składniowo poprawny kursor „z zewnątrz” (np. innego klucza) → 200 — ustawia tylko pozycję w zakresie Twojego klucza. Bez `updated_since` i `cursor` lista działa jak dotąd (od najnowszych po `id`, bez `next_cursor`); pusty `status=` i `since=` nadal oznacza brak parametru.
@@ -203,7 +207,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/AmigoUK/xml-parser/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/AmigoUK/xml-parser/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AmigoUK/xml-parser/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AmigoUK/xml-parser/compare/v0.1.1...v0.2.0
