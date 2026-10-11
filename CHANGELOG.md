@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- `GET /api/v1/documents?since=…` uwzględnia strefę czasową: `+02:00`, `-05:00` i `Z` są przeliczane na UTC (dotąd strefa była pomijana przy porównaniu z czasem w bazie, więc `since=2026-10-11T08:00:00+02:00` przesuwał okno o 2 godziny); czas bez strefy i sama data nadal oznaczają UTC. Błędna wartość (także poza zakresem dat po przeliczeniu) daje 400 z przykładami formatu. Parsowanie i formatowanie czasu API jest we wspólnym module `app/api/timeutil.py`.
 
 ## [0.4.0] — 2026-10-11
 

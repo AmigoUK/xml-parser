@@ -1,4 +1,3 @@
-from datetime import datetime
 from functools import wraps
 
 from flask import current_app, g, jsonify, request
@@ -9,6 +8,7 @@ from app.services.apikeys import verify_key
 from app.services.pipeline import DocumentTooLarge, ingest, process
 
 from . import bp
+from .timeutil import parse_api_datetime
 
 
 def api_error(code: str, message: str, status: int):
@@ -102,9 +102,11 @@ def list_documents():
     since = request.args.get("since")
     if since:
         try:
-            q = q.filter(Document.created_at >= datetime.fromisoformat(since))
+            since_utc = parse_api_datetime(since)  # strefa → UTC; bez strefy = UTC (jak czas w bazie)
         except ValueError:
-            return api_error("bad_request", "Parametr since musi być datą ISO 8601.", 400)
+            return api_error("bad_request", "Parametr since musi być datą ISO 8601 (np. 2026-10-11 lub "
+                                            "2026-10-11T06:00:00Z). Znak „+” w adresie URL zapisz jako %2B.", 400)
+        q = q.filter(Document.created_at >= since_utc)
     try:
         limit = max(1, min(int(request.args.get("limit", LIST_DEFAULT_LIMIT)), LIST_MAX_LIMIT))
     except ValueError:
