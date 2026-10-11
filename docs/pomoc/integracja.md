@@ -724,6 +724,8 @@ sync_approved() {
   local state="${1:-xp-sync.json}" since cursor="" page doc id status updated_at
   local -a args
   [[ -f "$state" ]] || echo '{"last_sync": null, "seen": {}}' > "$state"
+  jq -e 'type == "object" and (.seen | type == "object")' "$state" > /dev/null 2>&1 \
+    || { echo "Plik stanu $state ma zły format (oczekiwano obiektu z polem seen) — usuń go albo popraw." >&2; return 1; }
   # last_sync − margines (jq liczy w pełnych sekundach — przy 5-minutowym marginesie ułamek nie ma znaczenia)
   since=$(jq -r --argjson m "$SYNC_MARGIN" \
     '.last_sync // empty | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 - $m | todateiso8601' "$state")

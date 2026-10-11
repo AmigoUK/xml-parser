@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - CI uruchamia testy na prawdziwej MariaDB 11.4 (tymczasowy kontener); fixtury MariaDB w `tests/conftest.py`; strażnik nazwy bazy testowej dopasowuje człon `test`; test planu zapytania synchronizacji (EXPLAIN: indeks `ix_documents_api_key_updated`, bez filesort).
 - Pomoc: zrzuty mają wymiary (bez skoku układu), osobny tekst alternatywny i wskazówkę o nowej karcie; „Jak to działa” pokazuje pionowy diagram przetwarzania czytelny w kolumnie Pomocy.
+- Przykłady integracji (Python, bash, Node, PHP) są uruchamiane w testach wobec prawdziwego serwera HTTP: wysyłka i wynik, duplikat, synchronizacja z plikiem stanu, błąd protokołu bez `next_cursor`.
 
 ### Fixed
 - API: zapis daty w formacie podstawowym ze strefą bez godziny (`20261011+0200`) jest odrzucany (400) zamiast czytany jako godzina 02:00 UTC — tak jak `2026-10-11+02:00`.
 - `tools/screenshots.py`: błąd uruchomienia interpretera serwera albo przeglądarki daje czytelny komunikat i kod wyjścia 2 zamiast tracebacku; testy `server_env()` i trybu `--serve`.
+- Przykład bash: plik stanu o złym kształcie kończy synchronizację czytelnym błędem zamiast cichych błędów `jq`.
 
 ## [0.5.0] — 2026-10-11
 
