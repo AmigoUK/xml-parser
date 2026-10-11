@@ -98,9 +98,11 @@ def create_document():
 
 
 def _bad_time_param(name: str):
-    """400 dla parametru czasu (since, updated_since) w złym formacie — ta sama podpowiedź dla obu."""
+    """400 dla parametru czasu (since, updated_since) w złym formacie — ta sama podpowiedź dla obu. Zdanie o dacie ze
+    strefą jest dla poprawnie zakodowanego `2026-10-11%2B02:00`, któremu sama wskazówka o %2B nic nie mówi."""
     return api_error("bad_request", f"Parametr {name} musi być datą ISO 8601 (np. 2026-10-11 lub "
-                                    "2026-10-11T06:00:00Z). Znak „+” w adresie URL zapisz jako %2B.", 400)
+                                    "2026-10-11T06:00:00Z). Data ze strefą musi zawierać godzinę: "
+                                    "2026-10-11T00:00:00+02:00. Znak „+” w adresie URL zapisz jako %2B.", 400)
 
 
 @bp.get("/documents")

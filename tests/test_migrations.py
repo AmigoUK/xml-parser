@@ -35,10 +35,11 @@ SYNC_INDEX_COLUMNS = ["api_key_id", "updated_at", "id"]
 
 
 def _flask(db_path, tmp_path, *args, url=None):
-    """`flask db …` w podprocesie: na SQLite w `db_path` albo — z `url` — na wskazanej bazie (MariaDB)."""
-    env = dict(os.environ, PYTHON_DOTENV_DISABLED="1", DATABASE_URL=url or f"sqlite:///{db_path}",
-               STORAGE_DIR=str(tmp_path / "storage"), SECRET_KEY="migr-test", FLASK_APP="app:create_app",
-               DEMO_MODE="0", ADMIN_PASSWORD="")
+    """`flask db …` w podprocesie: na SQLite w `db_path` albo — z `url` — na wskazanej bazie (MariaDB). Bez lokalnego
+    .env: PYTHON_DOTENV_DISABLED wyłącza load_dotenv() w app/config.py, FLASK_SKIP_DOTENV — flask.cli.load_dotenv."""
+    env = dict(os.environ, PYTHON_DOTENV_DISABLED="1", FLASK_SKIP_DOTENV="1",
+               DATABASE_URL=url or f"sqlite:///{db_path}", STORAGE_DIR=str(tmp_path / "storage"),
+               SECRET_KEY="migr-test", FLASK_APP="app:create_app", DEMO_MODE="0", ADMIN_PASSWORD="")
     r = subprocess.run([sys.executable, "-m", "flask", "db", *args], cwd=ROOT, env=env,
                        capture_output=True, text=True, timeout=120)
     return r

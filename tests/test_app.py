@@ -59,3 +59,18 @@ def test_config_loads_dotenv_unless_disabled(value, loads):
     env = dict(os.environ, PYTHON_DOTENV_DISABLED=value)
     r = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == (11 if loads else 10), r.stderr
+
+
+def test_flask_cli_subprocess_skips_dotenv(tmp_path):
+    """`python -m flask …` (np. migracje w tests/test_migrations.py) czyta .env przez flask.cli.load_dotenv, którego
+    PYTHON_DOTENV_DISABLED nie wyłącza — robi to FLASK_SKIP_DOTENV z conftest. Sprawdzane na próbnej aplikacji
+    w katalogu tymczasowym z własnym .env (prawdziwy .env projektu nie jest czytany)."""
+    (tmp_path / ".env").write_text("XP_DOTENV_PROBE=z-pliku-env\n", encoding="utf-8")
+    (tmp_path / "probe.py").write_text(
+        "import os\n\nimport click\nfrom flask import Flask\n\napp = Flask(__name__)\n\n\n"
+        "@app.cli.command('probe')\ndef probe():\n    click.echo(os.environ.get('XP_DOTENV_PROBE', 'brak'))\n",
+        encoding="utf-8")
+    r = subprocess.run([sys.executable, "-m", "flask", "--app", "probe", "probe"], cwd=tmp_path, env=dict(os.environ),
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "brak"

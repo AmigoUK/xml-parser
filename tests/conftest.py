@@ -3,6 +3,9 @@ import os
 # Lokalny .env nie może zmieniać wyniku testów (np. TRUSTED_PROXY_COUNT): app/config.py pomija load_dotenv() przy
 # PYTHON_DOTENV_DISABLED=1, a conftest ładuje się przed modułami testów — więc przed pierwszym importem aplikacji.
 os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+# Podprocesy `python -m flask …` (tests/test_migrations.py) czytają .env przez flask.cli.load_dotenv, które wyłącza
+# tylko FLASK_SKIP_DOTENV (PYTHON_DOTENV_DISABLED działa wyłącznie na dotenv.load_dotenv).
+os.environ.setdefault("FLASK_SKIP_DOTENV", "1")
 
 from pathlib import Path  # noqa: E402
 

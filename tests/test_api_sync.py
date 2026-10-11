@@ -178,6 +178,7 @@ def test_updated_since_bad_value_is_400(demo_key, client, query):
     assert r.status_code == 400
     error = r.get_json()["error"]
     assert error["code"] == "bad_request" and "updated_since" in error["message"]
+    assert "Data ze strefą musi zawierać godzinę: 2026-10-11T00:00:00+02:00" in error["message"]
 
 
 # --- pusty updated_since= / cursor= --------------------------------------------------------------------------------

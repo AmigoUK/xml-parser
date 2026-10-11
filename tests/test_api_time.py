@@ -200,6 +200,7 @@ def test_since_unencoded_plus_is_rejected_not_shifted(docs, client, query):
 
 def test_since_date_with_zone_without_time_is_400_not_shifted(docs, client):
     """`2026-10-11+02:00` (poprawnie zakodowane %2B) to data ze strefą, a nie 02:00 UTC — 400 zamiast okna
-    przesuniętego o 2 godziny."""
+    przesuniętego o 2 godziny. Komunikat podaje pełną postać — sama wskazówka o %2B nic by tu nie pomogła."""
     r = client.get("/api/v1/documents?since=2026-10-11%2B02:00", headers=KEY)
     assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request"
+    assert "Data ze strefą musi zawierać godzinę: 2026-10-11T00:00:00+02:00" in r.get_json()["error"]["message"]
