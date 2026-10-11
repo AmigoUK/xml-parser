@@ -1,11 +1,17 @@
-"""tools/screenshots.py — zrzuty ekranu z odizolowanej instancji. Testy nie uruchamiają przeglądarki ani serwera:
-lista stron odpowiada plikom w app/static/screenshots/, Playwright jest importowany leniwie, port żywego demo
-jest odrzucany."""
+"""tools/screenshots.py — zrzuty ekranu z odizolowanej instancji. Testy nie uruchamiają przeglądarki: lista stron
+odpowiada plikom w app/static/screenshots/, Playwright jest importowany leniwie, port żywego demo jest odrzucany,
+środowisko serwera jest odizolowane od ustawień operatora, a błąd startu serwera albo przeglądarki kończy się
+komunikatem (kod wyjścia 2), nie tracebackiem. Jeden test uruchamia prawdziwy podproces serwera (--serve) na wolnym
+porcie, z bazą w katalogu tymczasowym."""
 import importlib.util
+import json
+import os
 import socket
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -66,3 +72,78 @@ def test_missing_playwright_explains_install_before_starting_server(tool, capsys
     monkeypatch.setattr(tool.subprocess, "Popen", lambda *a, **k: pytest.fail("serwer nie powinien startować"))
     assert tool.main(["--port", str(_free_port())]) == 2
     assert "pip install playwright" in capsys.readouterr().err
+
+
+def test_server_env_isolates_instance_from_operator_settings(tool, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "mysql+pymysql://x")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "1")
+    monkeypatch.setenv("MAX_CONTENT_LENGTH", "5")
+    monkeypatch.setenv("TRUSTED_PROXY_COUNT", "1")
+    env = tool.server_env("haslo-jednorazowe")
+    for name in ("DATABASE_URL", "SESSION_COOKIE_SECURE", "MAX_CONTENT_LENGTH", "TRUSTED_PROXY_COUNT"):
+        assert name not in env
+    assert env["PATH"] == os.environ["PATH"]  # reszta środowiska zostaje (interpreter, locale)
+    assert env["DEMO_MODE"] == "1" and env["ADMIN_PASSWORD"] == "haslo-jednorazowe"
+    assert env["PYTHON_DOTENV_DISABLED"] == "1" and env["FLASK_SKIP_DOTENV"] == "1"
+    assert env["DEMO_API_KEY"] == tool.DEMO_API_KEY and len(env["SECRET_KEY"]) == 64
+
+
+def test_serve_requires_workdir(tool):
+    with pytest.raises(SystemExit) as exc:
+        tool.main(["--serve"])
+    assert exc.value.code == 2
+
+
+def test_running_server_reports_unstartable_interpreter(tool, tmp_path):
+    with pytest.raises(tool.ToolError, match="nie-ma-takiego-pythona"):
+        with tool.running_server(str(tmp_path / "nie-ma-takiego-pythona"), _free_port(), tmp_path, "x"):
+            pytest.fail("serwer nie powinien wystartować")
+
+
+def test_running_server_reports_early_exit_with_log(tool, tmp_path):
+    fake = tmp_path / "fake-python"
+    fake.write_text("#!/bin/sh\necho 'brak modulu flask' >&2\nexit 3\n", encoding="utf-8")
+    fake.chmod(0o755)
+    with pytest.raises(tool.ToolError, match=r"kodem 3[\s\S]*brak modulu flask"):
+        with tool.running_server(str(fake), _free_port(), tmp_path, "x"):
+            pytest.fail("serwer nie powinien wystartować")
+
+
+@pytest.mark.parametrize("fail_at", ["new_context", "log_in"])
+def test_browser_error_before_shots_is_tool_error(tool, tmp_path, fail_at):
+    """Błąd Playwright przed pierwszym zrzutem (kontekst przeglądarki albo logowanie) to ToolError — kod wyjścia 2,
+    nie traceback — a przeglądarka i tak jest zamykana. Fałszywy Playwright: testy nie uruchamiają przeglądarki."""
+    class FakeError(Exception):
+        pass
+
+    def boom(*args, **kwargs):
+        raise FakeError("przeglądarka padła")
+
+    closed = []
+    page = SimpleNamespace(on=lambda *args: None, goto=boom if fail_at == "log_in" else lambda url: None)
+    context = SimpleNamespace(new_page=lambda: page)
+    browser = SimpleNamespace(new_context=boom if fail_at == "new_context" else lambda **kwargs: context,
+                              close=lambda: closed.append(True))
+    pw = SimpleNamespace(chromium=SimpleNamespace(launch=lambda: browser))
+
+    @contextmanager
+    def fake_sync_playwright():
+        yield pw
+
+    with pytest.raises(tool.ToolError, match=r"Błąd przeglądarki przed zrzutami: przeglądarka padła"):
+        tool.take_screenshots((fake_sync_playwright, FakeError), "http://127.0.0.1:1", tool.PAGES[:1], tmp_path, "x")
+    assert closed == [True]
+
+
+def test_serve_mode_starts_isolated_instance(tool, tmp_path):
+    """Prawdziwy podproces --serve (świeża SQLite w tmp, seed i nauka na próbkach): /healthz z wersją aplikacji,
+    /demo dostępne; serwer zatrzymany po PID. Najwolniejszy test tego modułu (kilkanaście sekund)."""
+    import urllib.request
+    from app.version import __version__
+    with tool.running_server(sys.executable, _free_port(), tmp_path, "haslo-testowe-123") as base:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(base + "/healthz", timeout=10) as r:
+            health = json.load(r)
+        assert health["status"] == "ok" and health["version"] == __version__
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(base + "/demo", timeout=10) as r:
+            assert r.status == 200
+    assert (tmp_path / "serwer.log").read_text(encoding="utf-8").count(tool.READY) == 1

@@ -31,7 +31,8 @@ z --app-python), więc venv z Playwright nie potrzebuje zależności aplikacji, 
 Serwer korzysta z tests/test_learning.py, więc interpreter aplikacji potrzebuje też pytest (requirements-dev.txt).
 
 Kod wyjścia: 0 — wszystkie zrzuty bez błędów konsoli przeglądarki; 1 — część zrzutów nieudana albo błędy konsoli;
-2 — błąd przygotowania (nieznany zrzut, port, brak Playwright, start serwera, logowanie).
+2 — błąd przygotowania (nieznany zrzut, port, brak Playwright, start serwera lub przeglądarki, logowanie): komunikat
+na stderr zamiast tracebacku.
 """
 from __future__ import annotations
 
@@ -177,9 +178,12 @@ def running_server(app_python: str, port: int, workdir: Path, password: str):
     """Uruchamia serwer w podprocesie i czeka na gotowość; na końcu zatrzymuje go po PID (bez pkill)."""
     log_path = workdir / "serwer.log"
     with open(log_path, "wb") as log:
-        proc = subprocess.Popen(
-            [app_python, str(Path(__file__).resolve()), "--serve", "--port", str(port), "--workdir", str(workdir)],
-            cwd=ROOT, env=server_env(password), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            proc = subprocess.Popen(
+                [app_python, str(Path(__file__).resolve()), "--serve", "--port", str(port), "--workdir", str(workdir)],
+                cwd=ROOT, env=server_env(password), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+        except OSError as e:  # brak interpretera albo uprawnień do jego uruchomienia (--app-python)
+            raise ToolError(f"Nie udało się uruchomić serwera ({app_python}): {e}") from e
     try:
         deadline = time.monotonic() + SERVER_TIMEOUT
         while READY not in log_path.read_text(encoding="utf-8", errors="replace"):
@@ -254,10 +258,13 @@ def take_screenshots(playwright, base: str, shots: list[Shot], out: Path, passwo
         except playwright_error as e:
             raise ToolError(f"Nie udało się uruchomić Chromium — playwright install chromium.\n{e}") from e
         try:
-            page = browser.new_context(viewport=VIEWPORT, device_scale_factor=1, locale="pl-PL").new_page()
-            page.on("console", on_console)
-            page.on("pageerror", on_page_error)
-            log_in(page, base, password)
+            try:
+                page = browser.new_context(viewport=VIEWPORT, device_scale_factor=1, locale="pl-PL").new_page()
+                page.on("console", on_console)
+                page.on("pageerror", on_page_error)
+                log_in(page, base, password)
+            except playwright_error as e:  # przed pierwszym zrzutem; błąd pojedynczego zrzutu trafia niżej do errors
+                raise ToolError(f"Błąd przeglądarki przed zrzutami: {e}") from e
             for shot in shots:
                 current["name"] = shot.name
                 print(f"  {shot.name} ← {shot.path}", flush=True)
