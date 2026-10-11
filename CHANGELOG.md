@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- Sekcja „Pomoc” w panelu (`/pomoc`, dostępna bez logowania): spis treści z szybkim startem w 5 krokach oraz tematy — jak działa przetwarzanie i „uczenie”, pierwsza faktura dostawcy (negocjacja, „tylko ta faktura” vs „zapamiętaj w szablonie”, przykład alfa-1 → alfa-2), edytor mapowań z opisem wszystkich transformacji z białej listy (argumenty i przykłady wejście → wyjście), szablony i wersje, jednostki/aliasy/przeliczniki (przykład „kart.” → szt ×12), kartoteka i import CSV towarów, statusy i kody problemów, REST API (przykłady curl z adresem bieżącej instancji, kody odpowiedzi, limity) oraz FAQ.
+- Rejestr kodów problemów (`app/help_content.py`) z opisem, informacją, czy problem blokuje, i sposobem rozwiązania; tabela w Pomocy z kotwicą dla każdego kodu i filtrem. Test pilnuje, by rejestr obejmował dokładnie kody emitowane przez kod źródłowy (także migracje), a przykłady transformacji dawały opisany wynik.
+- Limity w Pomocy (rozmiar pliku, `MAX_LINES`, `MAX_TREE_NODES`, import CSV, lista API, logowanie, sesja) są odczytywane z konfiguracji i stałych aplikacji.
+- Link „Pomoc” w menu (zawsze widoczny), link „?” przy każdym problemie w widoku dokumentu prowadzący do jego opisu, link „? Pomoc” na pasku edytora mapowań (nowa karta) i odnośnik na stronie demo.
 
 ## [0.2.0] — 2026-10-10
 

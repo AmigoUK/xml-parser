@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Pomoc{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">Pomoc</h1>
+<p class="text-muted mb-4">Jak korzystać z parsera faktur: od pierwszej faktury nowego dostawcy po integrację przez REST API.</p>
+
+<h2 class="h5">Szybki start w 5 krokach</h2>
+<ol class="list-group list-group-numbered mb-4">
+  {% for title, text in quick_start %}
+  <li class="list-group-item"><strong>{{ title }}</strong> — {{ text }}</li>
+  {% endfor %}
+</ol>
+
+<h2 class="h5">Tematy</h2>
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3 mb-4">
+  {% for t in topics %}
+  <div class="col">
+    <a class="card h-100 text-decoration-none help-card" href="{{ url_for('help.topic', slug=t.slug) }}">
+      <div class="card-body">
+        <h3 class="h6 card-title">{{ t.title }}</h3>
+        <p class="card-text small text-muted mb-0">{{ t.summary }}</p>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card card-body small">
+  <strong>Najważniejsze limity tej instancji</strong>
+  <ul class="mb-0">
+    <li>Plik faktury: maks. {{ limits.max_document }}.</li>
+    <li>Pozycji na fakturze: maks. {{ limits.max_lines }}.</li>
+    <li>Węzłów drzewa (elementy, atrybuty, komórki CSV): maks. {{ limits.max_tree_nodes }}.</li>
+  </ul>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p>Parser zamienia fakturę strukturalną dowolnego dostawcy na jeden <strong>dokument kanoniczny</strong>
+  (ten sam zestaw pól dla wszystkich). Nie używa modeli językowych — działa na deterministycznych regułach
+  i transformacjach z białej listy. Każdy dokument, niezależnie od tego, czy przyszedł z panelu, z REST API
+  czy z edytora, przechodzi tę samą drogę.</p>
+
+<h2 class="h5 mt-4">Krok po kroku</h2>
+<ol class="list-group list-group-numbered mb-3">
+  <li class="list-group-item"><strong>Wejście</strong> — plik z panelu („Wgraj fakturę”) albo z API. Plik większy niż
+    {{ limits.max_document }} jest odrzucany od razu. Plik zapisywany jest w magazynie plików, a dokument dostaje
+    status „Przyjęta”.</li>
+  <li class="list-group-item"><strong>Wykrycie formatu</strong> — po treści, nie po rozszerzeniu: plik zaczynający się
+    od <code>&lt;</code> to XML, od <code>{</code> lub <code>[</code> — JSON, pozostałe — CSV (separator
+    <code>;</code>, <code>,</code>, tabulator lub <code>|</code> wykrywany automatycznie). Pliki puste, binarne
+    (np. PDF, ZIP, obrazy) oraz w kodowaniu UTF-16/UTF-32 są odrzucane.</li>
+  <li class="list-group-item"><strong>Drzewo</strong> — plik zamieniany jest na drzewo ścieżek, np.
+    <code>Faktura/Naglowek/DostawcaNIP</code>. Przestrzenie nazw XML są pomijane (liczy się nazwa lokalna),
+    atrybuty są osobnymi węzłami. Limit: {{ limits.max_tree_nodes }} węzłów. XML z DOCTYPE/ENTITY jest odrzucany,
+    encje nie są rozwijane, parser nie sięga do sieci.</li>
+  <li class="list-group-item"><strong>Identyfikacja dostawcy i odcisk</strong> — system szuka NIP/VAT w ścieżkach znanych
+    z aktywnych szablonów i w ścieżkach pasujących do słownika synonimów, a następnie porównuje go z NIP-ami
+    dostawców. Szablon dostawcy wybierany jest po <em>odcisku</em> struktury: podobieństwie zbioru ścieżek pliku
+    do ścieżek szablonu (co najmniej {{ limits.fingerprint_pct }}%). Gdy dostawca jest nieznany, a struktura pasuje
+    do szablonu innego dostawcy, panel zaproponuje skopiowanie jego reguł.</li>
+  <li class="list-group-item"><strong>Szablon</strong> — reguły <em>pole kanoniczne ← ścieżka w pliku → łańcuch
+    transformacji</em>, plus wartości domyślne. Bez szablonu system tworzy <em>reguły robocze</em> na podstawie
+    słownika synonimów (PL/EN/KSeF/UBL), typów wartości i reguł nauczonych u innych dostawców. Następnie
+    rozpoznaje jednostki, przeliczniki i towary z kartoteki. Limit: {{ limits.max_lines }} pozycji.</li>
+  <li class="list-group-item"><strong>Walidacja</strong> — ilość × cena = netto i netto + VAT = brutto w pozycjach
+    (ostrzeżenie), suma netto pozycji = netto faktury i netto + VAT = brutto faktury (blokuje); tolerancja 0,01.
+    Na końcu sprawdzane są duplikaty.</li>
+  <li class="list-group-item"><strong>Status</strong> — „Duplikat”, gdy faktura już jest w systemie; „Do wyjaśnienia”,
+    gdy jest choć jeden problem blokujący; w przeciwnym razie „Zatwierdzona”. Problemy tego samego rodzaju
+    z wielu pozycji są łączone w jeden (z licznikiem i numerami pierwszych {{ limits.max_line_nos }} pozycji).
+    Szczegóły: <a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}">Statusy i problemy</a>.</li>
+</ol>
+
+<h2 class="h5 mt-4">Co znaczy „uczenie”</h2>
+<p>System nie zgaduje w tle — uczy się wyłącznie z decyzji operatora. Gdy rozwiązując problem zaznaczysz
+  <strong>„Zapamiętaj w szablonie / słowniku dostawcy”</strong>, decyzja zostaje zapisana tam, gdzie posłuży
+  kolejnym fakturom:</p>
+<ul>
+  <li>mapowanie pola → nowa <a href="{{ url_for('help.topic', slug='szablony') }}">wersja szablonu</a> dostawcy;</li>
+  <li>jednostka → alias jednostki tego dostawcy (np. <code>pcs</code> → <code>szt</code>);</li>
+  <li>przelicznik → wpis w przelicznikach (zawsze zapamiętywany);</li>
+  <li>towar → mapowanie towaru dostawcy (po kodzie, GTIN albo nazwie).</li>
+</ul>
+<p>Reguły zapisane w szablonach podpowiadają też ścieżki dla <em>nowych</em> dostawców o podobnej strukturze
+  plików. Bez zaznaczenia decyzja dotyczy <strong>tylko tej faktury</strong>.</p>
+{% endblock %}

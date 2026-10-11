@@ -1,0 +1,16 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<div class="accordion" id="faq">
+  {% for f in faq %}
+  <div class="accordion-item">
+    <h2 class="accordion-header" id="faq-h{{ loop.index }}">
+      <button class="accordion-button{% if not loop.first %} collapsed{% endif %}" type="button" data-bs-toggle="collapse"
+              data-bs-target="#faq-{{ loop.index }}" aria-expanded="{{ 'true' if loop.first else 'false' }}" aria-controls="faq-{{ loop.index }}">{{ f.q }}</button>
+    </h2>
+    <div id="faq-{{ loop.index }}" class="accordion-collapse collapse{% if loop.first %} show{% endif %}" aria-labelledby="faq-h{{ loop.index }}">
+      <div class="accordion-body small">{{ f.a }}{% if f.link %} <a href="{{ url_for('help.topic', slug=f.link) }}">Więcej →</a>{% endif %}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

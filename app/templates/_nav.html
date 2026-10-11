@@ -29,6 +29,7 @@
         {% if 'history' in nav_blueprints %}<li class="nav-item"><a class="nav-link" href="{{ url_for('history.index') }}">Historia</a></li>{% endif %}
         {% endif %}
         <li class="nav-item"><a class="nav-link" href="{{ url_for('api_docs') }}">API</a></li>
+        {% if 'help' in nav_blueprints %}<li class="nav-item"><a class="nav-link" href="{{ url_for('help.index') }}">Pomoc</a></li>{% endif %}
       </ul>
       {% if current_user.is_authenticated %}
       <form method="post" action="{{ url_for('auth.logout') }}" class="d-flex">

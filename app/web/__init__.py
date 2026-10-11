@@ -3,7 +3,7 @@ def register_web(app):
     from .documents import bp as docs_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(docs_bp)
-    for name in ("catalog", "templates_views", "apikeys", "history", "demo"):
+    for name in ("catalog", "templates_views", "apikeys", "history", "demo", "help"):
         try:
             module = __import__(f"app.web.{name}", fromlist=["bp"])
         except ModuleNotFoundError:

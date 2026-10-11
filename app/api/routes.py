@@ -32,6 +32,8 @@ def require_api_key(fn):
 # klucza API, więc w API są wycinane (SEC-5). Nieznane rodzaje też — fail-closed.
 API_SAFE_SUGGESTIONS = {"path", "line_path", "default", "unit", "conversion", "create_supplier", "create_product"}
 FOREIGN_DUPLICATE_MESSAGE = "Ta faktura była już przetworzona (duplikat istniejącego dokumentu)."
+LIST_DEFAULT_LIMIT = 100  # GET /documents: domyślna i maksymalna liczba wyników (opis w Pomocy i openapi.yaml)
+LIST_MAX_LIMIT = 500
 
 
 def _duplicate_owned_by_other_key(issue: dict, api_key_id: int | None) -> bool:
@@ -104,7 +106,7 @@ def list_documents():
         except ValueError:
             return api_error("bad_request", "Parametr since musi być datą ISO 8601.", 400)
     try:
-        limit = max(1, min(int(request.args.get("limit", 100)), 500))
+        limit = max(1, min(int(request.args.get("limit", LIST_DEFAULT_LIMIT)), LIST_MAX_LIMIT))
     except ValueError:
         return api_error("bad_request", "Parametr limit musi być liczbą całkowitą.", 400)
     return jsonify(items=[doc_to_json(d, full=False) for d in q.limit(limit)])

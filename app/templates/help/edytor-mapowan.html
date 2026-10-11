@@ -1,0 +1,64 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p>Edytor mapowań to pełnoekranowy widok do ręcznej edycji reguł szablonu na przykładzie konkretnej faktury.
+  Otwierasz go z widoku dokumentu (link „Otwórz edytor mapowań” przy problemie z polem) albo ze szczegółów
+  szablonu („Otwórz edytor” — edytor użyje najnowszego dokumentu tego szablonu). Link „? Pomoc” na pasku edytora
+  otwiera tę stronę w nowej karcie.</p>
+
+<h2 class="h5 mt-4">Układ</h2>
+<ol>
+  <li><strong>Wybór elementu</strong> (lewa kolumna) — drzewo pliku; kliknij element, aby go zaznaczyć. Pogrubione są
+    elementy grupujące (mające elementy podrzędne). Ścieżki zawierają element główny, np.
+    <code>Faktura/Naglowek/Numer</code>; atrybuty mają postać <code>…/Ilosc/@unitCode</code>; w JSON ścieżki zaczynają się od
+    <code>root/</code>, a w CSV mają postać <code>csv/row/&lt;nazwa kolumny&gt;</code>.</li>
+  <li><strong>Element pozycji</strong> — zaznacz element powtarzany dla każdej pozycji (np. <code>Faktura/Pozycje/Pozycja</code>)
+    i kliknij „← ustaw” w karcie „Element z pozycjami faktury”. Bez niego szablonu nie da się zapisać.</li>
+  <li><strong>Przypisanie pola</strong> (środkowa kolumna) — przy polu kliknij „←”, aby przypisać zaznaczony element, „×”, aby
+    usunąć regułę. Pola pozycji muszą wskazywać element <em>wewnątrz</em> elementu z pozycjami — zapisywane są jako ścieżki
+    względne. Gwiazdka oznacza pole wymagane. Przyciski pod polem to podpowiedzi z procentem pewności; pole
+    „wartość domyślna” działa, gdy w pliku brak wartości.</li>
+  <li><strong>Łańcuch transformacji</strong> — lista JSON w polu pod regułą, wykonywana od lewej do prawej, np.
+    <code>["trim", {"gs1": "10"}]</code>. Krok bez argumentu to sama nazwa, krok z argumentem — obiekt z jedną parą
+    <code>{"nazwa": argument}</code>.</li>
+  <li><strong>Podgląd</strong> (prawa kolumna) — po każdej zmianie edytor przelicza dokument i pokazuje problemy oraz wynik
+    w formacie kanonicznym; nic nie jest zapisywane. Przycisk „Podgląd” wymusza przeliczenie.</li>
+  <li><strong>Zapis wersji</strong> — „Zapisz nową wersję” (opcjonalnie z komentarzem) tworzy nową wersję szablonu
+    i przetwarza dokument ponownie. Gdy nowe reguły usuwają mapowanie pola wymaganego, edytor poprosi o potwierdzenie.
+    Gdy w międzyczasie ktoś zapisał nowszą wersję, zapis zostanie odrzucony z prośbą o odświeżenie edytora —
+    cudza praca nie zostanie nadpisana. Dla dokumentu bez rozpoznanego dostawcy zapisywane są reguły robocze.</li>
+</ol>
+
+<h2 class="h5 mt-4">Transformacje (biała lista)</h2>
+<p>Dozwolone są wyłącznie poniższe transformacje — nieznana nazwa albo zły argument blokuje zapis z komunikatem.
+  Transformacje liczbowe (<code>decimal</code>, <code>convert</code>, <code>negate</code>) zwracają liczbę zawsze z kropką dziesiętną.</p>
+<div class="table-responsive">
+<table class="table table-sm bg-white small align-middle">
+  <thead><tr><th>Nazwa</th><th>Działanie</th><th>Argument</th><th>Przykład kroku</th><th>Wejście → wyjście</th></tr></thead>
+  <tbody>
+  {% for t in transforms %}
+    <tr id="t-{{ t.name }}">
+      <td><code>{{ t.name }}</code></td>
+      <td>{{ t.label }}{% if t.note %}<div class="text-muted">{{ t.note }}</div>{% endif %}</td>
+      <td>{{ t.args }}</td>
+      <td><code>{{ t.step }}</code></td>
+      <td class="text-nowrap">{% if t.input is none %}<span class="text-muted">—</span>{% else %}<code>„{{ t.input }}”</code>{% endif %} → <code>„{{ t.output }}”</code></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="small text-muted">Przykład dla <code>concat</code> zakłada w pliku elementy <code>Faktura/Sprzedawca/Ulica</code> = „Polna 1”
+  i <code>Faktura/Sprzedawca/Miasto</code> = „Opole”.</p>
+
+<h2 class="h5 mt-4">Liczby w transformacjach</h2>
+<ul>
+  <li>Rozpoznawane są separatory tysięcy (spacja, twarda spacja, apostrof), dopiski waluty/procentu (np. „zł”, „PLN”, „%”),
+    nawiasy i minus na końcu jako liczba ujemna oraz zapis wykładniczy (<code>1.5e3</code> → <code>1500</code>).</li>
+  <li>Wartość dłuższa niż {{ limits.max_number_text }} znaków albo z ponad {{ limits.max_integer_digits }} cyframi
+    całkowitymi nie jest liczbą.</li>
+  <li>Forma niejednoznaczna („1,234”) bez wskazanego separatora daje problem
+    <a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}#ambiguous_number"><code>ambiguous_number</code></a>.</li>
+  <li>Współczynnik <code>convert</code> podlega tej samej regule co przeliczniki: kropka jest zawsze dziesiętna, wynik
+    musi być większy od zera i mieć najwyżej {{ limits.max_factor_digits }} cyfr całkowitych.</li>
+</ul>
+{% endblock %}

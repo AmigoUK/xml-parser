@@ -8,6 +8,7 @@
     <input class="form-control form-control-sm w-auto" x-model="comment" placeholder="Komentarz do wersji">
     <button class="btn btn-sm btn-outline-secondary" @click="runPreview()">Podgląd</button>
     <button class="btn btn-sm btn-primary" @click="save()" :disabled="saving">Zapisz nową wersję</button>
+    {% if 'help' in nav_blueprints %}<a class="btn btn-sm btn-link" href="{{ url_for('help.topic', slug='edytor-mapowan') }}" target="_blank" rel="noopener">? Pomoc</a>{% endif %}
   </div>
   <div class="row g-0 flex-grow-1" style="min-height:0">
     <div class="col-3 border-end overflow-auto p-2 bg-white">

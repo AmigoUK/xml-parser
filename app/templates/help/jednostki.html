@@ -1,0 +1,54 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p>Każda pozycja faktury kończy w <strong>naszej</strong> jednostce miary. Słowniki znajdziesz w menu <em>Dane</em>:
+  „Jednostki”, „Aliasy jednostek” i „Przeliczniki”.</p>
+
+<h2 class="h5 mt-4">Jednostki</h2>
+<p>Jednostka ma kod (zapisywany małymi literami, np. <code>szt</code>, <code>kg</code>), nazwę i znacznik
+  <strong>„jednostka bazowa”</strong>. Pozycja w jednostce bazowej nie wymaga przelicznika; pozycja w jednostce
+  niebazowej (np. <code>karton</code>, <code>worek</code>, <code>opak</code>) musi mieć przelicznik na jednostkę bazową —
+  inaczej pojawia się problem <a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}#missing_conversion"><code>missing_conversion</code></a>.
+  Jednostki używanej w dokumentach, aliasach, towarach lub przelicznikach nie można usunąć.</p>
+
+<h2 class="h5 mt-4">Aliasy — globalne i dostawcy</h2>
+<p>Alias mówi, że zapis jednostki w pliku dostawcy (np. <code>pcs</code>, <code>kart.</code>, <code>C62</code>) oznacza naszą
+  jednostkę. Kolejność rozpoznawania:</p>
+<ol>
+  <li>zapis równy kodowi naszej jednostki (bez spacji na brzegach, bez wielkości liter) — np. <code>KG</code> → <code>kg</code>;</li>
+  <li>alias <strong>tego dostawcy</strong>;</li>
+  <li>alias <strong>globalny</strong> (pole „Dostawca” puste = „wszyscy”).</li>
+</ol>
+<p>Przy porównywaniu aliasów nie mają znaczenia wielkość liter, znaki diakrytyczne ani wielokrotne spacje. Alias
+  zapamiętany w negocjacji jest zawsze aliasem dostawcy; aliasy globalne dodasz w słowniku. Jeden alias może istnieć
+  tylko raz dla danego dostawcy (i raz globalnie). Nierozpoznana jednostka daje problem
+  <a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}#unknown_unit"><code>unknown_unit</code></a>.</p>
+
+<h2 class="h5 mt-4">Przeliczniki</h2>
+<p>Przelicznik „1 <em>z jednostki</em> = X <em>na jednostkę</em>” może dotyczyć dostawcy, towaru, obu albo wszystkich
+  (puste pola = „wszyscy” / „wszystkie”). Wybierany jest najbardziej szczegółowy:</p>
+<ol>
+  <li>ten dostawca i ten towar,</li>
+  <li>ten dostawca, wszystkie towary,</li>
+  <li>wszyscy dostawcy, ten towar,</li>
+  <li>wszyscy dostawcy, wszystkie towary.</li>
+</ol>
+<p>Po przeliczeniu ilość jest <strong>mnożona</strong> przez współczynnik, cena jednostkowa netto — <strong>dzielona</strong>,
+  a w pozycji zapisywana jest jednostka docelowa i współczynnik (<code>conversion_factor</code>).</p>
+<div class="alert alert-info small"><strong>Kropka jest zawsze separatorem dziesiętnym w przelicznikach</strong>
+  (w słowniku, w negocjacji i w transformacji <code>convert</code>): <code>1.125</code> = 1,125, a <code>1.000</code> = 1.
+  Przecinek przed dokładnie trzema cyframi (<code>1,125</code>) jest niejednoznaczny i zostanie odrzucony z podpowiedzią,
+  co wpisać. Przelicznik musi być większy od zera i mieć najwyżej {{ limits.max_factor_digits }} cyfr całkowitych.</div>
+
+<h2 class="h5 mt-4">Przykład: „kart.” → szt ×12</h2>
+<p>Faktura CSV Opakowań Delta (próbka demo <code>delta.csv</code>) ma pozycję „Pudełko na tort 30x30”: ilość
+  <code>2</code>, jednostka <code>kart.</code>, cena <code>96,00</code>.</p>
+<ol>
+  <li>Problem „Nieznana jednostka „kart.”” — wskaż <code>karton</code> (podpowiedź), z „zapamiętaj”: powstaje alias
+    dostawcy <code>kart.</code> → <code>karton</code>.</li>
+  <li><code>karton</code> nie jest jednostką bazową, więc pojawia się „brak przelicznika” — wpisz
+    <code>1 karton = 12 szt</code> „dla wszystkich towarów dostawcy”.</li>
+  <li>Wynik pozycji: ilość <code>24</code> szt, cena netto <code>8.00</code>, przelicznik <code>12</code>.</li>
+</ol>
+<p class="small text-muted">Nie mapuj <code>kart.</code> bezpośrednio na <code>szt</code> — <code>szt</code> jest jednostką bazową,
+  więc ilość nie zostałaby przeliczona (2 szt zamiast 24).</p>
+{% endblock %}

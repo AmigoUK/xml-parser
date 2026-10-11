@@ -1,0 +1,77 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<h2 class="h5">Statusy dokumentu</h2>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>Status (API)</th><th>W panelu</th><th>Znaczenie</th></tr></thead>
+  <tbody>
+  {% for code, label, text in statuses %}
+    <tr id="status-{{ code }}"><td><code>{{ code }}</code></td><td>{{ label }}</td><td>{{ text }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2 class="h5 mt-4">Kody problemów</h2>
+<p class="small">Każdy problem ma kod (<code>code</code> w API), wagę — <strong>blokuje</strong> (dokument czeka „Do wyjaśnienia”)
+  albo <strong>ostrzeżenie</strong> (nie wstrzymuje zatwierdzenia) — i komunikat po polsku. Problemy tego samego rodzaju
+  z wielu pozycji są łączone w jeden z licznikiem (<code>count</code>) i numerami pierwszych {{ limits.max_line_nos }} pozycji
+  (<code>line_nos</code>).</p>
+<input type="search" class="form-control form-control-sm mb-2 help-filter" placeholder="Filtruj kody problemów…"
+       data-table-filter="#issue-table" aria-label="Filtruj kody problemów">
+<div class="table-responsive">
+<table class="table table-sm bg-white small align-top" id="issue-table">
+  <thead><tr><th>Kod</th><th>Blokuje</th><th>Co oznacza</th><th>Jak rozwiązać</th></tr></thead>
+  <tbody>
+  {% for code, h in issues.items() %}
+    <tr id="{{ code }}">
+      <td><code>{{ code }}</code><div class="fw-semibold">{{ h.title }}</div></td>
+      <td>{{ h.blocking }}{% if h.blocking_note %}<div class="text-muted">{{ h.blocking_note }}</div>{% endif %}</td>
+      <td>{{ h.description }}</td>
+      <td>{{ h.how_to_fix }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2 class="h5 mt-4" id="duplikaty">Duplikaty</h2>
+<ul>
+  <li>Duplikatem jest dokument, którego wcześniej przyjęty, „żywy” (zatwierdzony lub do wyjaśnienia) odpowiednik ma ten sam
+    plik albo tego samego dostawcę, rodzaj dokumentu i numer (porównywany bez wielkości liter, akcentów i spacji wokół
+    <code>/</code> i <code>-</code>). Oryginałem jest zawsze dokument przyjęty wcześniej.</li>
+  <li><strong>Zakres</strong>: duplikaty wykrywane są osobno dla każdego klucza API i osobno dla panelu (faktury wgrane w panelu
+    i próbki demo). Ta sama faktura wysłana dwoma różnymi kluczami albo raz kluczem, raz w panelu — <em>nie</em> jest
+    duplikatem.</li>
+  <li>W panelu: „To nie duplikat — przetwórz” (zgoda zapisywana w dokumencie, który jest przetwarzany dalej) albo „Odrzuć”.
+    Po odrzuceniu oryginału jego duplikaty są przeliczane.</li>
+</ul>
+
+<h2 class="h5 mt-4" id="odrzucenie">Ręczne odrzucenie i „Przywróć”</h2>
+<p>„Odrzuć” ustawia status „Odrzucona” i zapisuje, kto odrzucił. Takiego dokumentu nie zmieni ani „Przetwórz ponownie”,
+  ani rozwiązywanie problemów, ani API (<code>reprocess</code> zwraca 409 z kodem <code>rejected</code>). Cofnąć odrzucenie można
+  tylko przyciskiem <strong>„Przywróć”</strong> w widoku dokumentu — dokument jest wtedy przetwarzany od nowa; jeśli w międzyczasie
+  późniejsza kopia tej faktury stała się aktywna, wraca do statusu „Duplikat”. Odrzucenia automatyczne
+  (<code>unreadable</code>, <code>too_many_lines</code>) można przetworzyć ponownie bez „Przywróć”.</p>
+
+<h2 class="h5 mt-4" id="liczby">Liczby</h2>
+<ul>
+  <li>Rozpoznawany jest przecinek i kropka dziesiętna oraz separatory tysięcy: <code>1 234,56</code>, <code>1.234,56</code>,
+    <code>1,234.56</code> → <code>1234.56</code>.</li>
+  <li>Liczby ujemne: <code>-5</code>, <code>5-</code> (minus na końcu), <code>(5,00)</code> (nawiasy), także minus typograficzny.</li>
+  <li>Zapis wykładniczy: <code>1e3</code> → <code>1000</code>.</li>
+  <li>Dopiski waluty i procentu przed lub po liczbie są pomijane (np. <code>12,50 zł</code>); litery w środku liczby to błąd.</li>
+  <li><strong>Niejednoznaczne</strong> są zapisy z jednym separatorem i dokładnie trzema cyframi po nim (<code>1,234</code>,
+    <code>1.234</code>). Jeśli inne liczby w dokumencie jednoznacznie wskazują separator, zostanie on użyty; w przeciwnym razie
+    powstaje problem <a href="#ambiguous_number"><code>ambiguous_number</code></a>. Rozwiązanie: transformacja
+    <code>{"decimal": ","}</code> (przecinek dziesiętny) albo <code>{"decimal": "."}</code> (kropka dziesiętna) w regule pola —
+    panel podpowiada oba warianty z podglądem.</li>
+  <li>W wyniku (JSON) liczby są tekstem z kropką dziesiętną: kwoty z 2 miejscami, ceny z 2–4 miejscami.</li>
+</ul>
+
+<h2 class="h5 mt-4" id="stawki-vat">Stawki VAT bez wartości liczbowej</h2>
+<p>Pole <code>vat_rate</code> przyjmuje liczbę procent (np. <code>23</code>, <code>8</code>, <code>0</code>) albo kod:
+  <code>zw</code> (zwolnione), <code>np</code>, <code>np I</code>, <code>np II</code> (nie podlega) i <code>oo</code> (odwrotne obciążenie).
+  Kody rozpoznawane są bez wielkości liter i kropki na końcu (np. <code>ZW</code>, <code>np.</code>) i trafiają do wyniku jako tekst.
+  Stawka między 0 a 1 (np. <code>0,23</code>) daje ostrzeżenie <a href="#vat_rate_fraction"><code>vat_rate_fraction</code></a>.</p>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p><strong>Szablon</strong> to zestaw reguł odczytu faktur jednego dostawcy w jednej strukturze pliku: element z pozycjami,
+  reguły pól nagłówka i pozycji (ścieżka + transformacje) oraz wartości domyślne. Szablon powstaje automatycznie,
+  gdy rozpoznasz dostawcę pierwszej faktury, i nazywa się „&lt;dostawca&gt; — &lt;FORMAT&gt;”. Jeden dostawca może mieć
+  kilka szablonów (np. XML i CSV) — wybierany jest ten, którego odcisk struktury najlepiej pasuje do pliku
+  (co najmniej {{ limits.fingerprint_pct }}% wspólnych ścieżek).</p>
+
+<h2 class="h5 mt-4">Wersje</h2>
+<p>Reguły nigdy nie są nadpisywane — każda zmiana tworzy <strong>nową wersję</strong>, która od razu staje się aktywna.
+  Nowa wersja powstaje, gdy:</p>
+<ul>
+  <li>rozpoznajesz dostawcę pierwszej faktury (komentarz „Pierwsza wersja (z negocjacji)”);</li>
+  <li>rozwiązujesz problem z polem z zaznaczonym „zapamiętaj” (komentarz „Mapowanie pola: …”);</li>
+  <li>zapisujesz zmiany w <a href="{{ url_for('help.topic', slug='edytor-mapowan') }}">edytorze mapowań</a> (Twój komentarz albo „Zmiana w edytorze mapowań”);</li>
+  <li>przywracasz starszą wersję (komentarz „Przywrócono wersję N”).</li>
+</ul>
+<p>Każdy dokument pamięta, którą wersją szablonu został odczytany (widać to w nagłówku dokumentu i w polu
+  <code>template_version</code> w API).</p>
+
+<h2 class="h5 mt-4">Historia i porównanie</h2>
+<p><em>Szablony</em> → „Wersje” pokazuje tabelę wersji (autor, komentarz, data; aktywna jest oznaczona). U góry wybierz
+  dwie wersje i kliknij „Pokaż różnice” — zobaczysz różnice reguł w formacie JSON (dodane linie na zielono, usunięte
+  na czerwono). Wszystkie zmiany są też zapisywane w <em>Historii</em> (kto, kiedy, co).</p>
+
+<h2 class="h5 mt-4">Przywrócenie</h2>
+<p>Przy każdej nieaktywnej wersji jest przycisk „Przywróć”. Przywrócenie <strong>nie usuwa</strong> nowszych wersji —
+  tworzy nową wersję będącą kopią wybranej, więc zawsze można wrócić. Dokumenty odczytane wcześniej nie zmieniają się
+  same — aby odczytać je przywróconymi regułami, użyj „Przetwórz ponownie” w dokumencie (albo
+  <code>POST /api/v1/documents/{id}/reprocess</code>).</p>
+
+<h2 class="h5 mt-4">Usuwanie</h2>
+<p>Szablon można usunąć z listy szablonów tylko wtedy, gdy nie jest użyty w żadnym dokumencie.</p>
+
+<h2 class="h5 mt-4">Eksport i import</h2>
+<p>Panel nie ma obecnie funkcji eksportu ani importu szablonów. Reguły dowolnej wersji można podejrzeć w porównaniu wersji.</p>
+{% endblock %}

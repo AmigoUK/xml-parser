@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ topic.title }} · Pomoc{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb small">
+    <li class="breadcrumb-item"><a href="{{ url_for('help.index') }}">Pomoc</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ topic.title }}</li>
+  </ol>
+</nav>
+<div class="row g-4">
+  <aside class="col-lg-3">
+    <div class="list-group help-menu small">
+      {% for t in topics %}
+      <a class="list-group-item list-group-item-action{% if t.slug == topic.slug %} active{% endif %}"
+         href="{{ url_for('help.topic', slug=t.slug) }}"{% if t.slug == topic.slug %} aria-current="page"{% endif %}>{{ t.title }}</a>
+      {% endfor %}
+    </div>
+  </aside>
+  <article class="col-lg-9 help-article">
+    <h1 class="h3 mb-3">{{ topic.title }}</h1>
+    {% block help_content %}{% endblock %}
+    <nav class="d-flex justify-content-between border-top pt-3 mt-4 small help-pager" aria-label="Tematy pomocy">
+      <div>{% if prev %}<a href="{{ url_for('help.topic', slug=prev.slug) }}" rel="prev">← {{ prev.title }}</a>{% endif %}</div>
+      <div>{% if next %}<a href="{{ url_for('help.topic', slug=next.slug) }}" rel="next">{{ next.title }} →</a>{% endif %}</div>
+    </nav>
+  </article>
+</div>
+{% endblock %}

@@ -18,7 +18,10 @@
   <div class="card-body">
     <div class="d-flex justify-content-between">
       <strong>{{ i.message }}</strong>
-      <span class="badge text-bg-{{ 'danger' if i.severity == 'blocking' else 'warning' }}">{{ 'blokuje' if i.severity == 'blocking' else 'ostrzeżenie' }}</span>
+      <span class="text-nowrap">
+        {% if help_issue_codes is defined and i.code in help_issue_codes %}<a class="issue-help small me-1" href="{{ url_for('help.topic', slug='statusy-i-problemy') }}#{{ i.code }}" target="_blank" rel="noopener" title="Pomoc: {{ help_issue_codes[i.code].title }}" aria-label="Pomoc: {{ help_issue_codes[i.code].title }}">?</a>{% endif %}
+        <span class="badge text-bg-{{ 'danger' if i.severity == 'blocking' else 'warning' }}">{{ 'blokuje' if i.severity == 'blocking' else 'ostrzeżenie' }}</span>
+      </span>
     </div>
     {% if i.source_path %}<div class="small text-muted">Źródło: <code>{{ i.source_path }}</code>{% if i.source_value %} = „{{ i.source_value }}”{% endif %}</div>{% endif %}
 

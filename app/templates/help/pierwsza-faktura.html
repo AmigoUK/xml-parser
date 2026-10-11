@@ -1,0 +1,56 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p>Pierwsza faktura nowego dostawcy prawie zawsze trafia do <strong>Kolejki</strong> ze statusem „Do wyjaśnienia”:
+  system nie zna jeszcze dostawcy, jego jednostek ani towarów. Rozwiązujesz problemy w widoku dokumentu —
+  to jest <em>negocjacja</em>. Po każdej decyzji dokument jest automatycznie przetwarzany ponownie.</p>
+
+<h2 class="h5 mt-4">Widok dokumentu</h2>
+<ul>
+  <li>Na górze lista problemów (pokazywanych jest pierwszych {{ limits.issue_cards }}; kolejne pojawią się po rozwiązaniu
+    widocznych). Czerwony pasek i plakietka „blokuje” — problem blokujący; żółty — ostrzeżenie. Link
+    <strong>?</strong> przy problemie prowadzi do jego opisu.</li>
+  <li>Poniżej drzewo pliku źródłowego (po najechaniu widać pełną ścieżkę elementu) i wynik w formacie kanonicznym.</li>
+  <li>Przyciski: „Przetwórz ponownie” (aktywną wersją szablonu), „JSON”, „Plik źródłowy”; przy dokumencie
+    odrzuconym ręcznie — „Przywróć”.</li>
+</ul>
+
+<h2 class="h5 mt-4">„Tylko ta faktura” czy „zapamiętaj w szablonie”</h2>
+<p>Przy większości formularzy jest przełącznik <strong>„Zapamiętaj w szablonie / słowniku dostawcy (inaczej — tylko ta
+  faktura)”</strong>, domyślnie włączony.</p>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>Problem</th><th>Zapamiętaj (włączone)</th><th>Tylko ta faktura (wyłączone)</th></tr></thead>
+  <tbody>
+    <tr><td>Brak pola nagłówka</td><td>nowa wersja szablonu: ścieżka w pliku albo wartość domyślna</td><td>wartość zapisana tylko w tym dokumencie</td></tr>
+    <tr><td>Brak pola pozycji / elementu z pozycjami</td><td>nowa wersja szablonu</td><td>niedostępne — pola pozycji trzeba zapamiętać</td></tr>
+    <tr><td>Nieznana jednostka</td><td>alias jednostki tego dostawcy</td><td>przypisanie tylko w tym dokumencie</td></tr>
+    <tr><td>Nieprzypisany towar</td><td>mapowanie towaru dostawcy (kod, GTIN albo nazwa)</td><td>przypisanie w tym dokumencie (wszystkie pozycje z tym samym towarem)</td></tr>
+    <tr><td>Brak przelicznika</td><td colspan="2">zawsze zapamiętywany — dla wszystkich towarów dostawcy albo tylko dla tego towaru</td></tr>
+    <tr><td>Dostawca, duplikat</td><td colspan="2">decyzja zawsze zapisywana (nowy dostawca / przypisanie; „To nie duplikat” albo „Odrzuć”)</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small text-muted">Aliasów, przeliczników i mapowań towarów nie da się zapamiętać, dopóki dostawca nie jest rozpoznany —
+  dlatego zaczynaj od problemu „Nie rozpoznano dostawcy”. Szablon dostawcy powstaje przy rozpoznaniu dostawcy.</p>
+
+<h2 class="h5 mt-4">Ponowne przetworzenie</h2>
+<p>Każde rozwiązanie problemu przetwarza dokument ponownie. Ręcznie — przyciskiem „Przetwórz ponownie” (np. po zmianie
+  kartoteki, słowników albo szablonu w edytorze) albo przez API (<code>POST /api/v1/documents/{id}/reprocess</code>).
+  Dokument odrzucony ręcznie pozostaje odrzucony, dopóki nie użyjesz „Przywróć”.</p>
+
+<h2 class="h5 mt-4">Przykład: alfa-1.xml → alfa-2.xml</h2>
+<p>Próbki demo są fikcyjne (Hurtownia Alfa). Po wczytaniu <code>alfa-1.xml</code> pojawiają się cztery problemy blokujące:</p>
+<ol>
+  <li><strong>Nie rozpoznano dostawcy</strong> — „Utwórz i zapamiętaj” z nazwą i NIP-em odczytanymi z faktury
+    (Hurtownia Alfa Sp. z o.o.).</li>
+  <li><strong>Brak wymaganego pola „Waluta”</strong> — wybierz wartość domyślną <code>PLN</code> z zaznaczonym „zapamiętaj”;
+    trafi do wartości domyślnych szablonu.</li>
+  <li><strong>Nieznana jednostka „pcs”</strong> — wskaż <code>szt</code> (powstaje alias dostawcy <code>pcs</code> → <code>szt</code>).</li>
+  <li><strong>Pozycja 3: nie przypisano towaru</strong> (A-300 Masa marcepanowa 5 kg) — przypisz podpowiadany
+    <code>TOW-0003</code>; powstaje mapowanie kodu dostawcy na nasz towar.</li>
+</ol>
+<p>Pozostałe pozycje zostały dopasowane po GTIN z kartoteki. Dokument dostaje status „Zatwierdzona”.
+  Teraz wczytaj <code>alfa-2.xml</code>: dostawca jest rozpoznawany po NIP, szablon po odcisku struktury,
+  a alias i mapowanie z pierwszej faktury działają — faktura zostaje <strong>zatwierdzona automatycznie</strong>, bez pytań.</p>
+{% if DEMO_MODE and 'demo' in nav_blueprints %}<p><a href="{{ url_for('demo.index') }}">Przejdź do próbek demo →</a></p>{% endif %}
+{% endblock %}

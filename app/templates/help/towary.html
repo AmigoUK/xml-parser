@@ -1,0 +1,53 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p>Każda pozycja faktury powinna wskazywać towar z <strong>naszej kartoteki</strong> (pole <code>product_index</code>
+  w wyniku). Kartotekę i mapowania znajdziesz w menu <em>Dane</em>.</p>
+
+<h2 class="h5 mt-4">Kartoteka towarów</h2>
+<p>Towar ma <strong>indeks</strong> (unikalny, maks. 64 znaki), nazwę (maks. 255 znaków), opcjonalny GTIN/EAN i jednostkę.
+  GTIN jest sprawdzany (cyfra kontrolna, długość) i zapisywany jako 14 cyfr. Przy dodawaniu towaru z negocjacji podpowiadany
+  jest kolejny wolny indeks <code>TOW-nnnn</code> (gdy wpisany indeks jest zajęty, nadawany jest kolejny wolny). Towaru użytego w dokumentach, mającego mapowania lub przeliczniki nie można
+  usunąć.</p>
+
+<h2 class="h5 mt-4">Import CSV</h2>
+<p><em>Kartoteka towarów</em> → „Import CSV”. Format pliku:</p>
+<ul>
+  <li>pierwszy wiersz to nagłówek; kolumny rozpoznawane po nazwie (bez wielkości liter):
+    <div class="table-responsive"><table class="table table-sm bg-white my-2">
+      <thead><tr><th>Pole</th><th>Dopuszczalne nazwy kolumny</th><th>Wymagana</th></tr></thead>
+      <tbody>
+        <tr><td>Indeks</td><td><code>indeks</code>, <code>code</code>, <code>kod</code></td><td>tak</td></tr>
+        <tr><td>Nazwa</td><td><code>nazwa</code>, <code>name</code></td><td>tak</td></tr>
+        <tr><td>GTIN/EAN</td><td><code>gtin</code>, <code>ean</code></td><td>nie</td></tr>
+        <tr><td>Jednostka</td><td><code>jednostka</code>, <code>jm</code>, <code>unit</code></td><td>nie</td></tr>
+      </tbody>
+    </table></div></li>
+  <li>separator <code>;</code>, <code>,</code> lub tabulator (wykrywany automatycznie, domyślnie <code>;</code>);</li>
+  <li>kodowanie UTF-8 (także z BOM) albo Windows-1250;</li>
+  <li>maks. {{ limits.max_import }} i {{ limits.max_import_rows }} wierszy danych (nadmiarowe są pomijane).</li>
+</ul>
+<pre class="bg-light border p-2 small">indeks;nazwa;gtin;jednostka
+TOW-0101;Mąka pszenna typ 650;5909999000105;kg
+TOW-0102;Cukier puder 1 kg;;szt</pre>
+<p>Zasady importu:</p>
+<ul>
+  <li>istniejący indeks jest <strong>aktualizowany</strong> (nazwa; GTIN i jednostka tylko, gdy podane), nowy — dodawany;</li>
+  <li>wiersze bez indeksu lub nazwy są pomijane; za długi indeks/nazwa albo błędny GTIN — wiersz pominięty z błędem;</li>
+  <li>nieznana jednostka — towar zostaje zaimportowany bez zmiany jednostki, a w raporcie pojawia się błąd;</li>
+  <li>po imporcie widać podsumowanie: dodano / zaktualizowano / błędy; konflikt danych w bazie przerywa import i nic nie zostaje zapisane.</li>
+</ul>
+
+<h2 class="h5 mt-4">Mapowania towarów dostawcy</h2>
+<p>Mapowanie łączy towar <em>u dostawcy</em> z naszym towarem. Powstaje w negocjacji (przypisanie towaru z „zapamiętaj”) albo
+  ręcznie w <em>Mapowaniach towarów</em>. Pozycja jest dopasowywana w tej kolejności:</p>
+<ol>
+  <li>po <strong>kodzie towaru dostawcy</strong> (mapowanie tego dostawcy);</li>
+  <li>po <strong>GTIN</strong> z mapowań tego dostawcy;</li>
+  <li>po <strong>nazwie</strong> — tylko gdy pozycja nie ma ani kodu, ani GTIN (nazwa porównywana bez wielkości liter
+    i nadmiarowych spacji);</li>
+  <li>po <strong>GTIN z kartoteki</strong> — towar o tym samym GTIN (dlatego np. próbka <code>epsilon.json</code> dopasowuje towary sama).</li>
+</ol>
+<p>Mapowanie zapisuje kod, a gdy go brak — GTIN, a gdy brak obu — nazwę. Pozycji bez kodu, GTIN i nazwy nie da się
+  zapamiętać — przypisz towar tylko dla tej faktury. Nieprzypisany towar daje problem
+  <a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}#unmapped_product"><code>unmapped_product</code></a>.</p>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p>REST API v1 pozwala innym systemom wysyłać faktury i odbierać wynik w formacie kanonicznym (JSON). Pełna specyfikacja:
+  <a href="{{ url_for('api_docs') }}">dokumentacja interaktywna (Swagger)</a> i plik
+  <a href="{{ url_for('static', filename='openapi.yaml') }}">openapi.yaml</a>. Adres bazowy tej instancji:
+  <code>{{ api_base }}/api/v1</code>.</p>
+
+<h2 class="h5 mt-4">Klucze API</h2>
+<ul>
+  <li>Klucz tworzysz w panelu: <em>Klucze API</em> → nazwa (np. „ERP”) → „Utwórz klucz”. Pełny klucz (zaczyna się od
+    <code>xp_</code>) jest pokazywany <strong>tylko raz</strong> — skopiuj go od razu; w bazie przechowywany jest wyłącznie skrót.</li>
+  <li>Klucz wysyłasz w nagłówku <code>X-API-Key</code> każdego żądania. Brak lub zły klucz → 401.</li>
+  <li>Klucz można wyłączyć i włączyć ponownie. Klucza, którym przyjęto dokumenty, nie da się usunąć — można go tylko wyłączyć.</li>
+  <li>Klucz widzi <strong>tylko własne dokumenty</strong>: lista, pobranie i ponowne przetworzenie dokumentu innego klucza
+    zwracają 404; lista dostawców zawiera tylko dostawców z dokumentów tego klucza. Duplikaty wykrywane są osobno
+    dla każdego klucza.</li>
+</ul>
+<p>W przykładach zamień <code>TWÓJ_KLUCZ</code> na swój klucz.</p>
+
+<h2 class="h5 mt-4">Wysłanie faktury — <code>POST /api/v1/documents</code></h2>
+<p>Jako formularz multipart (pole <code>file</code>):</p>
+<pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
+  -F file=@faktura.xml \
+  {{ api_base }}/api/v1/documents</pre>
+<p>Albo jako surowe body (nazwę pliku podaj w nagłówku <code>X-Filename</code>; format rozpoznawany jest po treści):</p>
+<pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
+  -H "Content-Type: application/xml" -H "X-Filename: faktura.xml" \
+  --data-binary @faktura.xml \
+  {{ api_base }}/api/v1/documents</pre>
+<p>Odpowiedź <code>201</code> zawiera dokument: <code>id</code>, <code>status</code>, <code>status_label</code>, <code>format</code>,
+  <code>filename</code>, <code>number</code>, <code>issue_date</code>, <code>doc_type</code>, <code>supplier</code>,
+  <code>template_version</code>, <code>created_at</code>, <code>issues_count</code>, <code>invoice</code> (wynik kanoniczny)
+  i <code>issues</code> (problemy). Status <code>approved</code> oznacza fakturę odczytaną automatycznie,
+  <code>needs_review</code> — czekającą na operatora w panelu.</p>
+
+<h2 class="h5 mt-4">Lista dokumentów — <code>GET /api/v1/documents</code></h2>
+<pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
+  "{{ api_base }}/api/v1/documents?status=approved&amp;since=2026-10-01T00:00:00&amp;limit=50"</pre>
+<p>Filtry (opcjonalne): <code>status</code> (jeden ze statusów:
+  {% for code, label, text in statuses %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %}),
+  <code>since</code> (data ISO 8601 — dokumenty przyjęte od tej chwili), <code>limit</code> (domyślnie {{ limits.list_default }},
+  maks. {{ limits.list_max }}). Wyniki od najnowszych, w polu <code>items</code>, bez <code>invoice</code> i <code>issues</code>.</p>
+
+<h2 class="h5 mt-4">Szczegóły dokumentu — <code>GET /api/v1/documents/{id}</code></h2>
+<pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
+  {{ api_base }}/api/v1/documents/42</pre>
+
+<h2 class="h5 mt-4">Ponowne przetworzenie — <code>POST /api/v1/documents/{id}/reprocess</code></h2>
+<pre class="bg-light border p-2 small">curl -X POST -H "X-API-Key: TWÓJ_KLUCZ" \
+  {{ api_base }}/api/v1/documents/42/reprocess</pre>
+<p>Przetwarza dokument aktywną wersją szablonu (np. po rozwiązaniu problemów przez operatora albo po problemie
+  <code>reprocess_required</code>). Dokument <strong>odrzucony ręcznie</strong> przez operatora zwraca <code>409</code>:</p>
+<pre class="bg-light border p-2 small">{"error": {"code": "rejected", "message": "Dokument został odrzucony przez operatora — ponowne przetworzenie nie cofa odrzucenia."}}</pre>
+<p>Odrzucenie cofa tylko „Przywróć” w panelu. Odrzucenia automatyczne (plik nieczytelny, zbyt wiele pozycji) można przetworzyć ponownie.</p>
+
+<h2 class="h5 mt-4">Dostawcy — <code>GET /api/v1/suppliers</code></h2>
+<pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
+  {{ api_base }}/api/v1/suppliers</pre>
+
+<h2 class="h5 mt-4">Kody odpowiedzi</h2>
+<p class="small">Błędy mają postać <code>{"error": {"code": "…", "message": "…"}}</code>.</p>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>HTTP</th><th><code>error.code</code></th><th>Kiedy</th></tr></thead>
+  <tbody>
+    <tr><td>200</td><td>—</td><td>poprawne pobranie lub ponowne przetworzenie</td></tr>
+    <tr><td>201</td><td>—</td><td>faktura przyjęta — także gdy wymaga wyjaśnienia, jest duplikatem albo została odrzucona jako nieczytelna (patrz <code>status</code> i <code>issues</code>)</td></tr>
+    <tr><td>400</td><td><code>empty_body</code></td><td>pusty plik / pusta treść żądania</td></tr>
+    <tr><td>400</td><td><code>bad_request</code></td><td>zły parametr listy (<code>status</code>, <code>since</code>, <code>limit</code>)</td></tr>
+    <tr><td>401</td><td><code>unauthorized</code></td><td>brak, błędny lub wyłączony klucz API</td></tr>
+    <tr><td>404</td><td><code>not_found</code></td><td>brak dokumentu (albo dokument innego klucza) lub nieznany adres</td></tr>
+    <tr><td>405</td><td><code>method_not_allowed</code></td><td>metoda niedozwolona dla adresu</td></tr>
+    <tr><td>409</td><td><code>rejected</code></td><td><code>reprocess</code> dokumentu odrzuconego ręcznie</td></tr>
+    <tr><td>413</td><td><code>too_large</code></td><td>plik większy niż {{ limits.max_document }}</td></tr>
+    <tr><td>500</td><td><code>internal_error</code></td><td>wewnętrzny błąd serwera</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 class="h5 mt-4">Limity</h2>
+<ul>
+  <li>Plik faktury: maks. {{ limits.max_document }}.</li>
+  <li>Pozycji na fakturze: maks. {{ limits.max_lines }} (więcej — dokument odrzucony z problemem <code>too_many_lines</code>).</li>
+  <li>Węzłów drzewa: maks. {{ limits.max_tree_nodes }} (więcej — problem <code>unreadable</code>).</li>
+  <li>Lista dokumentów: maks. {{ limits.list_max }} wyników na żądanie.</li>
+</ul>
+
+<h2 class="h5 mt-4">Powiadomienia (webhook)</h2>
+<p>Aplikacja nie wysyła obecnie webhooków. Aby dowiedzieć się o zmianie statusu (np. po rozwiązaniu problemów w panelu),
+  odpytuj <code>GET /api/v1/documents?since=…</code> albo <code>GET /api/v1/documents/{id}</code>.</p>
+
+<h2 class="h5 mt-4">Stan usługi</h2>
+<p><code>GET {{ api_base }}/healthz</code> (bez klucza) zwraca wersję aplikacji i stan połączenia z bazą; przy awarii bazy — 503.</p>
+{% endblock %}
