@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rejestr kodów problemów (`app/help_content.py`) z opisem, informacją, czy problem blokuje, i sposobem rozwiązania; tabela w Pomocy z kotwicą dla każdego kodu i filtrem. Test pilnuje, by rejestr obejmował dokładnie kody emitowane przez kod źródłowy (także migracje), a przykłady transformacji dawały opisany wynik.
 - Limity w Pomocy (rozmiar pliku, `MAX_LINES`, `MAX_TREE_NODES`, import CSV, lista API, logowanie, sesja) są odczytywane z konfiguracji i stałych aplikacji.
 - Link „Pomoc” w menu (zawsze widoczny), link „?” przy każdym problemie w widoku dokumentu prowadzący do jego opisu, link „? Pomoc” na pasku edytora mapowań (nowa karta) i odnośnik na stronie demo.
+- Pomoc w Markdown dla GitHuba (`docs/pomoc/`), generowana ze stron panelu skryptem `tools/export_help.py` (uruchom po każdej zmianie treści pomocy); test `tests/test_help_export.py` pilnuje, by pliki były aktualne.
 
 ## [0.2.0] — 2026-10-10
 
