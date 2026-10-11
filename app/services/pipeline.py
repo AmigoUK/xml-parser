@@ -19,7 +19,7 @@ from app.extensions import db
 from app.ingest import ReaderError, read_document
 from app.engine.keys import dedupe_scope, document_key
 from app.models import (LIVE_STATUSES, STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
-                        STATUS_REJECTED, Document, Product, Supplier, Template)
+                        STATUS_REJECTED, Document, Product, Supplier, Template, utcnow)
 from app.services.audit import audit
 from app.services.lookups_db import DbLookups
 from app.services.storage import get_storage
@@ -250,13 +250,20 @@ def _error_status(doc: Document) -> str:
     return STATUS_DUPLICATE if doc.status == STATUS_DUPLICATE else STATUS_NEEDS_REVIEW
 
 
+def touch(doc: Document) -> Document:
+    """Jawnie odświeża `updated_at` — `onupdate` nie widzi mutacji JSON w miejscu ani zmian bez flush."""
+    doc.updated_at = utcnow()
+    return doc
+
+
 def process(doc: Document) -> Document:
     """Przetwarza dokument. Jedyny punkt wejścia — każda ścieżka (API, panel, negocjacja, edytor) przechodzi
-    przez straż ręcznego odrzucenia (BE-2) i obsługę błędów (BE-9/BE-10)."""
+    przez straż ręcznego odrzucenia (BE-2) i obsługę błędów (BE-9/BE-10). Każde przetworzenie odświeża
+    `updated_at` (`touch`), także gdy wynik jest identyczny; ręcznie odrzucony dokument zostaje nietknięty."""
     if doc.is_manually_rejected:  # cofa je tylko jawne „Przywróć” (negotiation.restore)
         return doc
     try:
-        return _process(doc)
+        return touch(_process(doc))
     except SQLAlchemyError:
         raise  # błąd bazy — transakcja do wycofania przez wywołującego
     except Exception as exc:  # noqa: BLE001 - np. zepsuta reguła szablonu; dokument nie może zginąć (BE-10)
@@ -265,7 +272,7 @@ def process(doc: Document) -> Document:
                "sprawdź reguły szablonu albo zgłoś problem administratorowi.")
         doc.status, doc.error = _error_status(doc), msg
         doc.issues = [Issue("internal_error", BLOCKING, msg).to_dict()]
-        return doc
+        return touch(doc)
 
 
 def _process(doc: Document) -> Document:

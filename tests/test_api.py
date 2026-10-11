@@ -1,6 +1,16 @@
 import io
+import re
+from datetime import datetime
 
+import pytest
+
+from app.api.timeutil import format_api_datetime
+from app.extensions import db
+from app.models import Document, utcnow
+from app.services import pipeline
+from app.services.negotiation import resolve, restore
 from tests.conftest import sample_bytes
+from tests.test_learning import resolve_with_top_suggestions
 
 KEY = {"X-API-Key": "xp_test_demo_key"}
 
@@ -105,3 +115,133 @@ def test_json_404_405(seeded, client):
     assert r.status_code == 404 and r.get_json()["error"]["code"] == "not_found"
     r = client.delete("/api/v1/suppliers", headers=KEY)
     assert r.status_code == 405 and r.get_json()["error"]["code"] == "method_not_allowed"
+
+
+# --- updated_at: format, wiarygodność (touch) i brak zmian przy samym odczycie -------------------------------
+
+ISO_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
+
+
+def _post(client, data=None) -> dict:
+    r = client.post("/api/v1/documents", headers=KEY, data=sample_bytes("alfa-1.xml") if data is None else data)
+    assert r.status_code == 201
+    return r.get_json()
+
+
+def _get(client, doc_id) -> dict:
+    r = client.get(f"/api/v1/documents/{doc_id}", headers=KEY)
+    assert r.status_code == 200
+    return r.get_json()
+
+
+def _reprocess(client, doc_id) -> dict:
+    r = client.post(f"/api/v1/documents/{doc_id}/reprocess", headers=KEY)
+    assert r.status_code == 200
+    return r.get_json()
+
+
+def _set_updated_at(doc_id, value: datetime) -> None:
+    db.session.get(Document, doc_id).updated_at = value
+    db.session.commit()
+
+
+def test_created_and_updated_at_are_iso_utc_with_microseconds(seeded, client):
+    body = _post(client)
+    assert ISO_UTC.match(body["created_at"]) and ISO_UTC.match(body["updated_at"])
+    assert body["updated_at"] >= body["created_at"]  # format jest leksykograficznie uporządkowany
+    items = client.get("/api/v1/documents", headers=KEY).get_json()["items"]
+    assert [i["id"] for i in items] == [body["id"]] and "invoice" not in items[0]  # lista skrócona, czasy są
+    assert ISO_UTC.match(items[0]["created_at"]) and ISO_UTC.match(items[0]["updated_at"])
+
+
+def test_updated_at_grows_and_created_at_stays_after_operator_resolves_issues(seeded, client):
+    created = _post(client)
+    assert created["status"] == "needs_review"
+    resolve_with_top_suggestions(db.session.get(Document, created["id"]))  # operator w panelu → approved
+    after = _get(client, created["id"])
+    assert after["status"] == "approved"
+    assert after["created_at"] == created["created_at"]
+    assert after["updated_at"] > created["updated_at"]
+
+
+def test_updated_at_grows_on_reject_and_on_restore(seeded, client):
+    created = _post(client)
+    doc = db.session.get(Document, created["id"])
+    resolve(doc, "reject", {}, user="qa")
+    rejected = _get(client, created["id"])
+    assert rejected["status"] == "rejected" and rejected["updated_at"] > created["updated_at"]
+    restore(doc, "qa")
+    restored = _get(client, created["id"])
+    assert restored["status"] == "needs_review" and restored["updated_at"] > rejected["updated_at"]
+    assert restored["created_at"] == created["created_at"]
+
+
+def test_reject_and_restore_stamp_updated_at_with_touch(seeded, client, monkeypatch):
+    """Przy zmianie kolumn `onupdate` też dałoby „teraz”, więc sam wzrost nie dowodzi jawnego `touch()`. Z podstawionym
+    zegarem widać źródło wartości: ustawiona jawnie wygrywa z `onupdate` (odrzucenie nie przechodzi przez process())."""
+    created = _post(client)
+    doc = db.session.get(Document, created["id"])
+    clock = {"now": datetime(2031, 1, 1, 12, 0, 0, 111111)}
+    monkeypatch.setattr(pipeline, "utcnow", lambda: clock["now"])
+    resolve(doc, "reject", {}, user="qa")
+    assert _get(client, created["id"])["updated_at"] == "2031-01-01T12:00:00.111111Z"
+    clock["now"] = datetime(2031, 1, 2, 12, 0, 0, 222222)
+    restore(doc, "qa")
+    assert _get(client, created["id"])["updated_at"] == "2031-01-02T12:00:00.222222Z"
+
+
+def test_reprocess_refreshes_updated_at(seeded, client):
+    created = _post(client)
+    again = _reprocess(client, created["id"])
+    assert again["status"] == created["status"] and again["created_at"] == created["created_at"]
+    assert again["updated_at"] > created["updated_at"]
+
+
+@pytest.mark.parametrize("payload, status", [
+    pytest.param(sample_bytes("alfa-1.xml"), "needs_review", id="ten-sam-wynik"),
+    pytest.param(b"<a><b></a>", "rejected", id="plik-nieczytelny-wczesny-return"),
+])
+def test_reprocess_refreshes_updated_at_even_when_no_column_changes(seeded, client, payload, status):
+    """`onupdate` odpala się tylko przy zmianie kolumny, a ponowne przetworzenie tego samego pliku nie zmienia
+    żadnej — więc `updated_at` musi być odświeżane jawnie (`touch`), inaczej zostałoby 2020-01-01."""
+    created = _post(client, payload)
+    assert created["status"] == status
+    _set_updated_at(created["id"], datetime(2020, 1, 1))
+    before = format_api_datetime(utcnow())
+    again = _reprocess(client, created["id"])
+    assert again["status"] == status
+    assert again["updated_at"] >= before, again["updated_at"]  # „teraz”, nie 2020-01-01T00:00:00.000000Z
+
+
+def test_internal_error_branch_refreshes_updated_at(seeded, client, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("zepsuta reguła")
+    # błąd na samym początku _process: nic nie jest po drodze zapisywane (autoflush), więc przy powtórzeniu tego
+    # samego błędu status, error i issues zostają bez zmian i `updated_at` odświeża wyłącznie jawny touch
+    monkeypatch.setattr(pipeline, "load_tree", boom)
+    created = _post(client)
+    assert created["issues"][0]["code"] == "internal_error"
+    _set_updated_at(created["id"], datetime(2020, 1, 1))
+    before = format_api_datetime(utcnow())
+    again = _reprocess(client, created["id"])
+    assert again["issues"][0]["code"] == "internal_error"
+    assert again["updated_at"] >= before, again["updated_at"]
+
+
+def test_process_of_manually_rejected_document_does_not_touch(seeded, client):
+    """Straż ręcznego odrzucenia: `process()` niczego nie zmienia, więc nie odświeża też `updated_at`."""
+    created = _post(client)
+    doc = db.session.get(Document, created["id"])
+    resolve(doc, "reject", {}, user="qa")
+    rejected = _get(client, created["id"])
+    pipeline.process(doc)
+    db.session.commit()
+    assert _get(client, created["id"])["updated_at"] == rejected["updated_at"]
+
+
+def test_reading_does_not_change_updated_at(seeded, client):
+    created = _post(client)
+    first, second = _get(client, created["id"]), _get(client, created["id"])
+    assert first["updated_at"] == second["updated_at"] == created["updated_at"]
+    listed = [client.get("/api/v1/documents", headers=KEY).get_json()["items"][0]["updated_at"] for _ in range(2)]
+    assert listed == [created["updated_at"]] * 2

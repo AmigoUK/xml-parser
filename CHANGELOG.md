@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Pole `updated_at` w odpowiedziach API (`POST/GET /documents`, lista) — czas ostatniej zmiany statusu lub wyniku dokumentu. Jest ustawiane jawnie (`touch()` w `app/services/pipeline.py`), a nie tylko przez `onupdate` bazy, który nie widzi zmian bez zmiany kolumny: odświeża je każde przetworzenie dokumentu (przyjęcie, `POST /documents/{id}/reprocess`, rozwiązywanie problemów w panelu — także gdy wynik wychodzi taki sam), odrzucenie i przywrócenie. Samo pobranie dokumentu go nie zmienia.
+
+### Changed
+- **BREAKING:** `created_at` (i nowe `updated_at`) w odpowiedziach API są teraz w ISO 8601 z jawnym UTC i mikrosekundami (`2026-10-11T06:04:38.312308Z`); dotąd naiwny czas bez strefy (`2026-10-11T06:04:38.312308`). Klient parsujący czas bez strefy może wymagać poprawki.
+
 ### Fixed
 - `GET /api/v1/documents?since=…` uwzględnia strefę czasową: `+02:00`, `-05:00` i `Z` są przeliczane na UTC (dotąd strefa była pomijana przy porównaniu z czasem w bazie, więc `since=2026-10-11T08:00:00+02:00` przesuwał okno o 2 godziny); czas bez strefy i sama data nadal oznaczają UTC. Błędna wartość (także poza zakresem dat po przeliczeniu) daje 400 z przykładami formatu. Parsowanie i formatowanie czasu API jest we wspólnym module `app/api/timeutil.py`.
 

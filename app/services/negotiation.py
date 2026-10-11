@@ -18,7 +18,7 @@ from app.models import (STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, 
                         UnitAlias, UnitConversion)
 from app.services.audit import audit
 from app.services.pipeline import (best_template_for, current_rules, load_tree, next_product_code, process,
-                                   same_scope)
+                                   same_scope, touch)
 from app.services.templates import create_template, new_version
 
 NEED_SUPPLIER = "Najpierw rozpoznaj dostawcę — to pierwszy problem na liście."
@@ -306,6 +306,7 @@ def _points_to(other: Document, doc: Document) -> bool:
 def a_reject(doc, data, remember, user):
     doc.status = STATUS_REJECTED
     doc.rejected_by = (user or "operator")[:255]
+    touch(doc)  # odrzucenie nie przechodzi przez process() — updated_at odświeżamy jawnie
     db.session.flush()
     # duplikaty odrzuconego dokumentu nie mogą wskazywać na odrzucony — przelicz je (EDGE-24)
     for other in _copies(doc):

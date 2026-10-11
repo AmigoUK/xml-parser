@@ -98,7 +98,8 @@ Rzeczywista odpowiedź tej aplikacji dla fikcyjnej próbki demo `alfa-2.xml` (po
 
 ```json
 {
-  "created_at": "2026-10-11T06:04:38.312308",
+  "created_at": "2026-10-11T06:04:38.312308Z",
+  "updated_at": "2026-10-11T06:04:38.412811Z",
   "doc_type": "invoice",
   "filename": "alfa-2.xml",
   "format": "xml",

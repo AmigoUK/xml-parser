@@ -8,7 +8,7 @@ from app.services.apikeys import verify_key
 from app.services.pipeline import DocumentTooLarge, ingest, process
 
 from . import bp
-from .timeutil import parse_api_datetime
+from .timeutil import format_api_datetime, parse_api_datetime
 
 
 def api_error(code: str, message: str, status: int):
@@ -64,7 +64,8 @@ def doc_to_json(doc: Document, full: bool = True) -> dict:
         "filename": doc.filename, "number": doc.number, "issue_date": doc.issue_date, "doc_type": doc.doc_type,
         "supplier": {"id": doc.supplier.id, "name": doc.supplier.name} if doc.supplier else None,
         "template_version": doc.template_version.version if doc.template_version else None,
-        "created_at": doc.created_at.isoformat() if doc.created_at else None,
+        "created_at": format_api_datetime(doc.created_at),
+        "updated_at": format_api_datetime(doc.updated_at),
         "issues_count": len(doc.issues or []),
     }
     if full:
