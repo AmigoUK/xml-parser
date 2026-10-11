@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.4.0] — 2026-10-11
+
 ### Added
 - Temat Pomocy „Integracja z własną aplikacją” (`/pomoc/integracja`, po „REST API”): przewodnik krok po kroku — model działania (synchroniczne przetwarzanie, statusy `approved` / `needs_review` / `duplicate` / `rejected`, brak webhooków), przygotowanie klucza, wysyłka (multipart i surowe body, limit z konfiguracji, kody odpowiedzi), odbiór wyniku (odpytywanie z backoffem, dokładna semantyka `since` / `limit` i jak nie zgubić dokumentów), struktura wyniku na rzeczywistej odpowiedzi API dla próbki `alfa-2.xml`, idempotencja i ponowienia, lista kontrolna wdrożenia i najczęstsze błędy.
 - Gotowe przykłady integracji w Pythonie (`requests`), PHP (cURL), JavaScripcie (Node.js 18+) i powłoce (curl + jq) z adresem bieżącej instancji (`app/help_examples/`); testy sprawdzają ich składnię i zgodność przykładowego JSON-a z odpowiedzią API.
@@ -171,7 +175,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/AmigoUK/xml-parser/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AmigoUK/xml-parser/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AmigoUK/xml-parser/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/AmigoUK/xml-parser/compare/v0.1.0...v0.1.1
