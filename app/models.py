@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask_login import UserMixin
 from sqlalchemy import event
+from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -28,6 +29,10 @@ STATUS_LABELS = {
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+# MariaDB/MySQL: mikrosekundy (keyset po updated_at); SQLite i tak je przechowuje
+PRECISE_DATETIME = db.DateTime().with_variant(mysql.DATETIME(fsp=6), "mysql", "mariadb")
 
 
 class Supplier(db.Model):
@@ -186,8 +191,8 @@ class Document(db.Model):
     dedupe_key = db.Column(db.String(64), unique=True, index=True)
     corrects_document_id = db.Column(db.Integer, db.ForeignKey("documents.id"))
     api_key_id = db.Column(db.Integer, db.ForeignKey("api_keys.id"))
-    created_at = db.Column(db.DateTime, default=utcnow, index=True)
-    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
+    created_at = db.Column(PRECISE_DATETIME, default=utcnow, index=True)
+    updated_at = db.Column(PRECISE_DATETIME, default=utcnow, onupdate=utcnow)
     supplier = db.relationship("Supplier")
     template = db.relationship("Template")
     template_version = db.relationship("TemplateVersion")
