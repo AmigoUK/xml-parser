@@ -37,7 +37,7 @@ Bez LLM: deterministyczne reguły i transformacje z białej listy.
 
 ![Przetwarzanie faktury: plik → format i drzewo → rozpoznanie dostawcy → szablon → walidacja → zatwierdzona albo do wyjaśnienia; negocjacja w panelu wraca do szablonu](app/static/screenshots/diagram-przetwarzania.png)
 
-<sub>Źródło diagramu (Mermaid): [`docs/screenshots/diagram-przetwarzania.mmd`](docs/screenshots/diagram-przetwarzania.mmd); obrazek [`app/static/screenshots/diagram-przetwarzania.png`](app/static/screenshots/diagram-przetwarzania.png) pokazuje też Pomoc w panelu („Jak to działa”).</sub>
+<sub>Źródło diagramu (Mermaid): [`docs/screenshots/diagram-przetwarzania.mmd`](docs/screenshots/diagram-przetwarzania.mmd). Pomoc w panelu („Jak to działa”) pokazuje ten sam obrazek: [`app/static/screenshots/diagram-przetwarzania.png`](app/static/screenshots/diagram-przetwarzania.png).</sub>
 
 Szczegóły krok po kroku: [docs/pomoc/jak-to-dziala.md](docs/pomoc/jak-to-dziala.md).
 
@@ -153,9 +153,9 @@ ln -sf ../../tools/pre-commit .git/hooks/pre-commit
 pytest
 ```
 
-### Zrzuty ekranu
+### Generowanie zrzutów ekranu
 
-Zrzuty w `app/static/screenshots/` (tematy Pomocy w panelu i README) generuje `tools/screenshots.py` — odśwież je po
+`tools/screenshots.py` generuje zrzuty w `app/static/screenshots/` (tematy Pomocy w panelu i README) — odśwież je po
 każdym wydaniu, bo stopka pokazuje wersję. Narzędzie uruchamia odizolowaną instancję na `127.0.0.1:18517` (świeża
 SQLite i storage w katalogu tymczasowym, bez `.env`, tylko fikcyjne próbki z `demo/samples/`, konto
 `admin@example.com` z jednorazowym hasłem), loguje się w Chromium przez Playwright i nadpisuje pliki PNG. Nigdy nie rób
@@ -169,7 +169,12 @@ python tools/screenshots.py --only 08-pomoc 11-api-docs # wybrane zrzuty; --port
 
 Playwright może mieć osobny venv (`/ścieżka/pw-venv/bin/python tools/screenshots.py`) — serwer aplikacji i tak działa
 w podprocesie z `.venv/bin/python` (albo z interpretera podanego w `--app-python`). Diagram `diagram-przetwarzania.png`
-nie jest zrzutem: renderuje się go ze źródła Mermaid `docs/screenshots/diagram-przetwarzania.mmd`.
+nie jest zrzutem: Mermaid CLI renderuje go ze źródła `docs/screenshots/diagram-przetwarzania.mmd`, które ma ustawienia
+renderu w nagłówku (Mermaid 11.4.1, skala 2):
+
+```bash
+npx -y -p @mermaid-js/mermaid-cli@11.4.2 -p mermaid@11.4.1 mmdc -i docs/screenshots/diagram-przetwarzania.mmd -o app/static/screenshots/diagram-przetwarzania.png -s 2 -b white
+```
 
 ## Dane prywatne
 

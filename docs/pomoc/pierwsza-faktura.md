@@ -4,9 +4,9 @@
 
 Pierwsza faktura nowego dostawcy prawie zawsze trafia do **Kolejki** ze statusem „Do wyjaśnienia”: system nie zna jeszcze dostawcy, jego jednostek ani towarów. Rozwiązujesz problemy w widoku dokumentu — to jest *negocjacja*. Po każdej decyzji dokument jest automatycznie przetwarzany ponownie.
 
-![Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) ze statusem „Do wyjaśnienia” i liczbą problemów; numer dokumentu otwiera widok negocjacji.](../../app/static/screenshots/03-kolejka.png)
+![Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) ze statusem „Do wyjaśnienia” i liczbą problemów; numer w kolumnie „#” otwiera widok dokumentu.](../../app/static/screenshots/03-kolejka.png)
 
-*Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) ze statusem „Do wyjaśnienia” i liczbą problemów; numer dokumentu otwiera widok negocjacji.*
+*Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) ze statusem „Do wyjaśnienia” i liczbą problemów; numer w kolumnie „#” otwiera widok dokumentu.*
 
 ## Widok dokumentu
 

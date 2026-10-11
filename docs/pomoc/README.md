@@ -2,7 +2,7 @@
 
 # Pomoc
 
-Jak korzystać z parsera faktur: od pierwszej faktury nowego dostawcy po integrację przez REST API. Tematy ilustrują zrzuty ekranu panelu z fikcyjnymi danymi demo — kliknij zrzut, aby zobaczyć go w pełnym rozmiarze.
+Jak korzystać z parsera faktur: od pierwszej faktury nowego dostawcy po integrację przez REST API. Tematy są zilustrowane zrzutami ekranu panelu z fikcyjnymi danymi demo — kliknij zrzut, aby zobaczyć go w pełnym rozmiarze.
 
 ## Szybki start w 5 krokach
 
