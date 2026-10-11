@@ -1,10 +1,13 @@
 {% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
 {% block help_content %}
 <p><strong>Szablon</strong> to zestaw reguł odczytu faktur jednego dostawcy w jednej strukturze pliku: element z pozycjami,
   reguły pól nagłówka i pozycji (ścieżka + transformacje) oraz wartości domyślne. Szablon powstaje automatycznie,
   gdy rozpoznasz dostawcę pierwszej faktury, i nazywa się „&lt;dostawca&gt; — &lt;FORMAT&gt;”. Jeden dostawca może mieć
   kilka szablonów (np. XML i CSV) — wybierany jest ten, którego odcisk struktury najlepiej pasuje do pliku
   (podobieństwo zbiorów ścieżek — wspólne ÷ wszystkie — co najmniej {{ limits.fingerprint_pct }}%).</p>
+{{ shot("10-szablony.png", "Szablony dostawców (np. „Hurtownia Alfa Sp. z o.o. — XML”) z aktywną wersją i liczbą "
+        "dokumentów; „Wersje” otwiera historię z porównaniem i przywracaniem, „Edytuj” — edytor mapowań.") }}
 
 <h2 class="h5 mt-4">Wersje</h2>
 <p>Reguły nigdy nie są nadpisywane — każda zmiana tworzy <strong>nową wersję</strong>, która od razu staje się aktywna.

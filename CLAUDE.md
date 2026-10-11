@@ -18,7 +18,7 @@ Uczący się parser faktur strukturalnych (XML w tym KSeF/UBL, JSON, CSV) do jed
 - Demo lokalnie: port hosta > 18500 (`APP_PORT` w `.env`), dostęp przez Tailscale MagicDNS.
 - Po każdej zmianie treści pomocy (`app/help_content.py`, `app/templates/help/`) uruchom `.venv/bin/python tools/export_help.py` — `tests/test_help_export.py` pilnuje aktualności `docs/pomoc/`.
 - `app/help_examples/` (przykłady integracji i odpowiedź przykładowa) są potrzebne w runtime — Pomoc renderuje je w `/pomoc/integracja` — więc zostają w obrazie Docker (nie dodawaj ich do `.dockerignore`); po ich zmianie też uruchom `tools/export_help.py`.
-- Zrzuty ekranu do `docs/screenshots/` wyłącznie z odizolowanej instancji (świeża SQLite + fikcyjne próbki `demo/samples/`), nigdy z żywego demo.
+- Zrzuty ekranu generuje `tools/screenshots.py` (odizolowana instancja, Playwright) do `app/static/screenshots/` — używane w Pomocy i README; nigdy z żywego demo.
 
 # Protected Files
 - `private/` — realne faktury dostawców i `forbidden-tokens.txt`. NIGDY nie czytać do repo, nie kopiować, nie cytować; nie może trafić do gita ani obrazu Docker.

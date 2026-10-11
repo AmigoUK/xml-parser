@@ -19,6 +19,10 @@ import lxml.html
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = ROOT / "docs" / "pomoc"
 BASE_URL = "http://localhost:18506"
+# Pliki spod /static/ (np. zrzuty ekranu, openapi.yaml) to app/static/ w repozytorium — w Markdown ścieżka względna
+# z docs/pomoc/, którą GitHub renderuje (obrazki) i otwiera (odnośniki). Stała dla każdego katalogu wyjściowego.
+STATIC_URL = "/static/"
+STATIC_FROM_DOCS = Path(os.path.relpath(ROOT / "app" / "static", DEFAULT_OUT)).as_posix()
 HEADER = "<!-- Wygenerowano przez tools/export_help.py z sekcji Pomoc w panelu — nie edytuj ręcznie. -->"
 
 # Limity z konfiguracji domyślnej (app/config.py) — przypięte na stałe, żeby .env ani zmienne środowiska
@@ -47,7 +51,7 @@ BR = " "  # znacznik łamania wiersza w tekście inline (zamieniany na końcu)
 SKIP_TAGS = {"nav", "aside", "script", "style", "input", "form", "head", "template"}
 HEADINGS = {"h1": 1, "h2": 2, "h3": 3, "h4": 4, "h5": 4, "h6": 4}
 BLOCK_TAGS = {"p", "ul", "ol", "table", "pre", "dl", "div", "section", "article", "header", "footer",
-              "blockquote", "li", "hr", *HEADINGS}
+              "blockquote", "li", "hr", "figure", "figcaption", *HEADINGS}
 INTERNAL_HELP = re.compile(r"^/pomoc(?:/([\w-]+))?(#.*)?$")
 
 
@@ -85,7 +89,8 @@ def _code_span(text: str) -> str:
 
 
 def _link_target(href: str):
-    """Zwraca ('md', url) dla linków do Markdown / zewnętrznych, ('code', path) dla ścieżek aplikacji."""
+    """Zwraca ('md', url) dla linków do Markdown, plików w repo (/static/…) i zewnętrznych, ('code', path) dla
+    pozostałych ścieżek aplikacji."""
     href = (href or "").strip()
     m = INTERNAL_HELP.match(href)
     if m:
@@ -93,9 +98,24 @@ def _link_target(href: str):
         return "md", f"{slug or 'README'}.md{frag}"
     if href.startswith("#") or re.match(r"^(https?:|mailto:)", href):
         return "md", href
+    if href.startswith(STATIC_URL):
+        return "md", f"{STATIC_FROM_DOCS}/{href[len(STATIC_URL):]}"
     if href.startswith("/"):
         return "code", href
     return "md", href
+
+
+def _image(el) -> str:
+    """<img> jako ![alt](ścieżka) — plik spod /static/ wskazuje plik w repozytorium (_link_target)."""
+    alt = _escape_text(re.sub(r"\s+", " ", el.get("alt") or "").strip())
+    return f"![{alt}]({_link_target(el.get('src'))[1]})"
+
+
+def _only_image(el) -> bool:
+    """Link, którego jedyną treścią jest obrazek (podgląd zrzutu otwierający pełny rozmiar)."""
+    children = [ch for ch in el if isinstance(ch.tag, str)]
+    return (len(children) == 1 and children[0].tag == "img" and not (el.text or "").strip()
+            and not (children[0].tail or "").strip())
 
 
 def inline(el, in_table: bool = False) -> str:
@@ -121,6 +141,10 @@ def _inline_el(el, in_table: bool) -> str:
         return _wrap("**", inline(el, in_table))
     if tag in ("em", "i"):
         return _wrap("*", inline(el, in_table))
+    if tag == "img":
+        return _image(el)
+    if tag == "a" and _only_image(el):  # w Markdown sam obrazek — link nie powiela adresu
+        return _image(el.find("img"))
     if tag == "a":
         inner = inline(el, in_table)
         kind, target = _link_target(el.get("href"))
@@ -278,6 +302,9 @@ def _block(el) -> list[tuple[str, str]]:
         return [("list", text)] if text else []
     if tag == "hr":
         return [("p", "---")]
+    if tag == "figcaption":  # podpis zrzutu — osobny akapit kursywą pod obrazkiem (figure jest przezroczyste)
+        text = finish_inline(inline(el))
+        return [("p", _wrap("*", text))] if text else []
     if tag == "a":  # link blokowy (karta): nagłówek staje się linkiem, reszta zostaje bez zmian
         kind, target = _link_target(el.get("href"))
         res = blocks(el)

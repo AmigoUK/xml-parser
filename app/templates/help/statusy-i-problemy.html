@@ -1,4 +1,5 @@
 {% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
 {% block help_content %}
 <h2 class="h5">Statusy dokumentu</h2>
 <div class="table-responsive">
@@ -34,6 +35,9 @@
   </tbody>
 </table>
 </div>
+{# zrzut pod tabelą kodów: nad nią zepchnąłby tabelę poza kadr zrzutu 09-pomoc-problemy (README) #}
+{{ shot("04-dokument.png", "Dokument „Do wyjaśnienia” z czterema problemami: czerwony pasek i plakietka „blokuje” "
+        "oznaczają problem blokujący, a link „?” przy problemie prowadzi do jego opisu w tabeli powyżej.") }}
 
 <h2 class="h5 mt-4" id="duplikaty">Duplikaty</h2>
 <ul>

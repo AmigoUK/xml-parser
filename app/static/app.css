@@ -19,3 +19,7 @@ body.full-screen main.editor-main { padding: 0; height: 100vh; overflow: hidden;
 .help-card:hover { border-color: #0d6efd; }
 .help-article table td code { white-space: normal; word-break: break-word; }
 .help-article :target { background: #fff3cd; }
+/* zrzuty ekranu w Pomocy: podgląd wycięty od góry (zrzuty całostronicowe są wysokie), pełny obraz po kliknięciu */
+.help-shot { margin: 1rem 0 1.5rem; }
+.help-shot a { cursor: zoom-in; }
+.help-shot img { width: 100%; max-height: 30rem; object-fit: cover; object-position: top; background: #fff; }

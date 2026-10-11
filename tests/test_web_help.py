@@ -111,6 +111,63 @@ def test_issue_card_link_only_for_registered_code(app):
     assert "/pomoc/" not in unknown
 
 
+# --- zrzuty ekranu ---
+
+# temat → zrzuty z app/static/screenshots/ w kolejności na stronie (tools/screenshots.py; diagram renderowany z Mermaid)
+HELP_SHOTS = {
+    "jak-to-dziala": ["diagram-przetwarzania.png", "02-pulpit.png"],
+    "pierwsza-faktura": ["03-kolejka.png", "04-dokument.png"],
+    "edytor-mapowan": ["05-edytor-mapowan.png"],
+    "szablony": ["10-szablony.png"],
+    "jednostki": ["07-przeliczniki.png"],
+    "towary": ["06-kartoteka.png"],
+    "statusy-i-problemy": ["04-dokument.png"],
+    "api": ["11-api-docs.png"],
+}
+NO_SHOTS = {"integracja", "faq"}  # integracja: zrzut tej strony jest tylko w README
+
+
+def _shots(html: str) -> list:
+    import lxml.html
+    figures = lxml.html.fromstring(html).xpath("//figure")
+    return [f for f in figures if "help-shot" in (f.get("class") or "").split()]
+
+
+@pytest.mark.parametrize("slug, files", HELP_SHOTS.items())
+def test_topic_screenshots_with_captions(client, slug, files):
+    """Zrzut to figure.help-shot: podgląd z alt równym podpisowi, link do pełnego obrazu w nowej karcie, podpis."""
+    figures = _shots(client.get(f"/pomoc/{slug}").get_data(as_text=True))
+    assert [f.xpath(".//img/@src")[0].rsplit("/", 1)[-1] for f in figures] == files
+    for f in figures:
+        (img,), (link,), (caption,) = f.xpath(".//img"), f.xpath(".//a"), f.xpath(".//figcaption")
+        text = " ".join(caption.text_content().split())
+        assert text and img.get("alt") == text, slug
+        assert img.get("src").startswith("/static/screenshots/") and link.get("href") == img.get("src")
+        assert link.get("target") == "_blank" and link.get("rel") == "noopener"
+        assert "img-fluid" in img.get("class").split() and img.get("loading") == "lazy"
+
+
+def test_topics_without_screenshots(client):
+    assert set(HELP_SHOTS) | NO_SHOTS == {t["slug"] for t in TOPICS}  # nowy temat — zdecyduj o zrzutach
+    for path in ["/pomoc"] + [f"/pomoc/{slug}" for slug in sorted(NO_SHOTS)]:
+        assert "help-shot" not in client.get(path).get_data(as_text=True), path
+
+
+def test_help_screenshots_are_served(client):
+    """Każdy obrazek w Pomocy zwraca PNG (200) — pliki leżą w app/static/, więc trafiają też do obrazu Docker."""
+    import lxml.html
+    sources = set()
+    for path in ALL_PAGES:
+        r = client.get(path)
+        assert "img-src 'self'" in r.headers["Content-Security-Policy"]  # CSP przepuszcza obrazy z /static
+        sources.update(lxml.html.fromstring(r.get_data(as_text=True)).xpath("//img/@src"))
+    assert {s.rsplit("/", 1)[-1] for s in sources} == {name for files in HELP_SHOTS.values() for name in files}
+    for src in sorted(sources):
+        with client.get(src) as r:
+            assert r.status_code == 200 and r.mimetype == "image/png", src
+            assert r.data.startswith(b"\x89PNG\r\n\x1a\n"), src
+
+
 # --- spójność rejestrów z kodem ---
 
 def test_issue_registry_matches_emitted_codes():

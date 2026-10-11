@@ -36,6 +36,10 @@ Każdy problem ma kod (`code` w API), wagę — **blokuje** (dokument czeka „D
 | <a id="file_missing"></a>`file_missing`<br>Brak pliku źródłowego | tak | W magazynie plików nie ma pliku tego dokumentu (np. utracony wolumen storage). | Wgraj fakturę ponownie albo odtwórz katalog storage z kopii zapasowej. |
 | <a id="internal_error"></a>`internal_error`<br>Wewnętrzny błąd przetwarzania | tak | Nieoczekiwany błąd podczas przetwarzania (np. uszkodzona reguła szablonu). Dokument nie ginie — zostaje zapisany do wyjaśnienia. | Sprawdź reguły szablonu w edytorze mapowań; jeśli problem się powtarza, zgłoś go administratorowi (szczegóły są w logu aplikacji). |
 
+![Dokument „Do wyjaśnienia” z czterema problemami: czerwony pasek i plakietka „blokuje” oznaczają problem blokujący, a link „?” przy problemie prowadzi do jego opisu w tabeli powyżej.](../../app/static/screenshots/04-dokument.png)
+
+*Dokument „Do wyjaśnienia” z czterema problemami: czerwony pasek i plakietka „blokuje” oznaczają problem blokujący, a link „?” przy problemie prowadzi do jego opisu w tabeli powyżej.*
+
 <a id="duplikaty"></a>
 
 ## Duplikaty

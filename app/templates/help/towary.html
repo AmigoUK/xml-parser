@@ -1,4 +1,5 @@
 {% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
 {% block help_content %}
 <p>Każda pozycja faktury powinna wskazywać towar z <strong>naszej kartoteki</strong> (pole <code>product_index</code>
   w wyniku). Kartotekę i mapowania znajdziesz w menu <em>Dane</em>.</p>
@@ -8,6 +9,8 @@
   GTIN jest sprawdzany (cyfra kontrolna, długość) i zapisywany jako 14 cyfr. Przy dodawaniu towaru z negocjacji podpowiadany
   jest kolejny wolny indeks <code>TOW-nnnn</code> (gdy wpisany indeks jest zajęty, nadawany jest kolejny wolny). Towaru użytego w dokumentach, mającego mapowania lub przeliczniki nie można
   usunąć.</p>
+{{ shot("06-kartoteka.png", "Kartoteka towarów demo: indeks, nazwa, GTIN i jednostka (JM) każdego towaru; „Import CSV” "
+        "i „Dodaj” w prawym górnym rogu.") }}
 
 <h2 class="h5 mt-4">Import CSV</h2>
 <p><em>Kartoteka towarów</em> → „Import CSV”. Format pliku:</p>

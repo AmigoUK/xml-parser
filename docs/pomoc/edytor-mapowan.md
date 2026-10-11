@@ -6,6 +6,10 @@ Edytor mapowań to pełnoekranowy widok do ręcznej edycji reguł szablonu na pr
 
 ## Układ
 
+![Edytor mapowań dokumentu gamma-ubl.xml: po lewej drzewo pliku, w środku pola z przypisanymi ścieżkami, wartościami domyślnymi i podpowiedziami z procentem pewności, po prawej podgląd problemów i wyniku.](../../app/static/screenshots/05-edytor-mapowan.png)
+
+*Edytor mapowań dokumentu gamma-ubl.xml: po lewej drzewo pliku, w środku pola z przypisanymi ścieżkami, wartościami domyślnymi i podpowiedziami z procentem pewności, po prawej podgląd problemów i wyniku.*
+
 1. **Wybór elementu** (lewa kolumna) — drzewo pliku; kliknij element, aby go zaznaczyć. Pogrubione są elementy grupujące (mające elementy podrzędne). Ścieżki zawierają element główny, np. `Faktura/Naglowek/Numer`; atrybuty mają postać `…/Ilosc/@unitCode`; w JSON ścieżki zaczynają się od `root/`, a w CSV mają postać `csv/row/<nazwa kolumny>`.
 2. **Element pozycji** — zaznacz element powtarzany dla każdej pozycji (np. `Faktura/Pozycje/Pozycja`) i kliknij „← ustaw” w karcie „Element z pozycjami faktury”. Bez niego szablonu nie da się zapisać.
 3. **Przypisanie pola** (środkowa kolumna) — przy polu kliknij „←”, aby przypisać zaznaczony element, „×”, aby usunąć regułę. Pola pozycji muszą wskazywać element *wewnątrz* elementu z pozycjami — zapisywane są jako ścieżki względne. Gwiazdka oznacza pole wymagane. Przyciski pod polem to podpowiedzi z procentem pewności; pole „wartość domyślna” działa, gdy w pliku brak wartości.

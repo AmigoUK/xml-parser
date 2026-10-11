@@ -4,6 +4,10 @@
 
 **Szablon** to zestaw reguł odczytu faktur jednego dostawcy w jednej strukturze pliku: element z pozycjami, reguły pól nagłówka i pozycji (ścieżka + transformacje) oraz wartości domyślne. Szablon powstaje automatycznie, gdy rozpoznasz dostawcę pierwszej faktury, i nazywa się „&lt;dostawca> — &lt;FORMAT>”. Jeden dostawca może mieć kilka szablonów (np. XML i CSV) — wybierany jest ten, którego odcisk struktury najlepiej pasuje do pliku (podobieństwo zbiorów ścieżek — wspólne ÷ wszystkie — co najmniej 60%).
 
+![Szablony dostawców (np. „Hurtownia Alfa Sp. z o.o. — XML”) z aktywną wersją i liczbą dokumentów; „Wersje” otwiera historię z porównaniem i przywracaniem, „Edytuj” — edytor mapowań.](../../app/static/screenshots/10-szablony.png)
+
+*Szablony dostawców (np. „Hurtownia Alfa Sp. z o.o. — XML”) z aktywną wersją i liczbą dokumentów; „Wersje” otwiera historię z porównaniem i przywracaniem, „Edytuj” — edytor mapowań.*
+
 ## Wersje
 
 Reguły nigdy nie są nadpisywane — każda zmiana tworzy **nową wersję**, która od razu staje się aktywna. Nowa wersja powstaje, gdy:

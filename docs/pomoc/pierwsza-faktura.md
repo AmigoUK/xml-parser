@@ -4,11 +4,19 @@
 
 Pierwsza faktura nowego dostawcy prawie zawsze trafia do **Kolejki** ze statusem „Do wyjaśnienia”: system nie zna jeszcze dostawcy, jego jednostek ani towarów. Rozwiązujesz problemy w widoku dokumentu — to jest *negocjacja*. Po każdej decyzji dokument jest automatycznie przetwarzany ponownie.
 
+![Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) ze statusem „Do wyjaśnienia” i liczbą problemów; numer dokumentu otwiera widok negocjacji.](../../app/static/screenshots/03-kolejka.png)
+
+*Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) ze statusem „Do wyjaśnienia” i liczbą problemów; numer dokumentu otwiera widok negocjacji.*
+
 ## Widok dokumentu
 
 - Na górze lista problemów (pokazywanych jest pierwszych 50; kolejne pojawią się po rozwiązaniu widocznych). Czerwony pasek i plakietka „blokuje” — problem blokujący; żółty — ostrzeżenie. Link **?** przy problemie prowadzi do jego opisu.
 - Poniżej drzewo pliku źródłowego (po najechaniu widać pełną ścieżkę elementu) i wynik w formacie kanonicznym.
 - Przyciski: „Przetwórz ponownie” (aktywną wersją szablonu), „JSON”, „Plik źródłowy”; przy dokumencie odrzuconym ręcznie — „Przywróć”.
+
+![Widok dokumentu gamma-ubl.xml: na górze problemy blokujące z podpowiedziami (nowy dostawca, nieznane jednostki „C62” i „H87”, nieprzypisany towar) i przełącznikiem „Zapamiętaj”, niżej drzewo pliku źródłowego i wynik w formacie kanonicznym.](../../app/static/screenshots/04-dokument.png)
+
+*Widok dokumentu gamma-ubl.xml: na górze problemy blokujące z podpowiedziami (nowy dostawca, nieznane jednostki „C62” i „H87”, nieprzypisany towar) i przełącznikiem „Zapamiętaj”, niżej drzewo pliku źródłowego i wynik w formacie kanonicznym.*
 
 ## „Tylko ta faktura” czy „zapamiętaj w szablonie”
 

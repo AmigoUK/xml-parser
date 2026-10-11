@@ -1,4 +1,5 @@
 {% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
 {% block help_content %}
 <p>Każda pozycja faktury kończy w <strong>naszej</strong> jednostce miary. Słowniki znajdziesz w menu <em>Dane</em>:
   „Jednostki”, „Aliasy jednostek” i „Przeliczniki”.</p>
@@ -34,6 +35,8 @@
 </ol>
 <p>Po przeliczeniu ilość jest <strong>mnożona</strong> przez współczynnik, cena jednostkowa netto — <strong>dzielona</strong>,
   a w pozycji zapisywana jest jednostka docelowa i współczynnik (<code>conversion_factor</code>).</p>
+{{ shot("07-przeliczniki.png", "Przeliczniki jednostek zapamiętane w negocjacji: 1 worek = 25 kg (Młyn Beta) i 1 karton "
+        "= 12 szt (Opakowania Delta), oba dla wszystkich towarów dostawcy.") }}
 <div class="alert alert-info small"><strong>Kropka jest zawsze separatorem dziesiętnym w przelicznikach</strong>
   (w słowniku, w negocjacji i w transformacji <code>convert</code>): <code>1.125</code> = 1,125, a <code>1.000</code> = 1.
   Przecinek przed dokładnie trzema cyframi (<code>1,125</code>) jest niejednoznaczny i zostanie odrzucony z podpowiedzią,

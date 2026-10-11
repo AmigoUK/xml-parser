@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 
+import lxml.html
+
 ROOT = Path(__file__).resolve().parent.parent
 COMMITTED = ROOT / "docs" / "pomoc"
 
@@ -25,3 +27,26 @@ def test_docs_pomoc_zgodne_z_panelem(tmp_path):
     assert generated.keys() == committed.keys(), f"{hint} (różne pliki: {sorted(generated.keys() ^ committed.keys())})"
     for name, data in generated.items():
         assert data == committed[name], f"{hint} (różni się {name})"
+
+
+def _markdown(html: str) -> str:
+    return _load_exporter().html_to_markdown(lxml.html.fromstring(f"<main>{html}</main>"))
+
+
+def test_figure_exported_as_repo_image_with_caption():
+    """Zrzut z Pomocy: obrazek ze ścieżką względną do pliku w repo (GitHub ją renderuje) i podpis kursywą pod nim;
+    link wokół obrazka (pełny rozmiar w panelu) nie powiela adresu."""
+    src = "/static/screenshots/02-pulpit.png"
+    md = _markdown(f'<p>Tekst.</p><figure class="help-shot"><a href="{src}" target="_blank" rel="noopener">'
+                   f'<img src="{src}" alt="Pulpit po nauczeniu [alfa]" class="img-fluid"></a>'
+                   '<figcaption class="small">Pulpit po nauczeniu [alfa]</figcaption></figure><p>Dalej.</p>')
+    assert md == ("Tekst.\n\n![Pulpit po nauczeniu \\[alfa\\]](../../app/static/screenshots/02-pulpit.png)\n\n"
+                  "*Pulpit po nauczeniu \\[alfa\\]*\n\nDalej.\n")
+    assert (COMMITTED / "../../app/static/screenshots/02-pulpit.png").resolve().is_file()
+
+
+def test_static_links_point_to_repo_files():
+    """Pliki aplikacji spod /static/ (np. openapi.yaml) prowadzą do pliku w repo, a nie do ścieżki w panelu."""
+    assert _markdown('<p>Plik <a href="/static/openapi.yaml">openapi.yaml</a>.</p>') == \
+        "Plik [openapi.yaml](../../app/static/openapi.yaml).\n"
+    assert _markdown('<p><a href="/api/docs">Swagger</a></p>') == "Swagger (`/api/docs`)\n"  # bez zmian

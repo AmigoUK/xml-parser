@@ -1,8 +1,11 @@
 {% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
 {% block help_content %}
 <p>Pierwsza faktura nowego dostawcy prawie zawsze trafia do <strong>Kolejki</strong> ze statusem „Do wyjaśnienia”:
   system nie zna jeszcze dostawcy, jego jednostek ani towarów. Rozwiązujesz problemy w widoku dokumentu —
   to jest <em>negocjacja</em>. Po każdej decyzji dokument jest automatycznie przetwarzany ponownie.</p>
+{{ shot("03-kolejka.png", "Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) "
+        "ze statusem „Do wyjaśnienia” i liczbą problemów; numer dokumentu otwiera widok negocjacji.") }}
 
 <h2 class="h5 mt-4">Widok dokumentu</h2>
 <ul>
@@ -13,6 +16,9 @@
   <li>Przyciski: „Przetwórz ponownie” (aktywną wersją szablonu), „JSON”, „Plik źródłowy”; przy dokumencie
     odrzuconym ręcznie — „Przywróć”.</li>
 </ul>
+{{ shot("04-dokument.png", "Widok dokumentu gamma-ubl.xml: na górze problemy blokujące z podpowiedziami (nowy dostawca, "
+        "nieznane jednostki „C62” i „H87”, nieprzypisany towar) i przełącznikiem „Zapamiętaj”, niżej drzewo pliku "
+        "źródłowego i wynik w formacie kanonicznym.") }}
 
 <h2 class="h5 mt-4">„Tylko ta faktura” czy „zapamiętaj w szablonie”</h2>
 <p>Przy większości formularzy jest przełącznik <strong>„Zapamiętaj w szablonie / słowniku dostawcy (inaczej — tylko ta

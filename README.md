@@ -15,7 +15,7 @@ Bez LLM: deterministyczne reguły i transformacje z białej listy.
 - 📖 **Pomoc:** w panelu pod `/pomoc` oraz w repo: [docs/pomoc](docs/pomoc/README.md).
 - 📝 Zmiany: [CHANGELOG.md](CHANGELOG.md) · Specyfikacja: [design](docs/superpowers/specs/2026-10-10-xml-invoice-parser-design.md)
 
-![Widok dokumentu z problemami do wyjaśnienia](docs/screenshots/04-dokument.png)
+![Widok dokumentu z problemami do wyjaśnienia](app/static/screenshots/04-dokument.png)
 
 ## Funkcje
 
@@ -35,24 +35,26 @@ Bez LLM: deterministyczne reguły i transformacje z białej listy.
 
 ## Jak to działa
 
-![Przetwarzanie faktury: plik → format i drzewo → rozpoznanie dostawcy → szablon → walidacja → zatwierdzona albo do wyjaśnienia; negocjacja w panelu wraca do szablonu](docs/screenshots/diagram-przetwarzania.png)
+![Przetwarzanie faktury: plik → format i drzewo → rozpoznanie dostawcy → szablon → walidacja → zatwierdzona albo do wyjaśnienia; negocjacja w panelu wraca do szablonu](app/static/screenshots/diagram-przetwarzania.png)
 
-<sub>Źródło diagramu (Mermaid): [`docs/screenshots/diagram-przetwarzania.mmd`](docs/screenshots/diagram-przetwarzania.mmd).</sub>
+<sub>Źródło diagramu (Mermaid): [`docs/screenshots/diagram-przetwarzania.mmd`](docs/screenshots/diagram-przetwarzania.mmd); obrazek [`app/static/screenshots/diagram-przetwarzania.png`](app/static/screenshots/diagram-przetwarzania.png) pokazuje też Pomoc w panelu („Jak to działa”).</sub>
 
 Szczegóły krok po kroku: [docs/pomoc/jak-to-dziala.md](docs/pomoc/jak-to-dziala.md).
 
 ## Zrzuty ekranu
 
-Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples/README.md)).
+Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples/README.md)). Te same pliki
+(`app/static/screenshots/`) ilustrują tematy Pomocy w panelu; odświeża je narzędzie `tools/screenshots.py`
+(sekcja „Rozwój lokalny”).
 
 | | |
 |---|---|
-| ![Pulpit](docs/screenshots/02-pulpit.png)<br/>**Pulpit** — po nauczeniu na alfa-1 faktura alfa-2 zatwierdzona automatycznie | ![Kolejka](docs/screenshots/03-kolejka.png)<br/>**Kolejka do wyjaśnienia** |
-| ![Edytor mapowań](docs/screenshots/05-edytor-mapowan.png)<br/>**Edytor mapowań** — klik w element pliku → klik w pole, podgląd na żywo | ![Szablony](docs/screenshots/10-szablony.png)<br/>**Szablony dostawców** z wersjami |
-| ![Kartoteka towarów](docs/screenshots/06-kartoteka.png)<br/>**Kartoteka towarów** | ![Przeliczniki](docs/screenshots/07-przeliczniki.png)<br/>**Przeliczniki jednostek** |
-| ![Pomoc](docs/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](docs/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
-| ![O demo](docs/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](docs/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
-| ![Przewodnik integracji](docs/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | |
+| ![Pulpit](app/static/screenshots/02-pulpit.png)<br/>**Pulpit** — po nauczeniu na alfa-1 faktura alfa-2 zatwierdzona automatycznie | ![Kolejka](app/static/screenshots/03-kolejka.png)<br/>**Kolejka do wyjaśnienia** |
+| ![Edytor mapowań](app/static/screenshots/05-edytor-mapowan.png)<br/>**Edytor mapowań** — klik w element pliku → klik w pole, podgląd na żywo | ![Szablony](app/static/screenshots/10-szablony.png)<br/>**Szablony dostawców** z wersjami |
+| ![Kartoteka towarów](app/static/screenshots/06-kartoteka.png)<br/>**Kartoteka towarów** | ![Przeliczniki](app/static/screenshots/07-przeliczniki.png)<br/>**Przeliczniki jednostek** |
+| ![Pomoc](app/static/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](app/static/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
+| ![O demo](app/static/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](app/static/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
+| ![Przewodnik integracji](app/static/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | |
 
 ## API w 30 sekund
 
@@ -150,6 +152,24 @@ pip install -r requirements-dev.txt
 ln -sf ../../tools/pre-commit .git/hooks/pre-commit
 pytest
 ```
+
+### Zrzuty ekranu
+
+Zrzuty w `app/static/screenshots/` (tematy Pomocy w panelu i README) generuje `tools/screenshots.py` — odśwież je po
+każdym wydaniu, bo stopka pokazuje wersję. Narzędzie uruchamia odizolowaną instancję na `127.0.0.1:18517` (świeża
+SQLite i storage w katalogu tymczasowym, bez `.env`, tylko fikcyjne próbki z `demo/samples/`, konto
+`admin@example.com` z jednorazowym hasłem), loguje się w Chromium przez Playwright i nadpisuje pliki PNG. Nigdy nie rób
+zrzutów żywego demo.
+
+```bash
+pip install playwright && playwright install chromium   # zależność opcjonalna, tylko dla tego narzędzia
+python tools/screenshots.py                             # wszystkie zrzuty; --list wypisuje strony
+python tools/screenshots.py --only 08-pomoc 11-api-docs # wybrane zrzuty; --port zmienia port instancji
+```
+
+Playwright może mieć osobny venv (`/ścieżka/pw-venv/bin/python tools/screenshots.py`) — serwer aplikacji i tak działa
+w podprocesie z `.venv/bin/python` (albo z interpretera podanego w `--app-python`). Diagram `diagram-przetwarzania.png`
+nie jest zrzutem: renderuje się go ze źródła Mermaid `docs/screenshots/diagram-przetwarzania.mmd`.
 
 ## Dane prywatne
 

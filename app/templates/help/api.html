@@ -1,9 +1,12 @@
 {% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
 {% block help_content %}
 <p>REST API v1 pozwala innym systemom wysyłać faktury i odbierać wynik w formacie kanonicznym (JSON). Pełna specyfikacja:
   <a href="{{ url_for('api_docs') }}">dokumentacja interaktywna (Swagger)</a> i plik
   <a href="{{ url_for('static', filename='openapi.yaml') }}">openapi.yaml</a>. Adres bazowy tej instancji:
   <code>{{ api_base }}/api/v1</code>.</p>
+{{ shot("11-api-docs.png", "Dokumentacja interaktywna (/api/docs, Swagger UI): endpointy REST API v1 z opisem parametrów "
+        "i odpowiedzi; przycisk „Authorize” przyjmuje klucz API z nagłówka X-API-Key.") }}
 <p>Podłączasz własny system? Zacznij od przewodnika
   <a href="{{ url_for('help.topic', slug='integracja') }}">Integracja z własną aplikacją</a> — model działania,
   odbiór wyniku i synchronizacja zmian statusów, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.</p>

@@ -6,6 +6,10 @@ Parser zamienia fakturę strukturalną dowolnego dostawcy na jeden **dokument ka
 
 ## Krok po kroku
 
+![Przebieg przetwarzania: plik XML, JSON lub CSV → wykrycie formatu i drzewo ścieżek → rozpoznanie dostawcy (NIP/VAT lub odcisk) → szablon → walidacja → „Zatwierdzona” albo „Do wyjaśnienia”; negocjacja w panelu z „zapamiętaj w szablonie” wraca do szablonu.](../../app/static/screenshots/diagram-przetwarzania.png)
+
+*Przebieg przetwarzania: plik XML, JSON lub CSV → wykrycie formatu i drzewo ścieżek → rozpoznanie dostawcy (NIP/VAT lub odcisk) → szablon → walidacja → „Zatwierdzona” albo „Do wyjaśnienia”; negocjacja w panelu z „zapamiętaj w szablonie” wraca do szablonu.*
+
 1. **Wejście** — plik z panelu („Wgraj fakturę”) albo z API. Plik większy niż 10 MB jest odrzucany od razu. Plik zapisywany jest w magazynie plików, a dokument dostaje status „Przyjęta”.
 2. **Wykrycie formatu** — po treści, nie po rozszerzeniu: plik zaczynający się od `<` to XML, od `{` lub `[` — JSON, pozostałe — CSV (separator `;`, `,`, tabulator lub `|` wykrywany automatycznie). Pliki puste, binarne (np. PDF, ZIP, obrazy) oraz w kodowaniu UTF-16/UTF-32 są odrzucane.
 3. **Drzewo** — plik zamieniany jest na drzewo ścieżek, np. `Faktura/Naglowek/DostawcaNIP`. Przestrzenie nazw XML są pomijane (liczy się nazwa lokalna), atrybuty są osobnymi węzłami. Limit: 200 000 węzłów. XML z DOCTYPE/ENTITY jest odrzucany, encje nie są rozwijane, parser nie sięga do sieci.
@@ -24,3 +28,7 @@ System nie zgaduje w tle — uczy się wyłącznie z decyzji operatora. Gdy rozw
 - towar → mapowanie towaru dostawcy (po kodzie, GTIN albo nazwie).
 
 Reguły zapisane w szablonach podpowiadają też ścieżki dla *nowych* dostawców o podobnej strukturze plików. Bez zaznaczenia decyzja dotyczy **tylko tej faktury**.
+
+![Pulpit po nauczeniu na alfa-1.xml: alfa-2.xml tego samego dostawcy zatwierdzona automatycznie, a pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) czekają ze statusem „Do wyjaśnienia”.](../../app/static/screenshots/02-pulpit.png)
+
+*Pulpit po nauczeniu na alfa-1.xml: alfa-2.xml tego samego dostawcy zatwierdzona automatycznie, a pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) czekają ze statusem „Do wyjaśnienia”.*

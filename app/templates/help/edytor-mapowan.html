@@ -1,4 +1,5 @@
 {% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
 {% block help_content %}
 <p>Edytor mapowań to pełnoekranowy widok do ręcznej edycji reguł szablonu na przykładzie konkretnej faktury.
   Otwierasz go z widoku dokumentu (link „Otwórz edytor mapowań” przy problemie z polem) albo ze szczegółów
@@ -6,6 +7,9 @@
   otwiera tę stronę w nowej karcie.</p>
 
 <h2 class="h5 mt-4">Układ</h2>
+{{ shot("05-edytor-mapowan.png", "Edytor mapowań dokumentu gamma-ubl.xml: po lewej drzewo pliku, w środku pola "
+        "z przypisanymi ścieżkami, wartościami domyślnymi i podpowiedziami z procentem pewności, po prawej podgląd "
+        "problemów i wyniku.") }}
 <ol>
   <li><strong>Wybór elementu</strong> (lewa kolumna) — drzewo pliku; kliknij element, aby go zaznaczyć. Pogrubione są
     elementy grupujące (mające elementy podrzędne). Ścieżki zawierają element główny, np.

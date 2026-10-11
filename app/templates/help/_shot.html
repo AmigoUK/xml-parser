@@ -1,0 +1,9 @@
+{# Zrzut ekranu w temacie Pomocy. Pliki: app/static/screenshots/ (tools/screenshots.py) — to samo źródło co README.
+   Podgląd ma ograniczoną wysokość (app.css), kliknięcie otwiera pełny obraz w nowej karcie. Podpis służy też za alt. #}
+{% macro shot(file, caption) -%}
+{%- set src = url_for('static', filename='screenshots/' ~ file) -%}
+<figure class="help-shot">
+  <a href="{{ src }}" target="_blank" rel="noopener"><img src="{{ src }}" alt="{{ caption }}" class="img-fluid border rounded" loading="lazy"></a>
+  <figcaption class="small text-muted mt-1">{{ caption }}</figcaption>
+</figure>
+{%- endmacro %}
