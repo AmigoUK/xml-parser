@@ -112,7 +112,7 @@
     sam. Nie przechowuje filtrów (dlatego powtarzasz je przy każdej stronie) ani danych wrażliwych, a zakres zawsze
     wyznacza klucz z nagłówka <code>X-API-Key</code>. Uszkodzony kursor → <code>400 bad_request</code>.</li>
   <li><code>status</code> — jeden z: {% for code, label, text in statuses %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
-    Z <code>status=approved</code> dostajesz dokumenty zatwierdzone, także przez operatora po czasie. Bez
+    Z <code>status=approved</code> dostajesz dokumenty zatwierdzone, także przez operatora później. Bez
     <code>status</code> przychodzą wszystkie zmiany, również <code>needs_review</code>, <code>duplicate</code>
     i <code>rejected</code> (np. do raportowania).</li>
   <li><code>limit</code> — liczba wyników na stronę: domyślnie {{ limits.list_default }}, maks. {{ limits.list_max }}
@@ -122,11 +122,12 @@
     strefy oznacza UTC, a sama data (<code>2026-10-11</code>) — północ UTC. <strong>Znak <code>+</code> zapisz w adresie
     jako <code>%2B</code></strong> — surowy <code>+</code> w URL oznacza spację i API zwróci <code>400</code>; najprościej
     podawaj czas w UTC z <code>Z</code>, tak jak zwraca go API. Błędny format → <code>400 bad_request</code>.</li>
-  <li>Pusty <code>updated_since=</code> albo <code>cursor=</code> (bez wartości) jest traktowany jak brak parametru —
-    bez żadnego z nich odpowiedź przychodzi w trybie zwykłym (od najnowszych, bez <code>next_cursor</code>). Tak samo
-    pusty <code>status=</code> i <code>since=</code>; inaczej niż pusty <code>limit=</code> (wyżej). Pełną synchronizację
-    od początku zaczynasz jawną wartością: <code>updated_since=1970-01-01T00:00:00Z</code> (albo datą wdrożenia
-    integracji).</li>
+  <li>Pusty <code>updated_since=</code> albo <code>cursor=</code> (bez wartości) daje <code>400 bad_request</code>, tak
+    samo jak pusty <code>limit=</code> (wyżej) — przypadkowo pusta wartość nie przełącza listy po cichu w tryb zwykły
+    (od najnowszych, bez <code>next_cursor</code>). Pusty <code>status=</code> i <code>since=</code> oznacza brak
+    parametru. Pełną synchronizację od początku zaczynasz jawną wartością:
+    <code>updated_since=1970-01-01T00:00:00Z</code> (albo datą wdrożenia integracji), a <code>cursor</code> na
+    pierwszej stronie pomijasz.</li>
 </ul>
 <p>Kolejne strony jednego przebiegu (wartości przykładowe):</p>
 <pre class="bg-light border p-2 small"><code class="language-text">GET {{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;status=approved&amp;limit={{ limits.list_max }}
@@ -152,9 +153,12 @@ GET {{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;statu
   <li><strong>Początek przebiegu</strong>: <code>updated_since = last_sync − 5 min</code> (margines bezpieczeństwa).</li>
   <li><strong>Strony</strong>: <code>GET /api/v1/documents?updated_since=…&amp;status=approved&amp;limit={{ limits.list_max }}</code>,
     potem te same parametry z <code>cursor=&lt;next_cursor&gt;</code>, aż <code>next_cursor</code> będzie
-    <code>null</code>.</li>
+    <code>null</code>. Odpowiedź w ogóle bez pola <code>next_cursor</code> (brak, a nie <code>null</code>) oznacza
+    tryb zwykły listy (np. serwer sprzed v0.5.0) — przerwij przebieg błędem, nie traktuj jej jak ostatniej strony.</li>
   <li><strong>Każda strona</strong>: pomiń pary już przetworzone; pozostałe dokumenty pobierz w całości
-    (<code>GET /documents/{id}</code>), zaimportuj i zapamiętaj ich pary.</li>
+    (<code>GET /documents/{id}</code>) i zaimportuj te, które nadal mają status <code>approved</code> — pozycja listy
+    mogła się w międzyczasie zdezaktualizować (ponowne przetworzenie, odrzucenie, duplikat). Pary zapamiętaj
+    niezależnie od statusu.</li>
   <li><strong>Po stronie</strong>: zapisz <code>last_sync = max(updated_at)</code> odebranych dokumentów — nie
     „teraz”: liczy się czas serwera, a zegar Twojej aplikacji nie ma znaczenia. Pary starsze niż
     <code>last_sync − 5 min</code> możesz zapomnieć — już nie wrócą.</li>
@@ -322,8 +326,9 @@ python3 faktura.py --sync        # jeden przebieg synchronizacji (sposób B)</co
     dokumentów — różnica zegarów i czas trwania przebiegu przesuwają okno, a dokumenty giną.</li>
   <li><strong>Kolejna strona bez powtórzenia parametrów</strong> — kursor nie pamięta filtrów: strona pobrana z samym
     <code>cursor</code> zwraca dokumenty we wszystkich statusach, po {{ limits.list_default }} na stronę.</li>
-  <li><strong>Puste <code>updated_since=</code></strong> — jest traktowane jak brak parametru, więc lista przychodzi
-    w trybie zwykłym (bez <code>next_cursor</code>); pierwszy przebieg zacznij od <code>1970-01-01T00:00:00Z</code>.</li>
+  <li><strong>Pusty <code>updated_since=</code> albo <code>cursor=</code></strong> (np. z niezainicjowanej zmiennej) —
+    API zwraca <code>400 bad_request</code>; pierwszy przebieg zacznij od
+    <code>updated_since=1970-01-01T00:00:00Z</code>, a <code>cursor</code> na pierwszej stronie pomiń.</li>
   <li><strong>Surowy <code>+</code> w czasie</strong> (np. <code>updated_since=2026-10-11T08:00:00+02:00</code> wklejone
     do adresu) — w URL <code>+</code> oznacza spację, więc API zwraca <code>400 bad_request</code>; zapisz go jako
     <code>%2B</code> albo podawaj czas z <code>Z</code>.</li>

@@ -176,8 +176,8 @@ paths:
         `updated_at`, a dokument z `updated_at` równym `updated_since` wraca w kolejnym przebiegu —
         odrzucaj powtórzenia po `id` i `updated_at`.
 
-        `status` i `since` działają w obu trybach (łączone warunkiem „i”). Pusty `status=`, `since=`,
-        `updated_since=` albo `cursor=` oznacza brak parametru, ale pusty `limit=` daje 400.
+        `status` i `since` działają w obu trybach (łączone warunkiem „i”). Pusty `status=` albo `since=`
+        oznacza brak parametru, ale pusty `limit=`, `updated_since=` albo `cursor=` daje 400.
       parameters:
         - name: status
           in: query
@@ -193,14 +193,15 @@ paths:
           in: query
           description: |
             Włącza tryb synchronizacji: dokumenty zmienione (`updated_at`) w tej chwili lub później.
-            Pełna synchronizacja od początku: `1970-01-01T00:00:00Z`.
+            Pełna synchronizacja od początku: `1970-01-01T00:00:00Z`. Pusta wartość (`updated_since=`) daje 400.
           schema: { type: string, format: date-time, example: "2026-10-11T06:00:00Z" }
         - name: cursor
           in: query
           description: |
             Kolejna strona trybu synchronizacji: wartość `next_cursor` z poprzedniej odpowiedzi (sam `cursor`
             też włącza ten tryb). Kursor niesie tylko pozycję — powtórz pozostałe parametry; zakres zawsze
-            wyznacza klucz API z nagłówka.
+            wyznacza klucz API z nagłówka. Na pierwszej stronie pomiń parametr — pusta wartość (`cursor=`)
+            daje 400.
           schema: { type: string }
         - name: limit
           in: query
@@ -213,7 +214,7 @@ paths:
           description: Dokumenty klucza API (bez `invoice` i `issues`).
           content: { application/json: { schema: { $ref: "#/components/schemas/DocumentList" } } }
         "400":
-          description: Zły parametr (`status`, `since`, `updated_since`, `limit`) albo uszkodzony `cursor` — kod `bad_request`.
+          description: Zły parametr (`status`, `since`, `updated_since`, `limit`), uszkodzony `cursor` albo pusty `updated_since=`, `cursor=` lub `limit=` — kod `bad_request`.
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "401": { description: Brak klucza API }
   /documents/{id}:

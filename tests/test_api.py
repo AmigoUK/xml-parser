@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 
 import pytest
+from sqlalchemy import event
 
 from app.api.timeutil import format_api_datetime
 from app.extensions import db
@@ -89,6 +90,39 @@ def test_list_without_sync_parameters_keeps_old_shape_newest_first(seeded, clien
     body = client.get("/api/v1/documents", headers=KEY).get_json()
     assert set(body) == {"items"}
     assert [i["id"] for i in body["items"]] == sorted(ids, reverse=True)
+
+
+LIST_DEFERRED = {"result", "overrides", "draft_rules", "error"}  # kolumny, których lista nie zwraca
+
+
+@pytest.mark.parametrize("params", [
+    pytest.param({}, id="tryb-zwykly"),
+    pytest.param({"updated_since": "1970-01-01T00:00:00Z"}, id="tryb-synchronizacji"),
+])
+def test_list_query_skips_result_and_working_columns(seeded, client, params):
+    """Lista nie czyta z bazy wyniku ani danych roboczych (`result`, `overrides`, `draft_rules`, `error`) i ich też
+    nie doczytuje: jedno zapytanie o dokumenty. `issues` jest w nim (z niego `issues_count`), a dostawca i wersja
+    szablonu (osobne relacje) w odpowiedzi są takie jak w pełnym dokumencie."""
+    created = _post(client)
+    resolve_with_top_suggestions(db.session.get(Document, created["id"]))  # operator → dostawca, szablon, approved
+    full = _get(client, created["id"])
+    assert full["status"] == "approved" and full["supplier"] and full["template_version"]
+    statements = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(db.engine, "before_cursor_execute", record)
+    try:
+        r = client.get("/api/v1/documents", headers=KEY, query_string=params)
+    finally:
+        event.remove(db.engine, "before_cursor_execute", record)
+    assert r.status_code == 200
+    item = r.get_json()["items"][0]
+    assert item == {k: v for k, v in full.items() if k not in ("invoice", "issues")}
+    selected = [set(re.findall(r"\bdocuments\.(\w+) AS documents_", s)) for s in statements if "FROM documents" in s]
+    assert len(selected) == 1, statements
+    assert "issues" in selected[0] and not selected[0] & LIST_DEFERRED, selected[0]
 
 
 def _second_key(app):

@@ -169,12 +169,41 @@ def test_updated_since_converts_zone_to_utc(demo_key, client, updated_since, exp
     pytest.param("updated_since=abc", id="smieci"),
     pytest.param("updated_since=2026-13-45", id="miesiac-13"),
     pytest.param("updated_since=2026-10-11T08:00:00+02:00", id="niezakodowany-plus-to-spacja"),
+    # data ze strefą bez godziny: dawniej 02:00 UTC (strefa czytana jako godzina) — ciche przesunięcie okna
+    pytest.param("updated_since=2026-10-11%2B02:00", id="data-ze-strefa-bez-godziny"),
+    pytest.param("updated_since=2026-10-11+02:00", id="data-ze-strefa-niezakodowany-plus"),
 ])
 def test_updated_since_bad_value_is_400(demo_key, client, query):
     r = client.get(f"/api/v1/documents?{query}", headers=KEY)
     assert r.status_code == 400
     error = r.get_json()["error"]
     assert error["code"] == "bad_request" and "updated_since" in error["message"]
+
+
+# --- pusty updated_since= / cursor= --------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("query, hint", [
+    pytest.param("updated_since=", "updated_since=1970-01-01T00:00:00Z", id="pusty-updated_since"),
+    pytest.param("cursor=", "next_cursor", id="pusty-cursor"),
+    pytest.param(f"updated_since={SINCE_BASE}&cursor=", "next_cursor", id="pusty-cursor-przy-updated_since"),
+    pytest.param(f"cursor={encode_cursor(BASE, 1)}&updated_since=", "updated_since=1970-01-01T00:00:00Z",
+                 id="pusty-updated_since-przy-kursorze"),
+])
+def test_empty_updated_since_or_cursor_is_400(demo_key, client, query, hint):
+    """Pusta wartość nie jest brakiem parametru: dawniej oznaczała cicho tryb zwykły (jedna strona od najnowszych, bez
+    next_cursor), więc klient z pustym znacznikiem przesuwał last_sync i na zawsze pomijał starsze zmiany."""
+    _bulk(demo_key, 3)
+    r = client.get(f"/api/v1/documents?{query}", headers=KEY)
+    assert r.status_code == 400
+    error = r.get_json()["error"]
+    assert error["code"] == "bad_request" and "nie może być pusty" in error["message"] and hint in error["message"]
+
+
+def test_empty_status_and_since_still_mean_no_filter_in_sync_mode(demo_key, client):
+    """Pusty status= i since= bez zmian (= brak parametru, zgodność wsteczna) — także w trybie synchronizacji."""
+    ids = _bulk(demo_key, 3)
+    body = _page(client, updated_since=SINCE_BASE, status="", since="")
+    assert _ids(body["items"]) == ids and body["next_cursor"] is None
 
 
 # --- app/api/cursor.py ---------------------------------------------------------------------------------------------

@@ -69,9 +69,9 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" \
   późniejszych zmian statusu), <code>limit</code> (liczba wyników na żądanie: domyślnie {{ limits.list_default }},
   maks. {{ limits.list_max }}). Czas ze strefą (<code>+02:00</code>, <code>Z</code>) jest przeliczany na UTC, czas bez
   strefy oznacza UTC, a sama data — północ UTC; znak <code>+</code> w adresie zapisz jako <code>%2B</code>. Pusty
-  <code>status=</code>, <code>since=</code>, <code>updated_since=</code> albo <code>cursor=</code> oznacza brak
-  parametru, ale pusty <code>limit=</code> daje <code>400</code> — pomiń go albo podaj liczbę. Wyniki są w polu
-  <code>items</code>, bez <code>invoice</code> i <code>issues</code>.</p>
+  <code>status=</code> albo <code>since=</code> oznacza brak parametru, ale pusty <code>limit=</code>,
+  <code>updated_since=</code> albo <code>cursor=</code> daje <code>400</code> — pomiń taki parametr albo podaj
+  wartość. Wyniki są w polu <code>items</code>, bez <code>invoice</code> i <code>issues</code>.</p>
 
 <h2 class="h5 mt-4">Szczegóły dokumentu — <code>GET /api/v1/documents/{id}</code></h2>
 <pre class="bg-light border p-2 small">curl -H "X-API-Key: TWÓJ_KLUCZ" \
@@ -98,7 +98,7 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" \
     <tr><td>200</td><td>—</td><td>poprawne pobranie lub ponowne przetworzenie</td></tr>
     <tr><td>201</td><td>—</td><td>faktura przyjęta — także gdy wymaga wyjaśnienia, jest duplikatem albo została odrzucona jako nieczytelna (patrz <code>status</code> i <code>issues</code>)</td></tr>
     <tr><td>400</td><td><code>empty_body</code></td><td>pusty plik / pusta treść żądania</td></tr>
-    <tr><td>400</td><td><code>bad_request</code></td><td>zły parametr listy (<code>status</code>, <code>since</code>, <code>updated_since</code>, <code>limit</code>) albo uszkodzony <code>cursor</code></td></tr>
+    <tr><td>400</td><td><code>bad_request</code></td><td>zły parametr listy (<code>status</code>, <code>since</code>, <code>updated_since</code>, <code>limit</code>), uszkodzony <code>cursor</code> albo pusty <code>updated_since=</code>, <code>cursor=</code> lub <code>limit=</code></td></tr>
     <tr><td>401</td><td><code>unauthorized</code></td><td>brak, błędny lub wyłączony klucz API</td></tr>
     <tr><td>404</td><td><code>not_found</code></td><td>brak dokumentu (albo dokument innego klucza) lub nieznany adres</td></tr>
     <tr><td>405</td><td><code>method_not_allowed</code></td><td>metoda niedozwolona dla adresu</td></tr>

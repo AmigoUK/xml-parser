@@ -87,14 +87,22 @@ function sync_approved(string $statePath = 'xp-sync.json'): void {
     ];
     do {
         $page = xp_call('GET', '/documents?' . http_build_query($query)); // http_build_query koduje „+” jako %2B
+        // brak pola next_cursor (a nie null) to tryb zwykły listy, a nie ostatnia strona
+        if (!array_key_exists('next_cursor', $page)) {
+            throw new RuntimeException('Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — '
+                . 'synchronizacja przerwana.');
+        }
         foreach ($page['items'] as $item) {
             if (($state['seen'][$item['id']] ?? null) === $item['updated_at']) {
                 continue; // już przetworzony: powtórka z marginesu albo z granicy updated_since
             }
             $doc = xp_call('GET', "/documents/{$item['id']}"); // pełny wynik z invoice
             echo "#{$doc['id']} {$doc['status']} {$item['updated_at']} " . ($doc['invoice']['number'] ?? '') . "\n";
-            // tu zaimportuj $doc['invoice'] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
-            $state['seen'][$item['id']] = $item['updated_at'];
+            // importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat)
+            if ($doc['status'] === 'approved') {
+                // tu zaimportuj $doc['invoice'] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
+            }
+            $state['seen'][$item['id']] = $item['updated_at']; // parę zapisz niezależnie od statusu
             // czas zawsze w formacie API (6 cyfr ułamka i Z), więc porównanie tekstów = porównanie czasu
             if ($state['last_sync'] === null || strcmp($item['updated_at'], $state['last_sync']) > 0) {
                 $state['last_sync'] = $item['updated_at'];

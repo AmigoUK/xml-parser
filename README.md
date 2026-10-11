@@ -88,7 +88,8 @@ docker compose up -d --build
 
 Domyślnie port jest publikowany **tylko na 127.0.0.1** (`APP_BIND`). Docker omija ufw, więc `0.0.0.0`
 wystawia aplikację na całą sieć. Aby udostępnić panel przez Tailscale, ustaw w `.env`
-`APP_BIND=<IP interfejsu tailscale0>` (`tailscale ip -4`) i zrestartuj stack.
+`APP_BIND=<IP interfejsu tailscale0>` (`tailscale ip -4`) i zrestartuj stack — albo wystaw panel po HTTPS
+przez `tailscale serve` (niżej).
 
 `MARIADB_PASSWORD` i `MARIADB_ROOT_PASSWORD` są wymagane (compose przerwie start bez nich).
 Kontener aplikacji działa jako użytkownik nie-root (uid 10001); entrypoint przy starcie naprawia
@@ -96,6 +97,27 @@ właściciela wolumenu storage i czeka na bazę (migracje z ponawianiem). `/heal
 z bazą (503 przy awarii), a compose ma healthcheck usługi `app`. Limity zasobów: `APP_MEM_LIMIT`,
 `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS`. Logi dockera są rotowane (10 MB x 3). Zależności runtime
 są przypięte w `requirements.lock` (używany w obrazie), obrazy bazowe w konkretnych wersjach.
+
+### HTTPS w tailnecie (tailscale serve)
+
+Panel i API możesz wystawić po HTTPS w obrębie swojego tailnetu. Certyfikat wystawia Tailscale — wymaga włączonych
+„HTTPS Certificates” w konsoli administracyjnej tailnetu. Port na adresie Tailscale zajmuje wtedy `tailscale serve`,
+więc aplikacja nasłuchuje tylko lokalnie. W `.env`:
+
+```bash
+APP_BIND=127.0.0.1        # port aplikacji tylko lokalnie — z tailnetu ruch przychodzi przez tailscale serve
+TRUSTED_PROXY_COUNT=1     # ProxyFix: poprawne https:// w adresach Pomocy i prawdziwe IP klienta dla limitu logowań
+SESSION_COOKIE_SECURE=1   # ciasteczka sesji tylko po HTTPS
+```
+
+Potem (`${APP_PORT}` — wartość z `.env`, domyślnie 18506):
+
+```bash
+docker compose up -d
+tailscale serve --bg --https=${APP_PORT} http://127.0.0.1:${APP_PORT}
+# panel: https://<nazwa-hosta>.<tailnet>.ts.net:${APP_PORT}   (tylko w tailnecie)
+tailscale serve --https=${APP_PORT} off   # wyłączenie
+```
 
 ## Kopie zapasowe i odtwarzanie
 
@@ -150,7 +172,7 @@ z prawdziwymi danymi.
 | Zmienna | Domyślnie | Znaczenie |
 |---|---|---|
 | `SESSION_COOKIE_SECURE` | `0` | `1` = ciasteczka sesji tylko po HTTPS. Domyślnie wyłączone, bo demo działa po HTTP przez Tailscale (tunel szyfrowany). Włącz, gdy panel stoi za TLS (np. `tailscale serve` / reverse proxy z HTTPS) — inaczej logowanie przestanie działać. |
-| `TRUSTED_PROXY_COUNT` | `0` | Liczba zaufanych reverse proxy przed aplikacją. `0` = nagłówki `X-Forwarded-*` ignorowane (bez proxy ktoś mógłby podszyć IP). Ustaw `1`, gdy aplikacja stoi za jednym proxy (adres klienta, schemat https). |
+| `TRUSTED_PROXY_COUNT` | `0` | Liczba zaufanych reverse proxy przed aplikacją. `0` = nagłówki `X-Forwarded-*` ignorowane (bez proxy ktoś mógłby podszyć IP). Ustaw `1`, gdy aplikacja stoi za jednym proxy, np. `tailscale serve` (adres klienta, schemat https). |
 | `LOGIN_MAX_ATTEMPTS` | `5` | Główny limit: nieudane logowania dla pary (e-mail, adres IP), po których ta para jest blokowana. `0` wyłącza ten próg. |
 | `LOGIN_LOCKOUT_MINUTES` | `15` | Okno liczenia i czas blokady dla progów per (e-mail, IP) i per IP. |
 | `LOGIN_MAX_ATTEMPTS_PER_IP` | `20` | Nieudane logowania z jednego IP na dowolne konta (rozpylanie haseł). |

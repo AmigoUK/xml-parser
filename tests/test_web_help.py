@@ -255,8 +255,14 @@ def test_integration_examples_sync_in_four_languages(client):
             "javascript": "async function syncApproved(statePath", "bash": "sync_approved() {"}
     margin = {"python": "timedelta(minutes=5)", "php": "'-5 minutes'", "javascript": "5 * 60 * 1000",
               "bash": "SYNC_MARGIN=300"}
+    # brak pola next_cursor (a nie null) przerywa przebieg; import tylko dokumentu, który nadal jest approved
+    no_cursor = {"python": '"next_cursor" not in page', "php": "array_key_exists('next_cursor', $page)",
+                 "javascript": 'Object.hasOwn(page, "next_cursor")', "bash": "jq -e 'has(\"next_cursor\")'"}
+    approved = {"python": 'if doc["status"] == "approved":', "php": "if ($doc['status'] === 'approved')",
+                "javascript": 'if (doc.status === "approved")', "bash": '[[ "$status" != approved ]] ||'}
     for lang, text in code.items():
-        for term in (sync[lang], margin[lang], "--sync", "updated_since", "next_cursor", "1970-01-01T00:00:00Z"):
+        for term in (sync[lang], margin[lang], "--sync", "updated_since", "next_cursor", "1970-01-01T00:00:00Z",
+                     no_cursor[lang], "Błąd protokołu", approved[lang]):
             assert term in text, (lang, term)
     assert "original_id($doc)" in code["php"] and "originalId(doc)" in code["javascript"]
     # wspólny format pliku stanu: puste „seen” jako {} (bez flagi PHP zapisałby [], nieczytelne dla Pythona i jq)
@@ -264,20 +270,32 @@ def test_integration_examples_sync_in_four_languages(client):
 
 
 def test_help_empty_parameter_rule_matches_api(seeded, client):
-    """Pusty status=, since=, updated_since=, cursor= to brak parametru, ale pusty limit= daje 400 — tak mówi Pomoc
-    i OpenAPI, i tak działa API (routes.list_documents)."""
+    """Pusty status= i since= to brak parametru, ale pusty limit=, updated_since= i cursor= daje 400 — tak mówi
+    Pomoc i OpenAPI, i tak działa API (routes.list_documents)."""
     import yaml
     key = {"X-API-Key": "xp_test_demo_key"}
-    r = client.get("/api/v1/documents?status=&since=&updated_since=&cursor=", headers=key)
+    r = client.get("/api/v1/documents?status=&since=", headers=key)
     assert r.status_code == 200 and set(r.get_json()) == {"items"}  # tryb zwykły
-    r = client.get("/api/v1/documents?limit=", headers=key)
-    assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request"
-    for path in ("/pomoc/api", INTEGRATION):
+    for empty in ("limit=", "updated_since=", "cursor="):
+        r = client.get(f"/api/v1/documents?{empty}", headers=key)
+        assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request", empty
+    rules = {"/pomoc/api": "pusty status= albo since= oznacza brak parametru, ale pusty limit=, updated_since= "
+                           "albo cursor= daje 400",
+             INTEGRATION: "pusty updated_since= albo cursor= (bez wartości) daje 400 bad_request"}
+    for path, rule in rules.items():
         text = _text(client.get(path).get_data(as_text=True))
-        assert "pusty limit= daje 400" in text.lower(), path
+        assert rule in text.lower(), path
         assert "Pusty parametr (np." not in text, path  # dawne ogólne zdanie — fałszywe dla limit
+        assert "jak brak parametru" not in text, path  # dawne „pusty updated_since= jest traktowany jak brak…”
     spec = yaml.safe_load((ROOT / "app" / "static" / "openapi.yaml").read_text(encoding="utf-8"))
-    assert "pusty `limit=` daje 400" in spec["paths"]["/documents"]["get"]["description"]
+    listing = spec["paths"]["/documents"]["get"]
+
+    def flat(text: str) -> str:  # opisy w YAML są łamane między wierszami
+        return " ".join(text.split())
+
+    assert "pusty `limit=`, `updated_since=` albo `cursor=` daje 400" in flat(listing["description"])
+    params = {p["name"]: flat(p["description"]) for p in listing["parameters"]}
+    assert "(`updated_since=`) daje 400" in params["updated_since"] and "(`cursor=`) daje 400" in params["cursor"]
 
 
 def test_openapi_matches_documents_api(seeded, client):

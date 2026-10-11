@@ -70,12 +70,21 @@ export async function syncApproved(statePath = "xp-sync.json") {
   const params = new URLSearchParams({ updated_since: since, status: "approved", limit: "500" });
   for (;;) {
     const page = await call("GET", `/documents?${params}`); // URLSearchParams koduje „+” jako %2B
+    // brak pola next_cursor (a nie null) to tryb zwykły listy, a nie ostatnia strona
+    if (!Object.hasOwn(page, "next_cursor")) {
+      throw new Error("Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — "
+        + "synchronizacja przerwana.");
+    }
     for (const item of page.items) {
       if (state.seen[item.id] === item.updated_at) continue; // już przetworzony (margines, granica updated_since)
       const doc = await call("GET", `/documents/${item.id}`); // pełny wynik z invoice
       console.log(`#${doc.id} ${doc.status} ${item.updated_at} ${doc.invoice?.number ?? ""}`);
-      // tu zaimportuj doc.invoice do swojego systemu — idempotentnie (aktualizacja rekordu po id)
-      state.seen[item.id] = item.updated_at; // updated_at jako tekst — Date obcięłoby mikrosekundy
+      // importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat)
+      if (doc.status === "approved") {
+        // tu zaimportuj doc.invoice do swojego systemu — idempotentnie (aktualizacja rekordu po id)
+      }
+      // parę zapisz niezależnie od statusu; updated_at jako tekst — Date obcięłoby mikrosekundy
+      state.seen[item.id] = item.updated_at;
       // czas zawsze w formacie API (6 cyfr ułamka i Z), więc porównanie tekstów = porównanie czasu
       if (!state.last_sync || item.updated_at > state.last_sync) state.last_sync = item.updated_at;
     }

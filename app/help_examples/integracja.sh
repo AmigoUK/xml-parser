@@ -27,15 +27,22 @@ sync_approved() {
     args=(-G --data-urlencode "updated_since=$since" -d status=approved -d limit=500)  # --data-urlencode: „+” → %2B
     [[ -z "$cursor" ]] || args+=(--data-urlencode "cursor=$cursor")  # kolejna strona: te same parametry + kursor
     page=$(api "${args[@]}" "$BASE/documents") || { echo "Błąd synchronizacji: $page" >&2; return 1; }
+    # brak pola next_cursor (a nie null) to tryb zwykły listy, a nie ostatnia strona
+    jq -e 'has("next_cursor")' <<<"$page" > /dev/null || {
+      echo "Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — synchronizacja przerwana." >&2
+      return 1
+    }
     while read -r id updated_at; do  # tylko pary (id, updated_at), których jeszcze nie przetworzono
       doc=$(api "$BASE/documents/$id") || { echo "Błąd odpytania: $doc" >&2; return 1; }
       status=$(jq -r '.status' <<<"$doc")
       echo "#$id $status $updated_at $(jq -r '.invoice.number // ""' <<<"$doc")"
-      [[ "$status" != approved ]] || jq '.invoice' <<<"$doc" > "faktura-$id.json"  # import po id — idempotentny
+      # importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat);
+      # zapis do pliku po id — idempotentny
+      [[ "$status" != approved ]] || jq '.invoice' <<<"$doc" > "faktura-$id.json"
     done < <(jq -r --slurpfile s "$state" \
       '.items[] | select($s[0].seen[.id | tostring] != .updated_at) | "\(.id) \(.updated_at)"' <<<"$page")
     # stan po każdej stronie: last_sync = max(updated_at) (czas zawsze w formacie API, więc max tekstów = max czasu),
-    # nowe pary do seen; pary sprzed okna marginesu już nie wrócą — plik stanu zostaje mały
+    # nowe pary do seen niezależnie od statusu; pary sprzed okna marginesu już nie wrócą — plik stanu zostaje mały
     jq -s --argjson m "$SYNC_MARGIN" '
       def secs: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
       .[0] as $s | .[1].items as $items

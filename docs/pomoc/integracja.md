@@ -84,10 +84,10 @@ Gdy wynik jest potrzebny od razu (np. użytkownik czeka na ekranie), wywołuj `G
 - Kolejność: rosnąco po `updated_at`, a przy równym czasie po `id` — najpierw dokumenty zmienione najdawniej.
 - `next_cursor` — odpowiedź ma postać `{"items": [...], "next_cursor": …}`. Gdy wyników jest więcej niż `limit`, `next_cursor` zawiera kursor kolejnej strony: pobierasz ją z **tymi samymi** parametrami (`updated_since`, `status`, `limit`) i dodatkowo `cursor=<next_cursor>`. `null` oznacza ostatnią stronę.
 - Kursor to nieprzezroczysty token: wskazuje pozycję ostatniego zwróconego dokumentu — nie odczytuj go i nie składaj sam. Nie przechowuje filtrów (dlatego powtarzasz je przy każdej stronie) ani danych wrażliwych, a zakres zawsze wyznacza klucz z nagłówka `X-API-Key`. Uszkodzony kursor → `400 bad_request`.
-- `status` — jeden z: `received`, `approved`, `needs_review`, `duplicate`, `rejected`. Z `status=approved` dostajesz dokumenty zatwierdzone, także przez operatora po czasie. Bez `status` przychodzą wszystkie zmiany, również `needs_review`, `duplicate` i `rejected` (np. do raportowania).
+- `status` — jeden z: `received`, `approved`, `needs_review`, `duplicate`, `rejected`. Z `status=approved` dostajesz dokumenty zatwierdzone, także przez operatora później. Bez `status` przychodzą wszystkie zmiany, również `needs_review`, `duplicate` i `rejected` (np. do raportowania).
 - `limit` — liczba wyników na stronę: domyślnie 100, maks. 500 (większe wartości są obcinane do 500, mniejsze od 1 — podnoszone do 1). Pusty `limit=` daje `400` — pomiń go albo podaj liczbę.
 - Czas podajesz w ISO 8601: czas ze strefą (`+02:00`, `Z`) jest przeliczany na UTC, czas bez strefy oznacza UTC, a sama data (`2026-10-11`) — północ UTC. **Znak `+` zapisz w adresie jako `%2B`** — surowy `+` w URL oznacza spację i API zwróci `400`; najprościej podawaj czas w UTC z `Z`, tak jak zwraca go API. Błędny format → `400 bad_request`.
-- Pusty `updated_since=` albo `cursor=` (bez wartości) jest traktowany jak brak parametru — bez żadnego z nich odpowiedź przychodzi w trybie zwykłym (od najnowszych, bez `next_cursor`). Tak samo pusty `status=` i `since=`; inaczej niż pusty `limit=` (wyżej). Pełną synchronizację od początku zaczynasz jawną wartością: `updated_since=1970-01-01T00:00:00Z` (albo datą wdrożenia integracji).
+- Pusty `updated_since=` albo `cursor=` (bez wartości) daje `400 bad_request`, tak samo jak pusty `limit=` (wyżej) — przypadkowo pusta wartość nie przełącza listy po cichu w tryb zwykły (od najnowszych, bez `next_cursor`). Pusty `status=` i `since=` oznacza brak parametru. Pełną synchronizację od początku zaczynasz jawną wartością: `updated_since=1970-01-01T00:00:00Z` (albo datą wdrożenia integracji), a `cursor` na pierwszej stronie pomijasz.
 
 Kolejne strony jednego przebiegu (wartości przykładowe):
 
@@ -110,8 +110,8 @@ Odrzucaj powtórzenia po `id` i `updated_at` (para już przetworzona — pomiń)
 
 1. **Stan**: trzymaj u siebie `last_sync` — największy `updated_at` spośród odebranych dokumentów — oraz już przetworzone pary `id` + `updated_at` z ostatnich minut. Bez stanu (pierwszy przebieg) zacznij od `1970-01-01T00:00:00Z` albo od daty wdrożenia integracji.
 2. **Początek przebiegu**: `updated_since = last_sync − 5 min` (margines bezpieczeństwa).
-3. **Strony**: `GET /api/v1/documents?updated_since=…&status=approved&limit=500`, potem te same parametry z `cursor=<next_cursor>`, aż `next_cursor` będzie `null`.
-4. **Każda strona**: pomiń pary już przetworzone; pozostałe dokumenty pobierz w całości (`GET /documents/{id}`), zaimportuj i zapamiętaj ich pary.
+3. **Strony**: `GET /api/v1/documents?updated_since=…&status=approved&limit=500`, potem te same parametry z `cursor=<next_cursor>`, aż `next_cursor` będzie `null`. Odpowiedź w ogóle bez pola `next_cursor` (brak, a nie `null`) oznacza tryb zwykły listy (np. serwer sprzed v0.5.0) — przerwij przebieg błędem, nie traktuj jej jak ostatniej strony.
+4. **Każda strona**: pomiń pary już przetworzone; pozostałe dokumenty pobierz w całości (`GET /documents/{id}`) i zaimportuj te, które nadal mają status `approved` — pozycja listy mogła się w międzyczasie zdezaktualizować (ponowne przetworzenie, odrzucenie, duplikat). Pary zapamiętaj niezależnie od statusu.
 5. **Po stronie**: zapisz `last_sync = max(updated_at)` odebranych dokumentów — nie „teraz”: liczy się czas serwera, a zegar Twojej aplikacji nie ma znaczenia. Pary starsze niż `last_sync − 5 min` możesz zapomnieć — już nie wrócą.
 
 **Dlaczego margines 5 minut.** `updated_at` jest nadawane w chwili zmiany, zanim baza zatwierdzi transakcję. Dwie równoległe zmiany mogą zostać zatwierdzone w odwrotnej kolejności niż ich znaczniki czasu — dokument z wcześniejszym `updated_at` staje się wtedy widoczny dopiero po dokumencie z późniejszym. Gdyby kolejny przebieg zaczynał się dokładnie od `last_sync`, taki dokument zostałby pominięty. Zaczynając od `last_sync − 5 min`, pobierzesz go w następnym przebiegu, a powtórzenia z tego okna odrzucisz po `id` i `updated_at`.
@@ -384,14 +384,19 @@ def sync_approved(state_path="xp-sync.json"):
     params = {"updated_since": since, "status": "approved", "limit": 500}
     while True:
         page = _call("GET", "/documents", params=params)
+        if "next_cursor" not in page:  # brak pola (a nie null) to tryb zwykły listy, a nie ostatnia strona
+            raise RuntimeError("Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — "
+                               "synchronizacja przerwana.")
         for item in page["items"]:
             if state["seen"].get(str(item["id"])) == item["updated_at"]:
                 continue  # już przetworzony: powtórka z marginesu albo z granicy updated_since
             doc = _call("GET", f"/documents/{item['id']}")  # pełny wynik z invoice
             invoice = doc["invoice"] or {}
             print(f"#{doc['id']} {doc['status']} {item['updated_at']} {invoice.get('number') or ''}")
-            # tu zaimportuj doc["invoice"] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
-            state["seen"][str(item["id"])] = item["updated_at"]
+            # importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat)
+            if doc["status"] == "approved":
+                pass  # tu zaimportuj doc["invoice"] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
+            state["seen"][str(item["id"])] = item["updated_at"]  # parę zapisz niezależnie od statusu
             # czas zawsze w formacie API (6 cyfr ułamka i Z), więc porównanie tekstów = porównanie czasu
             state["last_sync"] = max(state["last_sync"] or "", item["updated_at"])
         if state["last_sync"]:  # pary sprzed okna marginesu już nie wrócą — plik stanu zostaje mały
@@ -520,14 +525,22 @@ function sync_approved(string $statePath = 'xp-sync.json'): void {
     ];
     do {
         $page = xp_call('GET', '/documents?' . http_build_query($query)); // http_build_query koduje „+” jako %2B
+        // brak pola next_cursor (a nie null) to tryb zwykły listy, a nie ostatnia strona
+        if (!array_key_exists('next_cursor', $page)) {
+            throw new RuntimeException('Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — '
+                . 'synchronizacja przerwana.');
+        }
         foreach ($page['items'] as $item) {
             if (($state['seen'][$item['id']] ?? null) === $item['updated_at']) {
                 continue; // już przetworzony: powtórka z marginesu albo z granicy updated_since
             }
             $doc = xp_call('GET', "/documents/{$item['id']}"); // pełny wynik z invoice
             echo "#{$doc['id']} {$doc['status']} {$item['updated_at']} " . ($doc['invoice']['number'] ?? '') . "\n";
-            // tu zaimportuj $doc['invoice'] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
-            $state['seen'][$item['id']] = $item['updated_at'];
+            // importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat)
+            if ($doc['status'] === 'approved') {
+                // tu zaimportuj $doc['invoice'] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
+            }
+            $state['seen'][$item['id']] = $item['updated_at']; // parę zapisz niezależnie od statusu
             // czas zawsze w formacie API (6 cyfr ułamka i Z), więc porównanie tekstów = porównanie czasu
             if ($state['last_sync'] === null || strcmp($item['updated_at'], $state['last_sync']) > 0) {
                 $state['last_sync'] = $item['updated_at'];
@@ -640,12 +653,21 @@ export async function syncApproved(statePath = "xp-sync.json") {
   const params = new URLSearchParams({ updated_since: since, status: "approved", limit: "500" });
   for (;;) {
     const page = await call("GET", `/documents?${params}`); // URLSearchParams koduje „+” jako %2B
+    // brak pola next_cursor (a nie null) to tryb zwykły listy, a nie ostatnia strona
+    if (!Object.hasOwn(page, "next_cursor")) {
+      throw new Error("Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — "
+        + "synchronizacja przerwana.");
+    }
     for (const item of page.items) {
       if (state.seen[item.id] === item.updated_at) continue; // już przetworzony (margines, granica updated_since)
       const doc = await call("GET", `/documents/${item.id}`); // pełny wynik z invoice
       console.log(`#${doc.id} ${doc.status} ${item.updated_at} ${doc.invoice?.number ?? ""}`);
-      // tu zaimportuj doc.invoice do swojego systemu — idempotentnie (aktualizacja rekordu po id)
-      state.seen[item.id] = item.updated_at; // updated_at jako tekst — Date obcięłoby mikrosekundy
+      // importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat)
+      if (doc.status === "approved") {
+        // tu zaimportuj doc.invoice do swojego systemu — idempotentnie (aktualizacja rekordu po id)
+      }
+      // parę zapisz niezależnie od statusu; updated_at jako tekst — Date obcięłoby mikrosekundy
+      state.seen[item.id] = item.updated_at;
       // czas zawsze w formacie API (6 cyfr ułamka i Z), więc porównanie tekstów = porównanie czasu
       if (!state.last_sync || item.updated_at > state.last_sync) state.last_sync = item.updated_at;
     }
@@ -710,15 +732,22 @@ sync_approved() {
     args=(-G --data-urlencode "updated_since=$since" -d status=approved -d limit=500)  # --data-urlencode: „+” → %2B
     [[ -z "$cursor" ]] || args+=(--data-urlencode "cursor=$cursor")  # kolejna strona: te same parametry + kursor
     page=$(api "${args[@]}" "$BASE/documents") || { echo "Błąd synchronizacji: $page" >&2; return 1; }
+    # brak pola next_cursor (a nie null) to tryb zwykły listy, a nie ostatnia strona
+    jq -e 'has("next_cursor")' <<<"$page" > /dev/null || {
+      echo "Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — synchronizacja przerwana." >&2
+      return 1
+    }
     while read -r id updated_at; do  # tylko pary (id, updated_at), których jeszcze nie przetworzono
       doc=$(api "$BASE/documents/$id") || { echo "Błąd odpytania: $doc" >&2; return 1; }
       status=$(jq -r '.status' <<<"$doc")
       echo "#$id $status $updated_at $(jq -r '.invoice.number // ""' <<<"$doc")"
-      [[ "$status" != approved ]] || jq '.invoice' <<<"$doc" > "faktura-$id.json"  # import po id — idempotentny
+      # importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat);
+      # zapis do pliku po id — idempotentny
+      [[ "$status" != approved ]] || jq '.invoice' <<<"$doc" > "faktura-$id.json"
     done < <(jq -r --slurpfile s "$state" \
       '.items[] | select($s[0].seen[.id | tostring] != .updated_at) | "\(.id) \(.updated_at)"' <<<"$page")
     # stan po każdej stronie: last_sync = max(updated_at) (czas zawsze w formacie API, więc max tekstów = max czasu),
-    # nowe pary do seen; pary sprzed okna marginesu już nie wrócą — plik stanu zostaje mały
+    # nowe pary do seen niezależnie od statusu; pary sprzed okna marginesu już nie wrócą — plik stanu zostaje mały
     jq -s --argjson m "$SYNC_MARGIN" '
       def secs: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
       .[0] as $s | .[1].items as $items
@@ -787,7 +816,7 @@ esac
 - **Brak deduplikacji po `id` i `updated_at`** przy dostawie „co najmniej raz” — powtórzenia z marginesu i z granicy `updated_since` dublują import. Deduplikacja po samym `id` też jest błędem: pomija późniejsze zmiany tego samego dokumentu.
 - **Zapamiętywanie czasu z własnego zegara** zamiast `max(updated_at)` odebranych dokumentów — różnica zegarów i czas trwania przebiegu przesuwają okno, a dokumenty giną.
 - **Kolejna strona bez powtórzenia parametrów** — kursor nie pamięta filtrów: strona pobrana z samym `cursor` zwraca dokumenty we wszystkich statusach, po 100 na stronę.
-- **Puste `updated_since=`** — jest traktowane jak brak parametru, więc lista przychodzi w trybie zwykłym (bez `next_cursor`); pierwszy przebieg zacznij od `1970-01-01T00:00:00Z`.
+- **Pusty `updated_since=` albo `cursor=`** (np. z niezainicjowanej zmiennej) — API zwraca `400 bad_request`; pierwszy przebieg zacznij od `updated_since=1970-01-01T00:00:00Z`, a `cursor` na pierwszej stronie pomiń.
 - **Surowy `+` w czasie** (np. `updated_since=2026-10-11T08:00:00+02:00` wklejone do adresu) — w URL `+` oznacza spację, więc API zwraca `400 bad_request`; zapisz go jako `%2B` albo podawaj czas z `Z`.
 - **Liczby zmiennoprzecinkowe** zamiast dziesiętnych — błędy zaokrągleń w kwotach.
 - **Szukanie dokumentu innym kluczem** — każdy klucz widzi tylko swoje dokumenty (`404`).

@@ -2,6 +2,7 @@ from functools import wraps
 
 from flask import current_app, g, jsonify, request
 from sqlalchemy import and_, or_
+from sqlalchemy.orm import defer
 
 from app.extensions import db
 from app.models import STATUS_LABELS, Document, Supplier
@@ -36,6 +37,9 @@ API_SAFE_SUGGESTIONS = {"path", "line_path", "default", "unit", "conversion", "c
 FOREIGN_DUPLICATE_MESSAGE = "Ta faktura była już przetworzona (duplikat istniejącego dokumentu)."
 LIST_DEFAULT_LIMIT = 100  # GET /documents: domyślna i maksymalna liczba wyników (opis w Pomocy i openapi.yaml)
 LIST_MAX_LIMIT = 500
+# GET /documents nie zwraca wyniku ani danych roboczych — lista ich nie czyta z bazy. `issues` zostaje: z niego
+# liczone jest `issues_count` (odroczone dawałoby osobne zapytanie na każdy dokument).
+LIST_DEFERRED_COLUMNS = (Document.result, Document.overrides, Document.draft_rules, Document.error)
 
 
 def _duplicate_owned_by_other_key(issue: dict, api_key_id: int | None) -> bool:
@@ -102,7 +106,8 @@ def _bad_time_param(name: str):
 @bp.get("/documents")
 @require_api_key
 def list_documents():
-    q = Document.query.filter_by(api_key_id=g.api_key.id)  # zakres zawsze z klucza w nagłówku, nigdy z kursora
+    q = (Document.query.filter_by(api_key_id=g.api_key.id)  # zakres zawsze z klucza w nagłówku, nigdy z kursora
+         .options(*(defer(column) for column in LIST_DEFERRED_COLUMNS)))
     status = request.args.get("status")
     if status:
         if status not in STATUS_LABELS:
@@ -120,7 +125,15 @@ def list_documents():
     except ValueError:
         return api_error("bad_request", "Parametr limit musi być liczbą całkowitą.", 400)
     updated_since, cursor = request.args.get("updated_since"), request.args.get("cursor")
-    if updated_since or cursor:
+    # pusta wartość to błąd, nie brak parametru: dałaby cicho tryb zwykły (jedna strona od najnowszych, bez
+    # next_cursor), a klient przesunąłby last_sync i pominął starsze zmiany (pusty status= i since= — jak dotąd)
+    if updated_since == "":
+        return api_error("bad_request", "Parametr updated_since nie może być pusty — pełną synchronizację zacznij "
+                                        "od updated_since=1970-01-01T00:00:00Z.", 400)
+    if cursor == "":
+        return api_error("bad_request", "Parametr cursor nie może być pusty — pomiń go na pierwszej stronie albo "
+                                        "podaj next_cursor z poprzedniej odpowiedzi.", 400)
+    if updated_since is not None or cursor is not None:
         return _sync_page(q, limit, updated_since, cursor)
     # tryb dotychczasowy: od najnowszych, bez next_cursor (zgodność z klientami sprzed v0.5.0)
     return jsonify(items=[doc_to_json(d, full=False) for d in q.order_by(Document.id.desc()).limit(limit)])
@@ -131,13 +144,13 @@ def _sync_page(q, limit: int, updated_since: str | None, cursor: str | None):
     element strony, gdy są dalsze (inaczej null). Dostawa „co najmniej raz”: dokument zmieniony w trakcie
     stronicowania wraca na dalszej stronie z nowym updated_at. Dokumenty bez updated_at (tylko dane wstawione
     ręcznie) nie spełniają żadnego z warunków, więc tu nie występują."""
-    if updated_since:
+    if updated_since is not None:
         try:
             updated_since_utc = parse_api_datetime(updated_since)
         except ValueError:
             return _bad_time_param("updated_since")
         q = q.filter(Document.updated_at >= updated_since_utc)
-    if cursor:
+    if cursor is not None:
         try:
             after_at, after_id = decode_cursor(cursor)
         except ValueError:

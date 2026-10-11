@@ -97,14 +97,19 @@ def sync_approved(state_path="xp-sync.json"):
     params = {"updated_since": since, "status": "approved", "limit": 500}
     while True:
         page = _call("GET", "/documents", params=params)
+        if "next_cursor" not in page:  # brak pola (a nie null) to tryb zwykły listy, a nie ostatnia strona
+            raise RuntimeError("Błąd protokołu: odpowiedź bez pola next_cursor (serwer sprzed v0.5.0?) — "
+                               "synchronizacja przerwana.")
         for item in page["items"]:
             if state["seen"].get(str(item["id"])) == item["updated_at"]:
                 continue  # już przetworzony: powtórka z marginesu albo z granicy updated_since
             doc = _call("GET", f"/documents/{item['id']}")  # pełny wynik z invoice
             invoice = doc["invoice"] or {}
             print(f"#{doc['id']} {doc['status']} {item['updated_at']} {invoice.get('number') or ''}")
-            # tu zaimportuj doc["invoice"] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
-            state["seen"][str(item["id"])] = item["updated_at"]
+            # importuj tylko approved — pozycja listy mogła się zdezaktualizować (reprocess, odrzucenie, duplikat)
+            if doc["status"] == "approved":
+                pass  # tu zaimportuj doc["invoice"] do swojego systemu — idempotentnie (aktualizacja rekordu po id)
+            state["seen"][str(item["id"])] = item["updated_at"]  # parę zapisz niezależnie od statusu
             # czas zawsze w formacie API (6 cyfr ułamka i Z), więc porównanie tekstów = porównanie czasu
             state["last_sync"] = max(state["last_sync"] or "", item["updated_at"])
         if state["last_sync"]:  # pary sprzed okna marginesu już nie wrócą — plik stanu zostaje mały

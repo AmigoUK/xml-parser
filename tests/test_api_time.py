@@ -48,6 +48,11 @@ def local_time_plus_2h():
     pytest.param("2026-10-11T06:00:00.312308Z", datetime(2026, 10, 11, 6, 0, 0, 312308), id="mikrosekundy-z-Z"),
     pytest.param("2026-10-11T08:00:00.312308+02:00", datetime(2026, 10, 11, 6, 0, 0, 312308),
                  id="mikrosekundy-ze-strefa"),
+    pytest.param("2026-10-11 06:00:00", datetime(2026, 10, 11, 6, 0, 0), id="separator-spacja"),
+    pytest.param("2026-10-11 08:00:00+02:00", datetime(2026, 10, 11, 6, 0, 0), id="separator-spacja-ze-strefa"),
+    pytest.param("2026-10-11t06:00:00", datetime(2026, 10, 11, 6, 0, 0), id="separator-male-t"),
+    pytest.param("2026-10-11T06:00", datetime(2026, 10, 11, 6, 0, 0), id="T-bez-sekund"),
+    pytest.param("20261011T080000+0200", datetime(2026, 10, 11, 6, 0, 0), id="format-podstawowy-z-T"),
 ])
 def test_parse_returns_naive_utc(text, expected):
     result = parse_api_datetime(text)
@@ -62,6 +67,16 @@ def test_parse_returns_naive_utc(text, expected):
     pytest.param("2026-13-45", id="miesiac-13"),
     pytest.param("2026-10-11T24:00:00", id="godzina-24"),
     pytest.param("2026-10-11T08:00:00 02:00", id="plus-zdekodowany-jako-spacja"),
+    # data ze strefą bez godziny (forma xs:date z UBL): fromisoformat przyjmuje dowolny znak jako separator daty
+    # i czasu, więc przeczytałby strefę jako godzinę — 02:00 / 05:00 UTC zamiast północy w tej strefie
+    pytest.param("2026-10-11+02:00", id="data-ze-strefa-plus"),
+    pytest.param("2026-10-11-05:00", id="data-ze-strefa-minus"),
+    pytest.param("2026-10-11+0200", id="data-ze-strefa-bez-dwukropka"),
+    pytest.param("2026-10-11Z", id="data-z-Z"),
+    pytest.param("2026-10-11X06:00:00", id="separator-spoza-T-t-spacji"),
+    # surowy „+” w adresie URL to po dekodowaniu spacja: 2026-10-11+02:00 → „2026-10-11 02:00”
+    pytest.param("2026-10-11 02:00", id="data-ze-strefa-plus-zdekodowany-jako-spacja"),
+    pytest.param("2026-10-11 0200", id="spacja-bez-pelnego-czasu"),
     pytest.param("0001-01-01T00:00:00+05:00", id="po-przeliczeniu-przed-rokiem-1"),
     pytest.param("9999-12-31T23:59:59-05:00", id="po-przeliczeniu-po-roku-9999"),
     pytest.param(None, id="None"),
@@ -173,7 +188,18 @@ def test_since_bad_value_is_400(seeded, client, bad):
     assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request"
 
 
-def test_since_unencoded_plus_is_rejected_not_shifted(docs, client):
+@pytest.mark.parametrize("query", [
+    pytest.param("since=2026-10-11T08:00:00+02:00", id="czas"),
+    pytest.param("since=2026-10-11+02:00", id="sama-data-ze-strefa"),
+])
+def test_since_unencoded_plus_is_rejected_not_shifted(docs, client, query):
     """Gołe „+” w adresie to po dekodowaniu spacja — ma być 400 (z podpowiedzią), a nie ciche przesunięcie okna."""
-    r = client.get("/api/v1/documents?since=2026-10-11T08:00:00+02:00", headers=KEY)
+    r = client.get(f"/api/v1/documents?{query}", headers=KEY)
+    assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request"
+
+
+def test_since_date_with_zone_without_time_is_400_not_shifted(docs, client):
+    """`2026-10-11+02:00` (poprawnie zakodowane %2B) to data ze strefą, a nie 02:00 UTC — 400 zamiast okna
+    przesuniętego o 2 godziny."""
+    r = client.get("/api/v1/documents?since=2026-10-11%2B02:00", headers=KEY)
     assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request"
