@@ -1,0 +1,8 @@
+flowchart LR
+    A[Plik XML / JSON / CSV] --> B[Wykrycie formatu<br/>i drzewo ścieżek]
+    B --> C[Rozpoznanie dostawcy<br/>NIP/VAT lub odcisk]
+    C --> D[Szablon dostawcy<br/>reguły + transformacje]
+    D --> E[Walidacja<br/>sumy, pola, duplikaty]
+    E -->|brak problemów| F[Zatwierdzona]
+    E -->|problemy| G[Do wyjaśnienia]
+    G -->|negocjacja w panelu<br/>„zapamiętaj w szablonie”| D

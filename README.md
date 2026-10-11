@@ -34,16 +34,9 @@ Bez LLM: deterministyczne reguły i transformacje z białej listy.
 
 ## Jak to działa
 
-```mermaid
-flowchart LR
-    A[Plik XML / JSON / CSV] --> B[Wykrycie formatu<br/>i drzewo ścieżek]
-    B --> C[Rozpoznanie dostawcy<br/>NIP/VAT lub odcisk]
-    C --> D[Szablon dostawcy<br/>reguły + transformacje]
-    D --> E[Walidacja<br/>sumy, pola, duplikaty]
-    E -->|brak problemów| F[Zatwierdzona]
-    E -->|problemy| G[Do wyjaśnienia]
-    G -->|negocjacja w panelu<br/>„zapamiętaj w szablonie”| D
-```
+![Przetwarzanie faktury: plik → format i drzewo → rozpoznanie dostawcy → szablon → walidacja → zatwierdzona albo do wyjaśnienia; negocjacja w panelu wraca do szablonu](docs/screenshots/diagram-przetwarzania.png)
+
+<sub>Źródło diagramu (Mermaid): [`docs/screenshots/diagram-przetwarzania.mmd`](docs/screenshots/diagram-przetwarzania.mmd).</sub>
 
 Szczegóły krok po kroku: [docs/pomoc/jak-to-dziala.md](docs/pomoc/jak-to-dziala.md).
 
