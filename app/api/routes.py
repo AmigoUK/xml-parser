@@ -1,6 +1,7 @@
 from functools import wraps
 
 from flask import current_app, g, jsonify, request
+from sqlalchemy import and_, or_
 
 from app.extensions import db
 from app.models import STATUS_LABELS, Document, Supplier
@@ -8,6 +9,7 @@ from app.services.apikeys import verify_key
 from app.services.pipeline import DocumentTooLarge, ingest, process
 
 from . import bp
+from .cursor import decode_cursor, encode_cursor
 from .timeutil import format_api_datetime, parse_api_datetime
 
 
@@ -91,10 +93,16 @@ def create_document():
     return jsonify(doc_to_json(doc)), 201
 
 
+def _bad_time_param(name: str):
+    """400 dla parametru czasu (since, updated_since) w złym formacie — ta sama podpowiedź dla obu."""
+    return api_error("bad_request", f"Parametr {name} musi być datą ISO 8601 (np. 2026-10-11 lub "
+                                    "2026-10-11T06:00:00Z). Znak „+” w adresie URL zapisz jako %2B.", 400)
+
+
 @bp.get("/documents")
 @require_api_key
 def list_documents():
-    q = Document.query.filter_by(api_key_id=g.api_key.id).order_by(Document.id.desc())
+    q = Document.query.filter_by(api_key_id=g.api_key.id)  # zakres zawsze z klucza w nagłówku, nigdy z kursora
     status = request.args.get("status")
     if status:
         if status not in STATUS_LABELS:
@@ -105,14 +113,43 @@ def list_documents():
         try:
             since_utc = parse_api_datetime(since)  # strefa → UTC; bez strefy = UTC (jak czas w bazie)
         except ValueError:
-            return api_error("bad_request", "Parametr since musi być datą ISO 8601 (np. 2026-10-11 lub "
-                                            "2026-10-11T06:00:00Z). Znak „+” w adresie URL zapisz jako %2B.", 400)
+            return _bad_time_param("since")
         q = q.filter(Document.created_at >= since_utc)
     try:
         limit = max(1, min(int(request.args.get("limit", LIST_DEFAULT_LIMIT)), LIST_MAX_LIMIT))
     except ValueError:
         return api_error("bad_request", "Parametr limit musi być liczbą całkowitą.", 400)
-    return jsonify(items=[doc_to_json(d, full=False) for d in q.limit(limit)])
+    updated_since, cursor = request.args.get("updated_since"), request.args.get("cursor")
+    if updated_since or cursor:
+        return _sync_page(q, limit, updated_since, cursor)
+    # tryb dotychczasowy: od najnowszych, bez next_cursor (zgodność z klientami sprzed v0.5.0)
+    return jsonify(items=[doc_to_json(d, full=False) for d in q.order_by(Document.id.desc()).limit(limit)])
+
+
+def _sync_page(q, limit: int, updated_since: str | None, cursor: str | None):
+    """Tryb synchronizacji listy: rosnąco po (updated_at, id) od pozycji kursora; `next_cursor` wskazuje ostatni
+    element strony, gdy są dalsze (inaczej null). Dostawa „co najmniej raz”: dokument zmieniony w trakcie
+    stronicowania wraca na dalszej stronie z nowym updated_at. Dokumenty bez updated_at (tylko dane wstawione
+    ręcznie) nie spełniają żadnego z warunków, więc tu nie występują."""
+    if updated_since:
+        try:
+            updated_since_utc = parse_api_datetime(updated_since)
+        except ValueError:
+            return _bad_time_param("updated_since")
+        q = q.filter(Document.updated_at >= updated_since_utc)
+    if cursor:
+        try:
+            after_at, after_id = decode_cursor(cursor)
+        except ValueError:
+            return api_error("bad_request", "Nieprawidłowy kursor — użyj wartości next_cursor z poprzedniej "
+                                            "odpowiedzi.", 400)
+        # warunek keyset jawnie, bez porównania krotek — tak samo na SQLite i MariaDB
+        q = q.filter(or_(Document.updated_at > after_at,
+                         and_(Document.updated_at == after_at, Document.id > after_id)))
+    rows = q.order_by(Document.updated_at.asc(), Document.id.asc()).limit(limit + 1).all()
+    page = rows[:limit]
+    next_cursor = encode_cursor(page[-1].updated_at, page[-1].id) if len(rows) > limit else None
+    return jsonify(items=[doc_to_json(d, full=False) for d in page], next_cursor=next_cursor)
 
 
 def _get_doc(doc_id: int):

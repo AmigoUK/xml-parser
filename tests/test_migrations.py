@@ -1,9 +1,11 @@
-"""Migracje: e4a1d7c03b52 na danych sprzed v0.2.0 (duplikaty między zakresami FR-8, ponawialność FR-9)
-i 86ccf8021da9 (mikrosekundy w documents.created_at / updated_at — DATETIME(6) w MariaDB, na SQLite bez zmian).
+"""Migracje: e4a1d7c03b52 na danych sprzed v0.2.0 (duplikaty między zakresami FR-8, ponawialność FR-9),
+86ccf8021da9 (mikrosekundy w documents.created_at / updated_at — DATETIME(6) w MariaDB, na SQLite bez zmian)
+i 2eff54106035 (indeks listy synchronizacji API: documents (api_key_id, updated_at, id)).
 
 Migracje uruchamiane w podprocesie (`flask db upgrade`) — konfiguracja logowania Alembica nie wpływa na
 resztę testów; dane wstawiane surowym SQL w schemacie z rewizji b7f3c2a91d40. Testy oznaczone `needs_mariadb`
-działają na prawdziwej, pustej bazie MariaDB (`TEST_MARIADB_URL`); bez niej są pomijane."""
+działają na prawdziwej, pustej bazie MariaDB (`TEST_MARIADB_URL`, nazwa bazy musi zawierać „test”); bez niej są
+pomijane."""
 import json
 import os
 import sqlite3
@@ -27,6 +29,9 @@ ROOT = Path(__file__).resolve().parent.parent
 BEFORE = "b7f3c2a91d40"
 UNIQUE_KEYS = "e4a1d7c03b52"  # unikalność kluczy w bazie (v0.2.0)
 MICRO = "86ccf8021da9"  # mikrosekundy w czasie dokumentów (v0.5.0)
+SYNC_INDEX = "2eff54106035"  # indeks listy synchronizacji API (v0.5.0)
+SYNC_INDEX_NAME = "ix_documents_api_key_updated"
+SYNC_INDEX_COLUMNS = ["api_key_id", "updated_at", "id"]
 
 
 def _flask(db_path, tmp_path, *args, url=None):
@@ -186,12 +191,13 @@ def test_document_times_are_plain_datetime_on_sqlite():
     assert "DATETIME(6)" not in ddl
 
 
-def test_micro_revision_follows_unique_keys_on_a_single_chain():
+@pytest.mark.parametrize("revision, parent", [(MICRO, UNIQUE_KEYS), (SYNC_INDEX, MICRO)], ids=["mikro", "indeks"])
+def test_revision_follows_parent_on_a_single_chain(revision, parent):
     cfg = AlembicConfig()
     cfg.set_main_option("script_location", str(ROOT / "migrations"))
     script = ScriptDirectory.from_config(cfg)
     assert len(script.get_heads()) == 1  # jedna głowa, bez rozgałęzień
-    assert script.get_revision(MICRO).down_revision == UNIQUE_KEYS
+    assert script.get_revision(revision).down_revision == parent
 
 
 def _sqlite_scalar(db_path, sql):
@@ -222,6 +228,40 @@ def test_micro_migration_is_noop_on_sqlite(old_db, tmp_path):
     assert _sqlite_schema(old_db) == schema
 
 
+# ---------------------------------------------------------------- indeks listy synchronizacji (2eff54106035)
+
+def _document_indexes(url):
+    """{nazwa: kolumny} indeksów tabeli documents — nowe połączenie i inspektor, bez cache."""
+    engine = sa.create_engine(url)
+    try:
+        return {i["name"]: i["column_names"] for i in sa.inspect(engine).get_indexes("documents")}
+    finally:
+        engine.dispose()
+
+
+def _check_sync_index_migration(flask, url):
+    """Indeks jest po upgrade, znika po downgrade; oba kroki ponawialne. Stany częściowe jak po awarii na MariaDB
+    (DDL nietransakcyjny): indeks już jest / już go nie ma, a alembic_version wskazuje rewizję sprzed kroku."""
+    flask("upgrade", MICRO)
+    assert SYNC_INDEX_NAME not in _document_indexes(url)
+    flask("upgrade", SYNC_INDEX)
+    assert _document_indexes(url)[SYNC_INDEX_NAME] == SYNC_INDEX_COLUMNS
+    flask("stamp", MICRO)
+    flask("upgrade", SYNC_INDEX)  # indeks już jest — nie zakłada go drugi raz
+    assert _document_indexes(url)[SYNC_INDEX_NAME] == SYNC_INDEX_COLUMNS
+    flask("downgrade", MICRO)
+    assert SYNC_INDEX_NAME not in _document_indexes(url)
+    flask("stamp", SYNC_INDEX)
+    flask("downgrade", MICRO)  # indeksu już nie ma — nie próbuje go usuwać
+    flask("upgrade")  # do głowy
+    assert _document_indexes(url)[SYNC_INDEX_NAME] == SYNC_INDEX_COLUMNS
+
+
+def test_sync_index_migration_on_sqlite(tmp_path):
+    db_path = tmp_path / "index.db"
+    _check_sync_index_migration(lambda *args: _ok(_flask(db_path, tmp_path, *args)), f"sqlite:///{db_path}")
+
+
 # ---- prawdziwa MariaDB (pusta baza testowa z TEST_MARIADB_URL; bez niej testy są pomijane)
 
 def _wipe_mariadb(url):
@@ -236,9 +276,31 @@ def _wipe_mariadb(url):
         engine.dispose()
 
 
+def _require_test_database(url):
+    """Testy czyszczą całą bazę — odmowa, gdy nazwa bazy w URL nie zawiera „test” (np. omyłkowo wskazana baza demo)."""
+    if "test" not in (sa.make_url(url).database or "").lower():
+        pytest.fail("TEST_MARIADB_URL musi wskazywać bazę testową (nazwa bazy zawiera „test”) — testy MariaDB "
+                    "usuwają wszystkie tabele.", pytrace=False)
+
+
+@pytest.mark.parametrize("url", [
+    pytest.param("mysql+pymysql://u:p@db:3306/xmlparser?charset=utf8mb4", id="baza-demo"),
+    pytest.param("mysql+pymysql://tester:test@test-db:3306/xmlparser", id="test-tylko-poza-nazwa-bazy"),
+    pytest.param("mysql+pymysql://u:p@db:3306", id="bez-nazwy-bazy"),
+])
+def test_mariadb_tests_refuse_database_without_test_in_name(url):
+    with pytest.raises(pytest.fail.Exception):
+        _require_test_database(url)
+
+
+def test_mariadb_tests_accept_test_database():
+    _require_test_database("mysql+pymysql://root:pw@127.0.0.1:18519/xp_test?charset=utf8mb4")
+
+
 @pytest.fixture
 def mariadb_url():
     url = os.environ["TEST_MARIADB_URL"]
+    _require_test_database(url)
     _wipe_mariadb(url)
     yield url
     _wipe_mariadb(url)  # także po nieudanym teście
@@ -342,3 +404,10 @@ def test_document_times_keep_microseconds_on_mariadb(mariadb_url, tmp_path):
         finally:
             db.session.remove()  # zwolnienie transakcji — inaczej DROP TABLE czeka na blokadę metadanych
             db.engine.dispose()
+
+
+@needs_mariadb
+def test_sync_index_migration_on_mariadb(mariadb_url, tmp_path):
+    """Prawdziwe CREATE / DROP INDEX na InnoDB — DROP przechodzi, bo klucz obcy api_key_id ma nadal indeks
+    ix_documents_api_status_created (api_key_id na pierwszej pozycji)."""
+    _check_sync_index_migration(lambda *args: _ok(_flask(None, tmp_path, *args, url=mariadb_url)), mariadb_url)

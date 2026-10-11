@@ -83,6 +83,14 @@ def test_bad_limit_400(seeded, client):
     assert client.get("/api/v1/documents?limit=abc", headers=KEY).status_code == 400
 
 
+def test_list_without_sync_parameters_keeps_old_shape_newest_first(seeded, client):
+    """Bez `updated_since` i `cursor` lista działa jak dotąd: tylko `items` (bez `next_cursor`), od najnowszych."""
+    ids = [_post(client, data)["id"] for data in (sample_bytes("alfa-1.xml"), b"<a><b></a>", b"<x/>")]
+    body = client.get("/api/v1/documents", headers=KEY).get_json()
+    assert set(body) == {"items"}
+    assert [i["id"] for i in body["items"]] == sorted(ids, reverse=True)
+
+
 def _second_key(app):
     from app.extensions import db
     from app.services.apikeys import create_key

@@ -162,8 +162,12 @@ class ProductMapping(db.Model):
 
 class Document(db.Model):
     __tablename__ = "documents"
-    # lista dokumentów klucza API filtrowana po statusie i dacie (BE-17)
-    __table_args__ = (db.Index("ix_documents_api_status_created", "api_key_id", "status", "created_at"),)
+    __table_args__ = (
+        # lista dokumentów klucza API filtrowana po statusie i dacie (BE-17)
+        db.Index("ix_documents_api_status_created", "api_key_id", "status", "created_at"),
+        # tryb synchronizacji listy API: keyset po (updated_at, id) w obrębie klucza (migracja 2eff54106035)
+        db.Index("ix_documents_api_key_updated", "api_key_id", "updated_at", "id"),
+    )
     id = db.Column(db.Integer, primary_key=True)
     source = db.Column(db.String(16), nullable=False, default="upload")
     filename = db.Column(db.String(255))
