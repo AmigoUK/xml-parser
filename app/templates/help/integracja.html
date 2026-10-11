@@ -1,0 +1,250 @@
+{% extends "help/_layout.html" %}
+{% block help_content %}
+<p>Ten przewodnik prowadzi krok po kroku przez podłączenie Twojego systemu (ERP, magazyn, sklep, skrypt) do parsera:
+  od klucza API, przez wysyłkę faktury i odbiór wyniku, po ponowienia i gotowy kod w czterech językach. Szczegóły
+  każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie
+  <a href="{{ url_for('help.topic', slug='api') }}">REST API</a>. Adres bazowy tej instancji:
+  <code>{{ api_base }}/api/v1</code>.</p>
+
+<h2 class="h5 mt-4" id="model">1. Jak wygląda integracja</h2>
+<p>Przetwarzanie jest <strong>synchroniczne</strong>: odpowiedź na wysłanie pliku przychodzi dopiero po odczytaniu
+  faktury, więc od razu zawiera <code>id</code> dokumentu i jego <strong>ostateczny w tej chwili</strong> status.
+  Status <code>received</code> jest tylko stanem przejściowym w trakcie tego żądania.</p>
+<ol>
+  <li>Twoja aplikacja wysyła plik: <code>POST /api/v1/documents</code> → <code>201</code> z dokumentem.</li>
+  <li>Zapisujesz u siebie <code>id</code> — to jedyny trwały identyfikator dokumentu w parserze.</li>
+  <li>Dalej zależy od pola <code>status</code>:
+    <ul>
+      <li><code>approved</code> — faktura odczytana automatycznie; pole <code>invoice</code> zawiera dokument kanoniczny,
+        który importujesz do swojego systemu. Koniec.</li>
+      <li><code>needs_review</code> — są problemy blokujące (najczęściej pierwsza faktura nowego dostawcy). Operator
+        rozwiązuje je w panelu (<em>Kolejka</em>), a dokument po każdej decyzji jest przetwarzany ponownie. Ty
+        odpytujesz go później (krok 4), aż status się zmieni.</li>
+      <li><code>duplicate</code> — tę fakturę wysłano już wcześniej tym samym kluczem; użyj wyniku oryginału (rozdział 6).</li>
+      <li><code>rejected</code> — pliku nie da się odczytać albo ma zbyt wiele pozycji (przyczyna jest w <code>issues</code>),
+        albo operator odrzucił dokument w panelu.</li>
+    </ul>
+  </li>
+</ol>
+<pre class="bg-light border p-2 small"><code class="language-text">Twoja aplikacja                          Parser faktur
+  POST /api/v1/documents (plik)  ───────►  odczyt → szablon → walidacja
+                                 ◄───────  201 {id, status, invoice, issues}
+  status = approved      → importujesz invoice
+  status = needs_review  → operator rozwiązuje problemy w panelu
+  GET /api/v1/documents/{id} (co jakiś czas) ─► aż status ≠ needs_review
+  status = approved      → importujesz invoice</code></pre>
+<div class="alert alert-warning small"><strong>Webhooków nie ma.</strong> Parser nie powiadamia Twojej aplikacji
+  o zmianie statusu — o wyniku dowiadujesz się wyłącznie, odpytując API.</div>
+
+<h2 class="h5 mt-4" id="przygotowanie">2. Przygotowanie</h2>
+<ul>
+  <li><strong>Utwórz klucz</strong> w panelu: <em>Klucze API</em> → nazwa (np. nazwa Twojego systemu) → „Utwórz klucz”.
+    Pełny klucz (zaczyna się od <code>xp_</code>) jest pokazywany tylko raz — w bazie zostaje wyłącznie jego skrót.
+    Dla każdego systemu załóż osobny klucz.</li>
+  <li><strong>Przechowuj klucz poza kodem</strong>: w zmiennej środowiskowej (w przykładach <code>XP_API_KEY</code>)
+    albo w menedżerze sekretów. Nie wpisuj go do kodu, repozytorium ani logów.</li>
+  <li>Klucz wysyłasz w nagłówku <code>X-API-Key</code> każdego żądania; brak, zły albo wyłączony klucz → <code>401</code>.</li>
+  <li><strong>Zakres klucza</strong>: klucz widzi tylko dokumenty wysłane nim samym — dokument innego klucza zwraca
+    <code>404</code>, tak jakby nie istniał. Szablony, dostawcy i kartoteka towarów są wspólne: dostawca nauczony w
+    panelu jest rozpoznawany w fakturach wysłanych każdym kluczem.</li>
+  <li><strong>Duplikaty liczone są w zakresie klucza</strong>: ta sama faktura wysłana dwoma różnymi kluczami
+    (albo raz kluczem, raz przez panel) nie jest duplikatem.</li>
+</ul>
+
+<h2 class="h5 mt-4" id="wysylka">3. Wysyłka faktury</h2>
+<p>Dwa równoważne sposoby wysłania pliku na <code>POST {{ api_base }}/api/v1/documents</code>:</p>
+<ul>
+  <li><strong>multipart/form-data</strong> z polem o nazwie dokładnie <code>file</code> (nazwa pliku z formularza
+    zostaje zapisana w dokumencie) — zalecane;</li>
+  <li><strong>surowe body</strong> z nagłówkiem <code>Content-Type</code> innym niż formularzowy (np.
+    <code>application/xml</code>, <code>application/json</code>, <code>text/csv</code>) i opcjonalnym
+    <code>X-Filename</code> z nazwą pliku (bez niego zapisywana jest nazwa <code>dokument</code>).</li>
+</ul>
+<p>Format (XML, JSON, CSV) rozpoznawany jest po treści, nie po nazwie ani <code>Content-Type</code>. Maksymalny
+  rozmiar pliku na tej instancji: <strong>{{ limits.max_document }}</strong>; faktura może mieć najwyżej
+  {{ limits.max_lines }} pozycji.</p>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>HTTP</th><th><code>error.code</code></th><th>Co zrobić</th></tr></thead>
+  <tbody>
+    <tr><td>201</td><td>—</td><td>dokument przyjęty; sprawdź <code>status</code> — także <code>duplicate</code> i <code>rejected</code> przychodzą jako 201</td></tr>
+    <tr><td>400</td><td><code>empty_body</code></td><td>pusty plik, pole formularza o innej nazwie niż <code>file</code> albo surowe body
+      wysłane jako formularz (patrz „Najczęstsze błędy”) — popraw żądanie, nie ponawiaj bez zmian</td></tr>
+    <tr><td>401</td><td><code>unauthorized</code></td><td>sprawdź klucz i czy nie został wyłączony; nie ponawiaj w pętli</td></tr>
+    <tr><td>413</td><td><code>too_large</code></td><td>plik większy niż {{ limits.max_document }} — nie ponawiaj</td></tr>
+    <tr><td>500</td><td><code>internal_error</code></td><td>ponów z przerwą (rozdział 6); błędy sieci i odpowiedzi 5xx serwera pośredniczącego traktuj tak samo</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small">Błędy mają zawsze postać <code>{"error": {"code": "…", "message": "…"}}</code>; komunikat
+  (<code>message</code>) jest po polsku i nadaje się do logu.</p>
+
+<h2 class="h5 mt-4" id="odbior">4. Odbiór wyniku</h2>
+<p>Jeżeli wysyłka zwróciła <code>approved</code>, wynik masz od razu w odpowiedzi. Dokumenty
+  <code>needs_review</code> trzeba sprawdzać później — na dwa sposoby.</p>
+<h3 class="h6 mt-3">Sposób A (zalecany): odpytywanie po <code>id</code></h3>
+<p>Trzymaj u siebie listę <code>id</code> dokumentów oczekujących i co jakiś czas wywołuj
+  <code>GET {{ api_base }}/api/v1/documents/{id}</code>, aż status przestanie być <code>needs_review</code>.
+  Rozwiązanie problemów zależy od człowieka, więc może trwać minuty albo dni — zacznij od kilku sekund i podwajaj
+  przerwę do kilku minut (np. 5 s, 10 s, 20 s … maks. 5 min), a po godzinie przenieś dokument do zadania
+  okresowego (np. raz na 15 min). Przykłady kodu poniżej robią dokładnie to.</p>
+<h3 class="h6 mt-3">Sposób B: lista z filtrem <code>since</code></h3>
+<p><code>GET {{ api_base }}/api/v1/documents?since=…&amp;status=…&amp;limit=…</code> zwraca dokumenty Twojego klucza
+  w polu <code>items</code> — bez <code>invoice</code> i <code>issues</code> (po pełny wynik sięgnij
+  <code>GET /documents/{id}</code>). Dokładna semantyka:</p>
+<ul>
+  <li><code>since</code> — dokumenty <strong>przyjęte</strong> (pole <code>created_at</code>) w tej chwili lub później
+    (porównanie „≥”). Filtr dotyczy chwili wysłania, <strong>nie chwili zmiany statusu</strong>.</li>
+  <li>Czas jest w <strong>UTC bez strefy</strong>: tak zwracane jest <code>created_at</code> (np.
+    <code>2026-10-11T06:04:38.312308</code>) i tak podawaj <code>since</code>. Sama data (<code>2026-10-11</code>)
+    oznacza północ UTC. Przesunięcie strefy w <code>since</code> (np. <code>+02:00</code>) jest pomijane — godzina
+    i tak liczona jest jako UTC — więc zawsze przeliczaj czas na UTC przed wysłaniem.</li>
+  <li><code>status</code> — jeden z: {% for code, label, text in statuses %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</li>
+  <li><code>limit</code> — domyślnie {{ limits.list_default }}, maks. {{ limits.list_max }} (większe wartości są
+    obcinane do {{ limits.list_max }}, mniejsze od 1 — podnoszone do 1).</li>
+  <li>Kolejność: od najnowszych (malejąco po <code>id</code>). <strong>Nie ma stronicowania</strong> (offsetu ani
+    kursora): jeśli od <code>since</code> przyjęto więcej dokumentów niż <code>limit</code>, dostaniesz tylko
+    najnowsze, a starszych tym zapytaniem nie pobierzesz.</li>
+</ul>
+<div class="alert alert-info small"><strong>Jak nie zgubić dokumentów.</strong> Zapytanie
+  <code>status=approved&amp;since=&lt;ostatnie sprawdzenie&gt;</code> <strong>pominie</strong> fakturę wysłaną przed
+  ostatnim sprawdzeniem, którą operator zatwierdził później — jej <code>created_at</code> się nie zmienia. Dlatego:
+  <ul class="mb-0">
+    <li>podstawą jest <code>id</code> z odpowiedzi na wysyłkę i sposób A;</li>
+    <li>listy używaj do uzgadniania: <code>since</code> = najstarszy <code>created_at</code> wśród Twoich
+      dokumentów wciąż oczekujących (albo np. „7 dni temu”), bez filtra <code>status</code>, i porównuj statusy
+      po <code>id</code>;</li>
+    <li>dokument z <code>created_at</code> równym <code>since</code> wraca ponownie — odrzucaj powtórzenia po <code>id</code>;</li>
+    <li>gdy dostaniesz dokładnie <code>limit</code> pozycji, mogło ich być więcej — sprawdzaj częściej albo skróć okno.</li>
+  </ul>
+</div>
+<p>Status może się zmienić także <strong>po</strong> osiągnięciu statusu końcowego, jeśli operator działa w panelu
+  (np. użyje „Przetwórz ponownie” po zmianie szablonu albo przy duplikacie wybierze „To nie duplikat — przetwórz”
+  lub „Odrzuć”). Jeśli to dla Ciebie ważne, okresowo
+  uzgadniaj statusy dokumentów z ostatnich dni.</p>
+
+<h2 class="h5 mt-4" id="wynik">5. Struktura wyniku</h2>
+<p>Rzeczywista odpowiedź tej aplikacji dla fikcyjnej próbki demo <code>alfa-2.xml</code> (po nauczeniu dostawcy na
+  <code>alfa-1.xml</code>), wysłanej jako multipart. Lista <code>lines</code> skrócona do pierwszej z dwóch pozycji,
+  stąd sumy w <code>totals</code> obejmują też pominiętą pozycję. Klucze są uporządkowane alfabetycznie.</p>
+<pre class="bg-light border p-2 small"><code class="language-json">{{ sample_response }}</code></pre>
+
+<h3 class="h6 mt-3">Dokument (najwyższy poziom)</h3>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>Pole</th><th>Typ</th><th>Znaczenie</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>liczba</td><td>identyfikator dokumentu — zapisz go u siebie</td></tr>
+    <tr><td><code>status</code>, <code>status_label</code></td><td>tekst</td><td>kod statusu i jego polska nazwa (<a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}">Statusy i problemy</a>)</td></tr>
+    <tr><td><code>format</code></td><td>tekst lub <code>null</code></td><td><code>xml</code>, <code>json</code> albo <code>csv</code>; <code>null</code>, gdy pliku nie dało się odczytać</td></tr>
+    <tr><td><code>filename</code></td><td>tekst</td><td>nazwa pliku z formularza albo z <code>X-Filename</code></td></tr>
+    <tr><td><code>number</code>, <code>issue_date</code>, <code>doc_type</code></td><td>tekst lub <code>null</code></td><td>numer, data wystawienia (<code>RRRR-MM-DD</code>) i rodzaj dokumentu — kopia z <code>invoice</code></td></tr>
+    <tr><td><code>supplier</code></td><td>obiekt lub <code>null</code></td><td><code>{id, name}</code> dostawcy z kartoteki; <code>null</code>, dopóki dostawca nie jest rozpoznany</td></tr>
+    <tr><td><code>template_version</code></td><td>liczba lub <code>null</code></td><td>numer wersji szablonu, którą odczytano fakturę</td></tr>
+    <tr><td><code>created_at</code></td><td>tekst</td><td>chwila przyjęcia, ISO 8601 w UTC bez strefy</td></tr>
+    <tr><td><code>issues_count</code>, <code>issues</code></td><td>liczba, lista</td><td>problemy (blokujące i ostrzeżenia); lista tylko w odpowiedzi z pojedynczym dokumentem</td></tr>
+    <tr><td><code>invoice</code></td><td>obiekt lub <code>null</code></td><td>dokument kanoniczny; <code>null</code> dla dokumentu odrzuconego automatycznie (plik nieczytelny albo zbyt wiele pozycji). Przy <code>needs_review</code> może być niepełny — <strong>importuj go wyłącznie przy <code>approved</code></strong></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 class="h6 mt-3">Nagłówek faktury (<code>invoice</code>)</h3>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>Pole</th><th>Typ</th><th>Znaczenie</th></tr></thead>
+  <tbody>
+    <tr><td><code>number</code>, <code>doc_type</code></td><td>tekst</td><td>numer i rodzaj dokumentu (np. <code>invoice</code>)</td></tr>
+    <tr><td><code>issue_date</code>, <code>sale_date</code>, <code>due_date</code></td><td>tekst <code>RRRR-MM-DD</code> lub <code>null</code></td><td>data wystawienia, sprzedaży i termin płatności</td></tr>
+    <tr><td><code>currency</code></td><td>tekst</td><td>kod waluty, np. <code>PLN</code></td></tr>
+    <tr><td><code>supplier</code>, <code>buyer</code></td><td>obiekt</td><td><code>name</code>, <code>tax_id</code> i <code>address</code> (<code>street</code>, <code>postcode</code>, <code>city</code>, <code>country</code>) — tak jak na fakturze</td></tr>
+    <tr><td><code>totals</code></td><td>obiekt</td><td><code>net</code>, <code>vat</code>, <code>gross</code> — kwoty jako tekst</td></tr>
+    <tr><td><code>payment_method</code>, <code>corrected_invoice_number</code></td><td>tekst lub <code>null</code></td><td>forma płatności; numer korygowanej faktury (dla korekt)</td></tr>
+    <tr><td><code>delivery_notes</code></td><td>lista tekstów</td><td>numery dokumentów dostawy (WZ)</td></tr>
+    <tr><td><code>lines</code></td><td>lista</td><td>pozycje — tabela niżej</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 class="h6 mt-3">Pozycja (<code>invoice.lines[]</code>)</h3>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>Pole</th><th>Typ</th><th>Znaczenie</th></tr></thead>
+  <tbody>
+    <tr><td><code>line_no</code></td><td>liczba</td><td>numer pozycji od 1</td></tr>
+    <tr><td><code>supplier_code</code>, <code>gtin</code>, <code>name</code></td><td>tekst lub <code>null</code></td><td>kod towaru u dostawcy, GTIN/EAN i nazwa z faktury</td></tr>
+    <tr><td><code>product_index</code></td><td>tekst lub <code>null</code></td><td><strong>indeks towaru z Twojej kartoteki</strong> w parserze (np. <code>TOW-0001</code>) — po nim łączysz pozycję z towarem w swoim systemie</td></tr>
+    <tr><td><code>qty</code></td><td>tekst dziesiętny</td><td>ilość <strong>po przeliczeniu</strong> na jednostkę <code>unit</code></td></tr>
+    <tr><td><code>unit</code></td><td>tekst lub <code>null</code></td><td>nasza jednostka (kod ze słownika jednostek), po przeliczeniu na jednostkę bazową</td></tr>
+    <tr><td><code>unit_source</code></td><td>tekst lub <code>null</code></td><td>jednostka dokładnie tak, jak zapisał ją dostawca (np. <code>pcs</code>, <code>worek</code>)</td></tr>
+    <tr><td><code>conversion_factor</code></td><td>tekst dziesiętny</td><td>użyty przelicznik; <code>"1"</code>, gdy nie przeliczano. Np. 20 worków po 25 kg: <code>unit_source</code> = <code>worek</code>, <code>unit</code> = <code>kg</code>, <code>qty</code> = <code>500</code>, <code>conversion_factor</code> = <code>25</code>, a cena jednostkowa jest podzielona przez 25 (<a href="{{ url_for('help.topic', slug='jednostki') }}">Jednostki</a>)</td></tr>
+    <tr><td><code>unit_price_net</code></td><td>tekst dziesiętny</td><td>cena jednostkowa netto za jednostkę <code>unit</code> (2–4 miejsca po kropce)</td></tr>
+    <tr><td><code>net</code>, <code>vat</code>, <code>gross</code></td><td>tekst dziesiętny</td><td>wartości pozycji, zawsze 2 miejsca po kropce</td></tr>
+    <tr><td><code>vat_rate</code></td><td>tekst</td><td>stawka w procentach (<code>"23"</code>, <code>"8"</code>, <code>"0"</code>) albo <code>zw</code>, <code>np</code>, <code>oo</code></td></tr>
+    <tr><td><code>batch</code>, <code>expiry_date</code></td><td>tekst lub <code>null</code></td><td>partia i data ważności (<code>RRRR-MM-DD</code>), np. z kodu GS1</td></tr>
+  </tbody>
+</table>
+</div>
+<p><strong>Kwoty i ilości są tekstami</strong> z kropką dziesiętną (<code>"12.50"</code>), żeby nie tracić dokładności —
+  w swoim systemie parsuj je typem dziesiętnym (<code>Decimal</code>, <code>BigDecimal</code>, <code>bcmath</code>),
+  nie zmiennoprzecinkowym.</p>
+<p><code>issues</code> to lista problemów z polami <code>code</code>, <code>severity</code> (<code>blocking</code> albo
+  <code>warning</code>), <code>message</code>, <code>field</code>, <code>line_no</code>, <code>source_value</code> i
+  <code>suggestions</code>. Przy <code>approved</code> mogą zostać ostrzeżenia (np. niezgodna suma pozycji) — warto je
+  zapisać obok faktury. Znaczenie kodów: <a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}">Statusy i problemy</a>.</p>
+
+<h2 class="h5 mt-4" id="ponowienia">6. Idempotencja i ponowienia</h2>
+<ul>
+  <li><strong>Ponowne wysłanie tej samej faktury</strong> tym samym kluczem tworzy nowy dokument w statusie
+    <code>duplicate</code> (odpowiedź <code>201</code>). Pierwszy element <code>issues</code> ma
+    <code>code</code> = <code>duplicate</code>, a w <code>source_value</code> — <code>id</code> oryginału jako tekst,
+    np. <code>"2"</code>. Duplikatem jest ten sam plik albo faktura o tym samym dostawcy, rodzaju i numerze, jeśli
+    oryginał jest zatwierdzony lub czeka na wyjaśnienie (dokument odrzucony nie blokuje ponownej wysyłki).</li>
+  <li><strong>Timeout lub zerwane połączenie przy wysyłce</strong>: nie wiesz, czy dokument powstał — po prostu wyślij
+    plik ponownie. Jeśli pierwsze żądanie dotarło, dostaniesz <code>duplicate</code> ze wskazaniem oryginału i dalej
+    pracujesz na jego <code>id</code>; jeśli nie — normalny nowy dokument. Ponawiaj po błędach sieci i 5xx z rosnącą
+    przerwą; po <code>400</code>, <code>401</code> i <code>413</code> nie ponawiaj bez poprawki.</li>
+  <li><strong>Ponowne przetworzenie</strong> — <code>POST /api/v1/documents/{id}/reprocess</code> przetwarza dokument
+    aktywną wersją szablonu i zwraca <code>200</code> z aktualnym wynikiem. Zwykle nie jest potrzebne: decyzje
+    operatora w panelu same przetwarzają dokument ponownie. Dokument <strong>odrzucony ręcznie</strong> przez operatora
+    zwraca <code>409</code> (<code>rejected</code>) — cofa to tylko „Przywróć” w panelu; odrzucenia automatyczne można
+    przetworzyć ponownie.</li>
+</ul>
+
+<h2 class="h5 mt-4" id="przyklady">7. Przykłady kodu</h2>
+<p>Kompletne programy: wysyłają plik podany w argumencie, czekają na wynik z rosnącą przerwą i wypisują pozycje
+  zatwierdzonej faktury. Adres tej instancji jest już wstawiony; klucz czytany jest ze zmiennej środowiskowej:</p>
+<pre class="bg-light border p-2 small"><code class="language-bash">export XP_API_KEY='xp_…'   # Twój klucz z „Klucze API”</code></pre>
+{% for ex in examples %}
+<h3 class="h6 mt-3" id="przyklad-{{ ex.lang }}">{{ ex.title }}</h3>
+<pre class="bg-light border p-2 small"><code class="language-{{ ex.lang }}">{{ ex.code }}</code></pre>
+{% endfor %}
+
+<h2 class="h5 mt-4" id="checklista">8. Lista kontrolna wdrożenia</h2>
+<ul>
+  <li>Osobny klucz API dla systemu, przechowywany w zmiennej środowiskowej lub menedżerze sekretów.</li>
+  <li>Zapisujesz <code>id</code> z każdej odpowiedzi <code>201</code>, zanim zrobisz cokolwiek dalej.</li>
+  <li>Obsługujesz wszystkie statusy: <code>approved</code>, <code>needs_review</code>, <code>duplicate</code>, <code>rejected</code>.</li>
+  <li><code>invoice</code> importujesz tylko przy <code>approved</code>; kwoty parsujesz jako liczby dziesiętne.</li>
+  <li>Pozycje łączysz z towarami po <code>product_index</code>, a ilość i cenę bierzesz w jednostce <code>unit</code>.</li>
+  <li>Dokumenty <code>needs_review</code> odpytujesz z rosnącą przerwą (sposób A), a listą z <code>since</code> w UTC tylko uzgadniasz.</li>
+  <li>Ponawiasz po błędach sieci i 5xx; przy <code>duplicate</code> przechodzisz na <code>id</code> oryginału.</li>
+  <li>Ktoś po Twojej stronie wie, że faktury nowych dostawców czekają na operatora w panelu.</li>
+  <li>Monitorujesz dostępność usługi przez <code>GET {{ api_base }}/healthz</code> (bez klucza).</li>
+</ul>
+
+<h2 class="h5 mt-4" id="bledy">Najczęstsze błędy integracji</h2>
+<ul>
+  <li><strong>Surowe body bez <code>Content-Type</code></strong>, np. <code>curl --data-binary @faktura.xml</code> — curl
+    wysyła wtedy <code>application/x-www-form-urlencoded</code>, treść jest traktowana jak formularz i API zwraca
+    <code>400 empty_body</code>. Dodaj <code>-H "Content-Type: application/xml"</code> albo użyj <code>-F file=@…</code>.</li>
+  <li><strong>Pole formularza o innej nazwie</strong> niż <code>file</code> (np. <code>plik</code>, <code>invoice</code>) → <code>400 empty_body</code>.</li>
+  <li><strong>Import przy <code>needs_review</code></strong> — <code>invoice</code> jest wtedy niepełny (np. bez
+    <code>product_index</code> lub <code>unit</code>).</li>
+  <li><strong>Lista <code>status=approved&amp;since=…</code> jako jedyne źródło</strong> — gubi faktury zatwierdzone
+    przez operatora później (rozdział 4).</li>
+  <li><strong>Czas lokalny w <code>since</code></strong> — przesunięcie strefy jest pomijane; podawaj UTC.</li>
+  <li><strong>Liczby zmiennoprzecinkowe</strong> zamiast dziesiętnych — błędy zaokrągleń w kwotach.</li>
+  <li><strong>Szukanie dokumentu innym kluczem</strong> — każdy klucz widzi tylko swoje dokumenty (<code>404</code>).</li>
+  <li><strong>Odpytywanie w ciasnej pętli</strong> — operator potrzebuje minut lub godzin; stosuj rosnącą przerwę.</li>
+</ul>
+{% endblock %}

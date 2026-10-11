@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- Temat Pomocy „Integracja z własną aplikacją” (`/pomoc/integracja`, po „REST API”): przewodnik krok po kroku — model działania (synchroniczne przetwarzanie, statusy `approved` / `needs_review` / `duplicate` / `rejected`, brak webhooków), przygotowanie klucza, wysyłka (multipart i surowe body, limit z konfiguracji, kody odpowiedzi), odbiór wyniku (odpytywanie z backoffem, dokładna semantyka `since` / `limit` i jak nie zgubić dokumentów), struktura wyniku na rzeczywistej odpowiedzi API dla próbki `alfa-2.xml`, idempotencja i ponowienia, lista kontrolna wdrożenia i najczęstsze błędy.
+- Gotowe przykłady integracji w Pythonie (`requests`), PHP (cURL), JavaScripcie (Node.js 18+) i powłoce (curl + jq) z adresem bieżącej instancji (`app/help_examples/`); testy sprawdzają ich składnię i zgodność przykładowego JSON-a z odpowiedzią API.
+- Odnośniki do nowego tematu z „REST API” i spisu Pomocy oraz pytanie FAQ „Jak podłączyć swoją aplikację?”.
+- `tools/export_help.py` przenosi język bloku kodu z klasy `language-xxx` do Markdown (`docs/pomoc/integracja.md`).
 
 ## [0.3.0] — 2026-10-11
 

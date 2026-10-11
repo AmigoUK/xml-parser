@@ -23,6 +23,9 @@ TOPICS: list[dict] = [
      "summary": "Wszystkie statusy dokumentu i kody problemów — co znaczą i jak je rozwiązać."},
     {"slug": "api", "title": "REST API",
      "summary": "Klucze API, przykłady curl dla każdego endpointu, kody odpowiedzi i limity."},
+    {"slug": "integracja", "title": "Integracja z własną aplikacją",
+     "summary": "Przewodnik krok po kroku: wysyłka, odbiór wyniku, ponowienia i gotowy kod w Pythonie, PHP, "
+                "JavaScripcie i powłoce."},
     {"slug": "faq", "title": "Najczęstsze pytania",
      "summary": "Krótkie odpowiedzi na pytania, które pojawiają się najczęściej."},
 ]
@@ -282,4 +285,9 @@ FAQ: list[dict] = [
      "a": "Bo może oznaczać 1,234 albo 1234. Wskaż separator dziesiętny transformacją "
           "{\"decimal\": \",\"} lub {\"decimal\": \".\"} albo wybierz wariant podpowiedziany w panelu.",
      "link": "statusy-i-problemy"},
+    {"q": "Jak podłączyć swoją aplikację?",
+     "a": "Utwórz klucz w „Klucze API”, wysyłaj faktury przez POST /api/v1/documents z nagłówkiem X-API-Key "
+          "i zapisuj zwrócone id. Status approved oznacza gotowy dokument kanoniczny w polu invoice; "
+          "needs_review — odpytuj później GET /api/v1/documents/{id} (webhooków nie ma). Przewodnik z gotowym "
+          "kodem w Pythonie, PHP, JavaScripcie i powłoce.", "link": "integracja"},
 ]

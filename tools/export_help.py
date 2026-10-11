@@ -146,12 +146,24 @@ def _anchor(el) -> str:
     return f'<a id="{i}"></a>' if i else ""
 
 
+LANG_CLASS = re.compile(r"(?:^|\s)language-([\w+-]+)(?:\s|$)")
+
+
+def _declared_lang(el) -> str:
+    """Język z klasy `language-xxx` na <pre> albo na jego <code>."""
+    for node in [el, *el.iterchildren("code")]:
+        m = LANG_CLASS.search(node.get("class") or "")
+        if m:
+            return m.group(1)
+    return ""
+
+
 def _fence_block(el) -> str:
     text = "".join(el.itertext()).strip("\n").rstrip()
     runs = re.findall(r"`{3,}", text)
     fence = "`" * (max((len(r) for r in runs), default=2) + 1)
     first = text.lstrip()[:1]
-    lang = "bash" if text.lstrip().startswith("curl") else "json" if first in "{[" else ""
+    lang = _declared_lang(el) or ("bash" if text.lstrip().startswith("curl") else "json" if first in "{[" else "")
     return f"{fence}{lang}\n{text}\n{fence}"
 
 

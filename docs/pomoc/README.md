@@ -46,6 +46,10 @@ Wszystkie statusy dokumentu i kody problemów — co znaczą i jak je rozwiąza�
 
 Klucze API, przykłady curl dla każdego endpointu, kody odpowiedzi i limity.
 
+### [Integracja z własną aplikacją](integracja.md)
+
+Przewodnik krok po kroku: wysyłka, odbiór wyniku, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.
+
 ### [Najczęstsze pytania](faq.md)
 
 Krótkie odpowiedzi na pytania, które pojawiają się najczęściej.

@@ -191,3 +191,102 @@ def test_curl_examples_use_request_host(client):
     assert "http://faktury.example.test:18555/api/v1/suppliers" in html
     assert "TWÓJ_KLUCZ" in html and "X-API-Key" in html
     assert "localhost" not in html
+
+
+# --- integracja z własną aplikacją ---
+
+INTEGRATION = "/pomoc/integracja"
+EXAMPLES_DIR = ROOT / "app" / "help_examples"
+
+
+def _code_blocks(html: str) -> dict[str, list[str]]:
+    import lxml.html
+    out: dict[str, list[str]] = {}
+    for code in lxml.html.fromstring(html).xpath("//pre/code"):
+        m = re.search(r"language-([\w-]+)", code.get("class") or "")
+        if m:
+            out.setdefault(m.group(1), []).append(code.text_content())
+    return out
+
+
+def test_integration_topic_after_api_and_linked(client):
+    slugs = [t["slug"] for t in TOPICS]
+    assert slugs.index("integracja") == slugs.index("api") + 1
+    assert 'href="/pomoc/integracja"' in client.get("/pomoc").get_data(as_text=True)  # karta w spisie
+    assert 'href="/pomoc/integracja"' in client.get("/pomoc/api").get_data(as_text=True)
+    faq = client.get("/pomoc/faq").get_data(as_text=True)
+    assert "Jak podłączyć swoją aplikację?" in faq and 'href="/pomoc/integracja"' in faq
+
+
+def test_integration_examples_four_languages_with_request_host(client):
+    html = client.get(INTEGRATION, base_url="http://faktury.example.test:18555").get_data(as_text=True)
+    blocks = _code_blocks(html)
+    for lang in ("python", "php", "javascript", "bash"):
+        assert lang in blocks, lang
+    base = "http://faktury.example.test:18555/api/v1"
+    for lang, code in [("python", blocks["python"][0]), ("php", blocks["php"][0]),
+                       ("javascript", blocks["javascript"][0]), ("bash", blocks["bash"][-1])]:
+        assert base in code and "XP_API_KEY" in code, lang
+    assert "def send_invoice(path)" in blocks["python"][0] and "def wait_for_result(doc_id" in blocks["python"][0]
+    assert "CURLFile" in blocks["php"][0]
+    assert "FormData" in blocks["javascript"][0] and "Blob" in blocks["javascript"][0]
+    assert "jq" in blocks["bash"][-1]
+    assert "__API_BASE__" not in html and "localhost" not in html
+    assert "Webhooków nie ma" in html
+
+
+def test_integration_limits_follow_configuration(app, client):
+    from app.api.routes import LIST_DEFAULT_LIMIT, LIST_MAX_LIMIT
+    app.config.update(MAX_DOCUMENT_BYTES=3 * 1024 * 1024, MAX_LINES=1234)
+    html = client.get(INTEGRATION).get_data(as_text=True)
+    assert "3 MB" in html and "1 234" in html and "10 MB" not in html
+    assert f"domyślnie {LIST_DEFAULT_LIMIT}, maks. {LIST_MAX_LIMIT}" in html
+
+
+def _key_tree(value):
+    """Struktura kluczy JSON-a (listy porównywane po pierwszym elemencie)."""
+    if isinstance(value, dict):
+        return {k: _key_tree(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_key_tree(value[0])] if value else []
+    return None
+
+
+def test_integration_sample_response_matches_real_api(seeded, client):
+    """Przykładowy JSON w Pomocy ma dokładnie te klucze, które zwraca API dla zatwierdzonego alfa-2.xml."""
+    import io
+
+    from app.services.pipeline import ingest
+    from tests.conftest import sample_bytes
+    from tests.test_learning import resolve_with_top_suggestions
+    resolve_with_top_suggestions(ingest(sample_bytes("alfa-1.xml"), "alfa-1.xml", source="demo"))
+    r = client.post("/api/v1/documents", headers={"X-API-Key": "xp_test_demo_key"},
+                    data={"file": (io.BytesIO(sample_bytes("alfa-2.xml")), "alfa-2.xml")})
+    assert r.status_code == 201
+    real = r.get_json()
+    assert real["status"] == "approved"
+
+    sample = json.loads((EXAMPLES_DIR / "odpowiedz-zatwierdzona.json").read_text(encoding="utf-8"))
+    assert _key_tree(sample) == _key_tree(real)
+    # treść (poza czasem przyjęcia, id i skróconą listą pozycji) to rzeczywisty wynik
+    for k in ("status", "number", "issue_date", "format", "filename", "issues_count", "issues"):
+        assert sample[k] == real[k], k
+    assert sample["invoice"]["lines"][0] == real["invoice"]["lines"][0]
+    assert sample["invoice"]["totals"] == real["invoice"]["totals"]
+
+    html = client.get(INTEGRATION).get_data(as_text=True)
+    assert json.loads(_code_blocks(html)["json"][0]) == sample
+
+
+def test_integration_examples_are_valid_code(tmp_path):
+    import shutil
+    import subprocess
+    py = (EXAMPLES_DIR / "integracja.py").read_text(encoding="utf-8")
+    compile(py, "integracja.py", "exec")
+    checks = {"bash": ["bash", "-n"], "node": ["node", "--check"], "php": ["php", "-l"]}
+    files = {"bash": "integracja.sh", "node": "integracja.mjs", "php": "integracja.php"}
+    for tool, cmd in checks.items():
+        if shutil.which(cmd[0]) is None:
+            continue  # narzędzie niedostępne w tym środowisku — sprawdzane tam, gdzie jest
+        res = subprocess.run([*cmd, str(EXAMPLES_DIR / files[tool])], capture_output=True, text=True, timeout=30)
+        assert res.returncode == 0, f"{tool}: {res.stdout}{res.stderr}"

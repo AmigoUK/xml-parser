@@ -4,6 +4,9 @@
   <a href="{{ url_for('api_docs') }}">dokumentacja interaktywna (Swagger)</a> i plik
   <a href="{{ url_for('static', filename='openapi.yaml') }}">openapi.yaml</a>. Adres bazowy tej instancji:
   <code>{{ api_base }}/api/v1</code>.</p>
+<p>Podłączasz własny system? Zacznij od przewodnika
+  <a href="{{ url_for('help.topic', slug='integracja') }}">Integracja z własną aplikacją</a> — model działania,
+  odbiór wyniku, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.</p>
 
 <h2 class="h5 mt-4">Klucze API</h2>
 <ul>
@@ -87,7 +90,8 @@
 
 <h2 class="h5 mt-4">Powiadomienia (webhook)</h2>
 <p>Aplikacja nie wysyła obecnie webhooków. Aby dowiedzieć się o zmianie statusu (np. po rozwiązaniu problemów w panelu),
-  odpytuj <code>GET /api/v1/documents?since=…</code> albo <code>GET /api/v1/documents/{id}</code>.</p>
+  odpytuj <code>GET /api/v1/documents?since=…</code> albo <code>GET /api/v1/documents/{id}</code> — jak robić to bezpiecznie,
+  opisuje <a href="{{ url_for('help.topic', slug='integracja') }}#odbior">Integracja z własną aplikacją</a>.</p>
 
 <h2 class="h5 mt-4">Stan usługi</h2>
 <p><code>GET {{ api_base }}/healthz</code> (bez klucza) zwraca wersję aplikacji i stan połączenia z bazą; przy awarii bazy — 503.</p>

@@ -4,6 +4,8 @@
 
 REST API v1 pozwala innym systemom wysyłać faktury i odbierać wynik w formacie kanonicznym (JSON). Pełna specyfikacja: dokumentacja interaktywna (Swagger) (`/api/docs`) i plik openapi.yaml (`/static/openapi.yaml`). Adres bazowy tej instancji: `http://localhost:18506/api/v1`.
 
+Podłączasz własny system? Zacznij od przewodnika [Integracja z własną aplikacją](integracja.md) — model działania, odbiór wyniku, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.
+
 ## Klucze API
 
 - Klucz tworzysz w panelu: *Klucze API* → nazwa (np. „ERP”) → „Utwórz klucz”. Pełny klucz (zaczyna się od `xp_`) jest pokazywany **tylko raz** — skopiuj go od razu; w bazie przechowywany jest wyłącznie skrót.
@@ -98,7 +100,7 @@ Błędy mają postać `{"error": {"code": "…", "message": "…"}}`.
 
 ## Powiadomienia (webhook)
 
-Aplikacja nie wysyła obecnie webhooków. Aby dowiedzieć się o zmianie statusu (np. po rozwiązaniu problemów w panelu), odpytuj `GET /api/v1/documents?since=…` albo `GET /api/v1/documents/{id}`.
+Aplikacja nie wysyła obecnie webhooków. Aby dowiedzieć się o zmianie statusu (np. po rozwiązaniu problemów w panelu), odpytuj `GET /api/v1/documents?since=…` albo `GET /api/v1/documents/{id}` — jak robić to bezpiecznie, opisuje [Integracja z własną aplikacją](integracja.md#odbior).
 
 ## Stan usługi
 

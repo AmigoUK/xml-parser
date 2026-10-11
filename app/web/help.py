@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
+from pathlib import Path
 
 from flask import Blueprint, abort, current_app, render_template, request
 
@@ -16,6 +18,18 @@ from app.web.catalog import MAX_IMPORT_BYTES, MAX_IMPORT_ROWS
 from app.web.documents import ISSUE_CARDS_LIMIT
 
 bp = Blueprint("help", __name__, url_prefix="/pomoc")
+
+# Przykłady integracji: prawdziwe pliki (sprawdzane składniowo w testach), adres instancji wstawiany w miejsce
+# API_BASE_MARK. Odpowiedź przykładowa to rzeczywisty wynik API dla próbki demo alfa-2.xml (skrócony do 1 pozycji).
+EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "help_examples"
+API_BASE_MARK = "__API_BASE__"
+INTEGRATION_EXAMPLES = [  # (język bloku kodu, tytuł, plik)
+    ("python", "Python (requests)", "integracja.py"),
+    ("php", "PHP (cURL)", "integracja.php"),
+    ("javascript", "JavaScript — Node.js 18+ (fetch, FormData, Blob)", "integracja.mjs"),
+    ("bash", "Powłoka — curl i jq", "integracja.sh"),
+]
+SAMPLE_RESPONSE_FILE = "odpowiedz-zatwierdzona.json"
 
 QUICK_START = [
     ("Zaloguj się", "Panel wymaga konta; tryb demo pokazuje e-mail konta na stronie „O demo”."),
@@ -92,6 +106,17 @@ def _transforms(limits: dict) -> list[dict]:
     return out
 
 
+@lru_cache(maxsize=None)
+def _example_text(name: str) -> str:
+    return (EXAMPLES_DIR / name).read_text(encoding="utf-8")
+
+
+def integration_examples(api_base: str) -> list[dict]:
+    return [{"lang": lang, "title": title, "file": name,
+             "code": _example_text(name).replace(API_BASE_MARK, api_base).rstrip("\n")}
+            for lang, title, name in INTEGRATION_EXAMPLES]
+
+
 def _neighbours(slug: str):
     idx = next(i for i, t in enumerate(TOPICS) if t["slug"] == slug)
     prev = TOPICS[idx - 1] if idx > 0 else None
@@ -117,8 +142,13 @@ def topic(slug):
         abort(404)
     limits = help_limits()
     prev, nxt = _neighbours(slug)
+    api_base = request.host_url.rstrip("/")
+    extra = {}
+    if slug == "integracja":
+        extra = {"examples": integration_examples(api_base),
+                 "sample_response": _example_text(SAMPLE_RESPONSE_FILE).rstrip("\n")}
     return render_template(
         f"help/{slug}.html", topic=t, topics=TOPICS, prev=prev, next=nxt, limits=limits,
         issues=ISSUE_HELP, statuses=[(k, STATUS_LABELS[k], STATUS_HELP.get(k, "")) for k in STATUS_LABELS],
         transforms=_transforms(limits), faq=[{**f, "a": fill(f["a"], limits)} for f in FAQ],
-        api_base=request.host_url.rstrip("/"))
+        api_base=api_base, **extra)
