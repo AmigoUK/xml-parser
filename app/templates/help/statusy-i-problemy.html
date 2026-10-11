@@ -6,7 +6,7 @@
   <thead><tr><th>Status (API)</th><th>W panelu</th><th>Znaczenie</th></tr></thead>
   <tbody>
   {% for code, label, text in statuses %}
-    <tr id="status-{{ code }}"><td><code>{{ code }}</code></td><td>{{ label }}</td><td>{{ text }}</td></tr>
+    <tr id="status-{{ code }}"><td class="text-nowrap"><code>{{ code }}</code></td><td>{{ label }}</td><td>{{ text }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

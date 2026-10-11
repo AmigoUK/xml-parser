@@ -1,8 +1,78 @@
 # XML Parser faktur
 
-Uczący się parser faktur strukturalnych (XML, JSON, CSV): REST API dla innych systemów
-oraz panel po polsku do „negocjowania” odczytu przy pierwszej fakturze dostawcy.
-Specyfikacja: `docs/superpowers/specs/2026-10-10-xml-invoice-parser-design.md`.
+[![CI](https://github.com/AmigoUK/xml-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/AmigoUK/xml-parser/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/AmigoUK/xml-parser)](https://github.com/AmigoUK/xml-parser/releases)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Flask](https://img.shields.io/badge/flask-3.1-lightgrey)
+
+**Uczący się parser faktur strukturalnych.** Czyta faktury XML (także KSeF FA(2)/FA(3) i UBL 2.1), JSON
+i CSV od dowolnych dostawców i zamienia je na jeden dokument kanoniczny. Przy **pierwszej** fakturze
+nowego dostawcy operator w panelu „negocjuje” odczyt: wskazuje pola, jednostki, przeliczniki i towary.
+Decyzje zapisują się w szablonie dostawcy, więc **kolejne faktury przechodzą automatycznie**.
+Bez LLM: deterministyczne reguły i transformacje z białej listy.
+
+- **REST API v1** (`X-API-Key`) dla innych systemów + **panel po polsku** z trybem demo.
+- 📖 **Pomoc:** w panelu pod `/pomoc` oraz w repo: [docs/pomoc](docs/pomoc/README.md).
+- 📝 Zmiany: [CHANGELOG.md](CHANGELOG.md) · Specyfikacja: [design](docs/superpowers/specs/2026-10-10-xml-invoice-parser-design.md)
+
+![Widok dokumentu z problemami do wyjaśnienia](docs/screenshots/04-dokument.png)
+
+## Funkcje
+
+| Obszar | Co potrafi |
+|---|---|
+| Wejście | Upload w panelu (drag & drop) lub `POST /api/v1/documents`; XML, JSON, CSV (`;`/`,`, UTF-8 i Windows-1250); wykrywanie formatu po treści |
+| Rozpoznanie dostawcy | po NIP/VAT, a gdy go brak — po „odcisku” struktury pliku (podobieństwo ścieżek) |
+| Szablony | mapowanie ścieżka → pole, łańcuchy transformacji, wartości domyślne; wersjonowanie, historia i przywracanie wersji |
+| Transformacje | m.in. `decimal` (przecinek/kropka, tysiące, nawiasy = ujemna), `date`, `regex_extract` z limitem czasu, `map`, `convert`, `negate`, `gs1`, `strip_ai_prefix`, `concat`, `split` (pełna lista w [pomocy](docs/pomoc/edytor-mapowan.md)) |
+| GS1 | parser GS1-128 (AI 01 z walidacją cyfry kontrolnej GTIN, 10 partia, 11/13/15/17 daty) |
+| Jednostki | słownik jednostek i aliasów (globalnych i per dostawca), przeliczniki np. `kart.` → 12 szt, `worek` → 25 kg |
+| Towary | kartoteka z importem CSV, mapowanie pozycji dostawcy na nasz indeks po kodzie/GTIN |
+| Walidacja | sumy pozycji i nagłówka (tolerancja 0,01), pola wymagane, niejednoznaczne liczby (`1,234`), duplikaty w zakresie klucza API |
+| Kolejka | dokumenty „Do wyjaśnienia” z podpowiedziami (% pewności) i wyborem „tylko ta faktura” / „zapamiętaj w szablonie” |
+| Bezpieczeństwo | ochrona przed XXE i billion laughs, limity rozmiaru/węzłów/pozycji, haszowane klucze API, CSRF, CSP, limit prób logowania |
+
+## Jak to działa
+
+```mermaid
+flowchart LR
+    A[Plik XML / JSON / CSV] --> B[Wykrycie formatu<br/>i drzewo ścieżek]
+    B --> C[Rozpoznanie dostawcy<br/>NIP/VAT lub odcisk]
+    C --> D[Szablon dostawcy<br/>reguły + transformacje]
+    D --> E[Walidacja<br/>sumy, pola, duplikaty]
+    E -->|brak problemów| F[Zatwierdzona]
+    E -->|problemy| G[Do wyjaśnienia]
+    G -->|negocjacja w panelu<br/>„zapamiętaj w szablonie”| D
+```
+
+Szczegóły krok po kroku: [docs/pomoc/jak-to-dziala.md](docs/pomoc/jak-to-dziala.md).
+
+## Zrzuty ekranu
+
+Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples/README.md)).
+
+| | |
+|---|---|
+| ![Pulpit](docs/screenshots/02-pulpit.png)<br/>**Pulpit** — po nauczeniu na alfa-1 faktura alfa-2 zatwierdzona automatycznie | ![Kolejka](docs/screenshots/03-kolejka.png)<br/>**Kolejka do wyjaśnienia** |
+| ![Edytor mapowań](docs/screenshots/05-edytor-mapowan.png)<br/>**Edytor mapowań** — klik w element pliku → klik w pole, podgląd na żywo | ![Szablony](docs/screenshots/10-szablony.png)<br/>**Szablony dostawców** z wersjami |
+| ![Kartoteka towarów](docs/screenshots/06-kartoteka.png)<br/>**Kartoteka towarów** | ![Przeliczniki](docs/screenshots/07-przeliczniki.png)<br/>**Przeliczniki jednostek** |
+| ![Pomoc](docs/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](docs/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
+| ![O demo](docs/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](docs/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
+
+## API w 30 sekund
+
+```bash
+# wyślij fakturę (klucz API tworzysz w panelu: „Klucze API”)
+curl -H "X-API-Key: TWÓJ_KLUCZ" -F file=@demo/samples/alfa-1.xml http://localhost:18506/api/v1/documents
+# → 201 {"id": 1, "status": "needs_review", "issues": [...]}
+
+curl -H "X-API-Key: TWÓJ_KLUCZ" http://localhost:18506/api/v1/documents/1
+curl -H "X-API-Key: TWÓJ_KLUCZ" "http://localhost:18506/api/v1/documents?status=approved"
+curl -X POST -H "X-API-Key: TWÓJ_KLUCZ" http://localhost:18506/api/v1/documents/1/reprocess
+```
+
+Pełny opis endpointów, kodów odpowiedzi i limitów: [docs/pomoc/api.md](docs/pomoc/api.md),
+w panelu: `/api/docs` (OpenAPI: [`app/static/openapi.yaml`](app/static/openapi.yaml)).
 
 ## Uruchomienie (Docker)
 

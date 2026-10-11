@@ -7,12 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.3.0] — 2026-10-11
+
 ### Added
 - Sekcja „Pomoc” w panelu (`/pomoc`, dostępna bez logowania): spis treści z szybkim startem w 5 krokach oraz tematy — jak działa przetwarzanie i „uczenie”, pierwsza faktura dostawcy (negocjacja, „tylko ta faktura” vs „zapamiętaj w szablonie”, przykład alfa-1 → alfa-2), edytor mapowań z opisem wszystkich transformacji z białej listy (argumenty i przykłady wejście → wyjście), szablony i wersje, jednostki/aliasy/przeliczniki (przykład „kart.” → szt ×12), kartoteka i import CSV towarów, statusy i kody problemów, REST API (przykłady curl z adresem bieżącej instancji, kody odpowiedzi, limity) oraz FAQ.
 - Rejestr kodów problemów (`app/help_content.py`) z opisem, informacją, czy problem blokuje, i sposobem rozwiązania; tabela w Pomocy z kotwicą dla każdego kodu i filtrem. Test pilnuje, by rejestr obejmował dokładnie kody emitowane przez kod źródłowy (także migracje), a przykłady transformacji dawały opisany wynik.
 - Limity w Pomocy (rozmiar pliku, `MAX_LINES`, `MAX_TREE_NODES`, import CSV, lista API, logowanie, sesja) są odczytywane z konfiguracji i stałych aplikacji.
 - Link „Pomoc” w menu (zawsze widoczny), link „?” przy każdym problemie w widoku dokumentu prowadzący do jego opisu, link „? Pomoc” na pasku edytora mapowań (nowa karta) i odnośnik na stronie demo.
 - Pomoc w Markdown dla GitHuba (`docs/pomoc/`), generowana ze stron panelu skryptem `tools/export_help.py` (uruchom po każdej zmianie treści pomocy); test `tests/test_help_export.py` pilnuje, by pliki były aktualne.
+
+### Changed
+- README: opis funkcji, diagram przetwarzania, galeria zrzutów ekranu (`docs/screenshots/`, wyłącznie fikcyjne dane demo), szybki start API i linki do pomocy.
 
 ## [0.2.0] — 2026-10-10
 
@@ -160,7 +167,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/AmigoUK/xml-parser/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AmigoUK/xml-parser/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/AmigoUK/xml-parser/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/AmigoUK/xml-parser/compare/v0.0.1...v0.1.0
