@@ -104,7 +104,7 @@ function sync_approved(string $statePath = 'xp-sync.json'): void {
             $cutoff = minus_margin($state['last_sync']);
             $state['seen'] = array_filter($state['seen'], fn ($at) => strcmp($at, $cutoff) >= 0);
         }
-        file_put_contents("$statePath.tmp", json_encode($state));
+        file_put_contents("$statePath.tmp", json_encode($state, JSON_FORCE_OBJECT)); // pusty seen jako {}, nie []
         rename("$statePath.tmp", $statePath); // stan po każdej stronie; zapis atomowy
         $query['cursor'] = $page['next_cursor']; // kolejna strona: te same parametry + kursor
     } while ($page['next_cursor'] !== null);

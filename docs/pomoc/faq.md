@@ -52,4 +52,4 @@ Utwórz klucz w „Klucze API”, wysyłaj faktury przez POST /api/v1/documents 
 
 ## Jak dowiedzieć się, że operator zatwierdził fakturę wysłaną przez API?
 
-Synchronizuj listę: GET /api/v1/documents?updated_since=…&status=approved zwraca dokumenty zatwierdzone od podanej chwili — także przyjęte wcześniej, a zatwierdzone przez operatora w panelu dopiero teraz. Kolejne strony pobierasz z cursor=&lt;next_cursor>, aż next_cursor będzie null; każdy przebieg zaczynaj od ostatniego odebranego updated_at minus 5 minut, a powtórzenia odrzucaj po id. Parametr since tu nie pomoże — filtruje po czasie przyjęcia faktury. [Więcej →](integracja.md)
+Synchronizuj listę: GET /api/v1/documents?updated_since=…&status=approved zwraca dokumenty zatwierdzone od podanej chwili — także przyjęte wcześniej, a zatwierdzone przez operatora w panelu dopiero teraz. Kolejne strony pobierasz z cursor=&lt;next_cursor>, aż next_cursor będzie null; każdy przebieg zaczynaj od ostatniego odebranego updated_at minus 5 minut, a powtórzenia odrzucaj po id i updated_at. Parametr since tu nie pomoże — filtruje po czasie przyjęcia faktury. [Więcej →](integracja.md)

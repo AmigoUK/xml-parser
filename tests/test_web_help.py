@@ -217,6 +217,7 @@ def test_integration_topic_after_api_and_linked(client):
     faq = client.get("/pomoc/faq").get_data(as_text=True)
     assert "Jak podłączyć swoją aplikację?" in faq and 'href="/pomoc/integracja"' in faq
     assert "Jak dowiedzieć się, że operator zatwierdził fakturę wysłaną przez API?" in faq
+    assert "powtórzenia odrzucaj po id i updated_at" in faq  # nie po samym id — to gubiłoby późniejsze zmiany
 
 
 def _text(html: str) -> str:
@@ -240,6 +241,7 @@ def test_integration_recommends_sync_with_margin_and_keeps_history_note(client):
     text = _text(client.get(INTEGRATION).get_data(as_text=True))
     assert "Sposób B (zalecany do synchronizacji): updated_since + cursor" in text
     assert "last_sync − 5 min" in text and "co najmniej raz" in text
+    assert "Odrzucaj powtórzenia po id i updated_at" in text and "Samo id nie wystarczy" in text
     assert "Przed v0.5.0 lista filtrowała tylko po czasie przyjęcia (since)" in text
     assert "planowane w kolejnej wersji" in text
 
@@ -257,6 +259,25 @@ def test_integration_examples_sync_in_four_languages(client):
         for term in (sync[lang], margin[lang], "--sync", "updated_since", "next_cursor", "1970-01-01T00:00:00Z"):
             assert term in text, (lang, term)
     assert "original_id($doc)" in code["php"] and "originalId(doc)" in code["javascript"]
+    # wspólny format pliku stanu: puste „seen” jako {} (bez flagi PHP zapisałby [], nieczytelne dla Pythona i jq)
+    assert "JSON_FORCE_OBJECT" in code["php"]
+
+
+def test_help_empty_parameter_rule_matches_api(seeded, client):
+    """Pusty status=, since=, updated_since=, cursor= to brak parametru, ale pusty limit= daje 400 — tak mówi Pomoc
+    i OpenAPI, i tak działa API (routes.list_documents)."""
+    import yaml
+    key = {"X-API-Key": "xp_test_demo_key"}
+    r = client.get("/api/v1/documents?status=&since=&updated_since=&cursor=", headers=key)
+    assert r.status_code == 200 and set(r.get_json()) == {"items"}  # tryb zwykły
+    r = client.get("/api/v1/documents?limit=", headers=key)
+    assert r.status_code == 400 and r.get_json()["error"]["code"] == "bad_request"
+    for path in ("/pomoc/api", INTEGRATION):
+        text = _text(client.get(path).get_data(as_text=True))
+        assert "pusty limit= daje 400" in text.lower(), path
+        assert "Pusty parametr (np." not in text, path  # dawne ogólne zdanie — fałszywe dla limit
+    spec = yaml.safe_load((ROOT / "app" / "static" / "openapi.yaml").read_text(encoding="utf-8"))
+    assert "pusty `limit=` daje 400" in spec["paths"]["/documents"]["get"]["description"]
 
 
 def test_openapi_matches_documents_api(seeded, client):

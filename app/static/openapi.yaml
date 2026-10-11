@@ -176,8 +176,8 @@ paths:
         `updated_at`, a dokument z `updated_at` równym `updated_since` wraca w kolejnym przebiegu —
         odrzucaj powtórzenia po `id` i `updated_at`.
 
-        `status` i `since` działają w obu trybach (łączone warunkiem „i”). Pusty parametr (np. `updated_since=`)
-        oznacza brak parametru.
+        `status` i `since` działają w obu trybach (łączone warunkiem „i”). Pusty `status=`, `since=`,
+        `updated_since=` albo `cursor=` oznacza brak parametru, ale pusty `limit=` daje 400.
       parameters:
         - name: status
           in: query
@@ -204,7 +204,9 @@ paths:
           schema: { type: string }
         - name: limit
           in: query
-          description: Liczba wyników (na stronę) — większe wartości są obcinane do 500, mniejsze od 1 podnoszone do 1.
+          description: |
+            Liczba wyników (na stronę) — większe wartości są obcinane do 500, mniejsze od 1 podnoszone do 1.
+            Pusta albo nieliczbowa wartość daje 400 (`bad_request`).
           schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
       responses:
         "200":

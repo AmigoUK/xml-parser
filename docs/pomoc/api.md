@@ -62,7 +62,7 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" \
   "http://localhost:18506/api/v1/documents?status=approved&since=2026-10-01T00:00:00Z&limit=50"
 ```
 
-Filtry wspólne obu trybów (opcjonalne, łączone warunkiem „i”): `status` (jeden ze statusów: `received`, `approved`, `needs_review`, `duplicate`, `rejected`), `since` (ISO 8601 — dokumenty **przyjęte** od tej chwili, po `created_at`; nie widzi późniejszych zmian statusu), `limit` (liczba wyników na żądanie: domyślnie 100, maks. 500). Czas ze strefą (`+02:00`, `Z`) jest przeliczany na UTC, czas bez strefy oznacza UTC, a sama data — północ UTC; znak `+` w adresie zapisz jako `%2B`. Pusty parametr (np. `updated_since=`) oznacza brak parametru. Wyniki są w polu `items`, bez `invoice` i `issues`.
+Filtry wspólne obu trybów (opcjonalne, łączone warunkiem „i”): `status` (jeden ze statusów: `received`, `approved`, `needs_review`, `duplicate`, `rejected`), `since` (ISO 8601 — dokumenty **przyjęte** od tej chwili, po `created_at`; nie widzi późniejszych zmian statusu), `limit` (liczba wyników na żądanie: domyślnie 100, maks. 500). Czas ze strefą (`+02:00`, `Z`) jest przeliczany na UTC, czas bez strefy oznacza UTC, a sama data — północ UTC; znak `+` w adresie zapisz jako `%2B`. Pusty `status=`, `since=`, `updated_since=` albo `cursor=` oznacza brak parametru, ale pusty `limit=` daje `400` — pomiń go albo podaj liczbę. Wyniki są w polu `items`, bez `invoice` i `issues`.
 
 ## Szczegóły dokumentu — `GET /api/v1/documents/{id}`
 

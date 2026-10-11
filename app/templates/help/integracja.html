@@ -116,15 +116,17 @@
     <code>status</code> przychodzą wszystkie zmiany, również <code>needs_review</code>, <code>duplicate</code>
     i <code>rejected</code> (np. do raportowania).</li>
   <li><code>limit</code> — liczba wyników na stronę: domyślnie {{ limits.list_default }}, maks. {{ limits.list_max }}
-    (większe wartości są obcinane do {{ limits.list_max }}, mniejsze od 1 — podnoszone do 1).</li>
+    (większe wartości są obcinane do {{ limits.list_max }}, mniejsze od 1 — podnoszone do 1). Pusty
+    <code>limit=</code> daje <code>400</code> — pomiń go albo podaj liczbę.</li>
   <li>Czas podajesz w ISO 8601: czas ze strefą (<code>+02:00</code>, <code>Z</code>) jest przeliczany na UTC, czas bez
     strefy oznacza UTC, a sama data (<code>2026-10-11</code>) — północ UTC. <strong>Znak <code>+</code> zapisz w adresie
     jako <code>%2B</code></strong> — surowy <code>+</code> w URL oznacza spację i API zwróci <code>400</code>; najprościej
     podawaj czas w UTC z <code>Z</code>, tak jak zwraca go API. Błędny format → <code>400 bad_request</code>.</li>
-  <li>Pusty parametr (<code>updated_since=</code> albo <code>cursor=</code> bez wartości) jest traktowany jak jego brak —
-    bez żadnego z nich odpowiedź przychodzi w trybie zwykłym (od najnowszych, bez <code>next_cursor</code>). Pełną
-    synchronizację od początku zaczynasz jawną wartością: <code>updated_since=1970-01-01T00:00:00Z</code> (albo datą
-    wdrożenia integracji).</li>
+  <li>Pusty <code>updated_since=</code> albo <code>cursor=</code> (bez wartości) jest traktowany jak brak parametru —
+    bez żadnego z nich odpowiedź przychodzi w trybie zwykłym (od najnowszych, bez <code>next_cursor</code>). Tak samo
+    pusty <code>status=</code> i <code>since=</code>; inaczej niż pusty <code>limit=</code> (wyżej). Pełną synchronizację
+    od początku zaczynasz jawną wartością: <code>updated_since=1970-01-01T00:00:00Z</code> (albo datą wdrożenia
+    integracji).</li>
 </ul>
 <p>Kolejne strony jednego przebiegu (wartości przykładowe):</p>
 <pre class="bg-light border p-2 small"><code class="language-text">GET {{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;status=approved&amp;limit={{ limits.list_max }}
@@ -138,8 +140,10 @@ GET {{ api_base }}/api/v1/documents?updated_since=2026-10-11T06:00:00Z&amp;statu
     <li>dokument z <code>updated_at</code> równym <code>updated_since</code> wraca w kolejnym przebiegu;</li>
     <li>margines bezpieczeństwa (niżej) celowo pobiera ponownie dokumenty z ostatnich minut.</li>
   </ul>
-  Odrzucaj powtórzenia po <code>id</code> (para <code>id</code> + <code>updated_at</code> już przetworzona — pomiń)
-  i importuj idempotentnie, np. aktualizuj rekord o danym <code>id</code> zamiast dopisywać nowy.</div>
+  Odrzucaj powtórzenia po <code>id</code> i <code>updated_at</code> (para już przetworzona — pomiń) i importuj
+  idempotentnie, np. aktualizuj rekord o danym <code>id</code> zamiast dopisywać nowy. Samo <code>id</code> nie
+  wystarczy: ten sam dokument z nowszym <code>updated_at</code> to późniejsza zmiana (np. ponowne przetworzenie
+  z poprawionym wynikiem), którą trzeba zaimportować.</div>
 <p><strong>Zalecany algorytm</strong> (tak działa synchronizacja w przykładach kodu — argument <code>--sync</code>):</p>
 <ol>
   <li><strong>Stan</strong>: trzymaj u siebie <code>last_sync</code> — największy <code>updated_at</code> spośród
@@ -311,8 +315,9 @@ python3 faktura.py --sync        # jeden przebieg synchronizacji (sposób B)</co
     <code>product_index</code> lub <code>unit</code>).</li>
   <li><strong><code>since</code> zamiast <code>updated_since</code> do synchronizacji</strong> — <code>since</code> filtruje
     po czasie przyjęcia, więc gubi faktury zatwierdzone przez operatora później (rozdział 4).</li>
-  <li><strong>Brak deduplikacji po <code>id</code></strong> przy dostawie „co najmniej raz” — powtórzenia z marginesu,
-    z granicy <code>updated_since</code> i ze zmian w trakcie stronicowania dublują import.</li>
+  <li><strong>Brak deduplikacji po <code>id</code> i <code>updated_at</code></strong> przy dostawie „co najmniej raz” —
+    powtórzenia z marginesu i z granicy <code>updated_since</code> dublują import. Deduplikacja po samym
+    <code>id</code> też jest błędem: pomija późniejsze zmiany tego samego dokumentu.</li>
   <li><strong>Zapamiętywanie czasu z własnego zegara</strong> zamiast <code>max(updated_at)</code> odebranych
     dokumentów — różnica zegarów i czas trwania przebiegu przesuwają okno, a dokumenty giną.</li>
   <li><strong>Kolejna strona bez powtórzenia parametrów</strong> — kursor nie pamięta filtrów: strona pobrana z samym

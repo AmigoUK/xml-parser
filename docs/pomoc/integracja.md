@@ -85,9 +85,9 @@ Gdy wynik jest potrzebny od razu (np. użytkownik czeka na ekranie), wywołuj `G
 - `next_cursor` — odpowiedź ma postać `{"items": [...], "next_cursor": …}`. Gdy wyników jest więcej niż `limit`, `next_cursor` zawiera kursor kolejnej strony: pobierasz ją z **tymi samymi** parametrami (`updated_since`, `status`, `limit`) i dodatkowo `cursor=<next_cursor>`. `null` oznacza ostatnią stronę.
 - Kursor to nieprzezroczysty token: wskazuje pozycję ostatniego zwróconego dokumentu — nie odczytuj go i nie składaj sam. Nie przechowuje filtrów (dlatego powtarzasz je przy każdej stronie) ani danych wrażliwych, a zakres zawsze wyznacza klucz z nagłówka `X-API-Key`. Uszkodzony kursor → `400 bad_request`.
 - `status` — jeden z: `received`, `approved`, `needs_review`, `duplicate`, `rejected`. Z `status=approved` dostajesz dokumenty zatwierdzone, także przez operatora po czasie. Bez `status` przychodzą wszystkie zmiany, również `needs_review`, `duplicate` i `rejected` (np. do raportowania).
-- `limit` — liczba wyników na stronę: domyślnie 100, maks. 500 (większe wartości są obcinane do 500, mniejsze od 1 — podnoszone do 1).
+- `limit` — liczba wyników na stronę: domyślnie 100, maks. 500 (większe wartości są obcinane do 500, mniejsze od 1 — podnoszone do 1). Pusty `limit=` daje `400` — pomiń go albo podaj liczbę.
 - Czas podajesz w ISO 8601: czas ze strefą (`+02:00`, `Z`) jest przeliczany na UTC, czas bez strefy oznacza UTC, a sama data (`2026-10-11`) — północ UTC. **Znak `+` zapisz w adresie jako `%2B`** — surowy `+` w URL oznacza spację i API zwróci `400`; najprościej podawaj czas w UTC z `Z`, tak jak zwraca go API. Błędny format → `400 bad_request`.
-- Pusty parametr (`updated_since=` albo `cursor=` bez wartości) jest traktowany jak jego brak — bez żadnego z nich odpowiedź przychodzi w trybie zwykłym (od najnowszych, bez `next_cursor`). Pełną synchronizację od początku zaczynasz jawną wartością: `updated_since=1970-01-01T00:00:00Z` (albo datą wdrożenia integracji).
+- Pusty `updated_since=` albo `cursor=` (bez wartości) jest traktowany jak brak parametru — bez żadnego z nich odpowiedź przychodzi w trybie zwykłym (od najnowszych, bez `next_cursor`). Tak samo pusty `status=` i `since=`; inaczej niż pusty `limit=` (wyżej). Pełną synchronizację od początku zaczynasz jawną wartością: `updated_since=1970-01-01T00:00:00Z` (albo datą wdrożenia integracji).
 
 Kolejne strony jednego przebiegu (wartości przykładowe):
 
@@ -104,7 +104,7 @@ GET http://localhost:18506/api/v1/documents?updated_since=2026-10-11T06:00:00Z&s
 - dokument z `updated_at` równym `updated_since` wraca w kolejnym przebiegu;
 - margines bezpieczeństwa (niżej) celowo pobiera ponownie dokumenty z ostatnich minut.
 
-Odrzucaj powtórzenia po `id` (para `id` + `updated_at` już przetworzona — pomiń) i importuj idempotentnie, np. aktualizuj rekord o danym `id` zamiast dopisywać nowy.
+Odrzucaj powtórzenia po `id` i `updated_at` (para już przetworzona — pomiń) i importuj idempotentnie, np. aktualizuj rekord o danym `id` zamiast dopisywać nowy. Samo `id` nie wystarczy: ten sam dokument z nowszym `updated_at` to późniejsza zmiana (np. ponowne przetworzenie z poprawionym wynikiem), którą trzeba zaimportować.
 
 **Zalecany algorytm** (tak działa synchronizacja w przykładach kodu — argument `--sync`):
 
@@ -537,7 +537,7 @@ function sync_approved(string $statePath = 'xp-sync.json'): void {
             $cutoff = minus_margin($state['last_sync']);
             $state['seen'] = array_filter($state['seen'], fn ($at) => strcmp($at, $cutoff) >= 0);
         }
-        file_put_contents("$statePath.tmp", json_encode($state));
+        file_put_contents("$statePath.tmp", json_encode($state, JSON_FORCE_OBJECT)); // pusty seen jako {}, nie []
         rename("$statePath.tmp", $statePath); // stan po każdej stronie; zapis atomowy
         $query['cursor'] = $page['next_cursor']; // kolejna strona: te same parametry + kursor
     } while ($page['next_cursor'] !== null);
@@ -784,7 +784,7 @@ esac
 - **Pole formularza o innej nazwie** niż `file` (np. `plik`, `invoice`) → `400 empty_body`.
 - **Import przy `needs_review`** — `invoice` jest wtedy niepełny (np. bez `product_index` lub `unit`).
 - **`since` zamiast `updated_since` do synchronizacji** — `since` filtruje po czasie przyjęcia, więc gubi faktury zatwierdzone przez operatora później (rozdział 4).
-- **Brak deduplikacji po `id`** przy dostawie „co najmniej raz” — powtórzenia z marginesu, z granicy `updated_since` i ze zmian w trakcie stronicowania dublują import.
+- **Brak deduplikacji po `id` i `updated_at`** przy dostawie „co najmniej raz” — powtórzenia z marginesu i z granicy `updated_since` dublują import. Deduplikacja po samym `id` też jest błędem: pomija późniejsze zmiany tego samego dokumentu.
 - **Zapamiętywanie czasu z własnego zegara** zamiast `max(updated_at)` odebranych dokumentów — różnica zegarów i czas trwania przebiegu przesuwają okno, a dokumenty giną.
 - **Kolejna strona bez powtórzenia parametrów** — kursor nie pamięta filtrów: strona pobrana z samym `cursor` zwraca dokumenty we wszystkich statusach, po 100 na stronę.
 - **Puste `updated_since=`** — jest traktowane jak brak parametru, więc lista przychodzi w trybie zwykłym (bez `next_cursor`); pierwszy przebieg zacznij od `1970-01-01T00:00:00Z`.

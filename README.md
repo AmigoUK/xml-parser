@@ -73,7 +73,7 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" "http://localhost:18506/api/v1/documents?update
 
 Czasy w odpowiedziach (`created_at`, `updated_at`) są w ISO 8601 w UTC z mikrosekundami i `Z`
 (`2026-10-11T06:04:38.312308Z`); parametry czasu przyjmują strefę (`+` w adresie zapisz jako `%2B`).
-Zalecany algorytm synchronizacji (margines 5 min, deduplikacja po `id`) i gotowy kod w Pythonie, PHP,
+Zalecany algorytm synchronizacji (margines 5 min, deduplikacja po `id` i `updated_at`) i gotowy kod w Pythonie, PHP,
 JavaScripcie i powłoce: [docs/pomoc/integracja.md](docs/pomoc/integracja.md).
 Pełny opis endpointów, kodów odpowiedzi i limitów: [docs/pomoc/api.md](docs/pomoc/api.md),
 w panelu: `/api/docs` (OpenAPI: [`app/static/openapi.yaml`](app/static/openapi.yaml)).
