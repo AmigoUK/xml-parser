@@ -36,7 +36,7 @@ STATUS_HELP: dict[str, str] = {
     "approved": "Faktura odczytana bez problemów blokujących. Mogą wystąpić ostrzeżenia (np. niezgodność "
                 "sumy w pozycji) — warto je przejrzeć, ale nie wstrzymują dokumentu.",
     "needs_review": "Jest co najmniej jeden problem blokujący. Dokument czeka w „Kolejce” na decyzję "
-                    "operatora; po każdej decyzji jest przetwarzany ponownie.",
+                    "operatora; po każdej decyzji poza „Odrzuć” jest przetwarzany ponownie.",
     "duplicate": "Ta sama faktura jest już w systemie (ten sam plik albo ten sam dostawca, rodzaj i numer "
                  "dokumentu) w tym samym zakresie — kluczu API albo panelu.",
     "rejected": "Dokument odrzucony. Automatycznie — gdy pliku nie da się odczytać albo ma zbyt wiele "
@@ -256,16 +256,16 @@ FAQ: list[dict] = [
      "a": "Plik faktury: {max_document}. Pozycji: {max_lines}. Węzłów drzewa (elementy, atrybuty, komórki "
           "CSV): {max_tree_nodes}. Limity ustawia administrator w konfiguracji.", "link": "statusy-i-problemy"},
     {"q": "Jakie formaty są obsługiwane?",
-     "a": "XML (dowolny, w tym KSeF i UBL), JSON i CSV, w kodowaniu UTF-8. Format rozpoznawany jest po treści "
-          "pliku, nie po rozszerzeniu. PDF i inne pliki binarne oraz UTF-16/UTF-32 są odrzucane.",
+     "a": "XML (dowolny, w tym KSeF i UBL), JSON i CSV, w kodowaniu UTF-8 (CSV także w Windows-1250). Format "
+          "rozpoznawany jest po treści pliku, nie po rozszerzeniu. PDF i inne pliki binarne oraz UTF-16/UTF-32 są odrzucane.",
      "link": "jak-to-dziala"},
     {"q": "Czy wgranie XML jest bezpieczne?",
      "a": "Tak: pliki z deklaracją DOCTYPE/ENTITY są odrzucane, encje nie są rozwijane, parser nie sięga do "
           "sieci, a liczba węzłów i głębokość zagnieżdżenia są ograniczone.", "link": "jak-to-dziala"},
     {"q": "Dlaczego zostałem wylogowany?",
      "a": "Sesja wygasa po {session_hours} h bez aktywności. „Wyloguj” unieważnia wszystkie sesje tego konta — także na innych "
-          "urządzeniach. Sesja nie jest powiązana z adresem IP, więc sama zmiana IP (np. inna sieć) nie "
-          "wylogowuje; adres IP liczy się natomiast w limicie nieudanych prób logowania.", "link": None},
+          "urządzeniach. Sesja nie jest powiązana z adresem IP ani przeglądarką, więc sama zmiana sieci (np. przejście "
+          "z Wi-Fi na LTE) nie wylogowuje; adres IP liczy się natomiast w limicie nieudanych prób logowania.", "link": None},
     {"q": "Ile mam prób logowania?",
      "a": "Po {login_max} nieudanych próbach w ciągu {login_minutes} min dla pary (e-mail, adres IP) ta para "
           "jest blokowana na {login_minutes} min. Dodatkowo obowiązują limity {login_per_ip} prób z jednego IP "

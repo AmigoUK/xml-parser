@@ -47,7 +47,7 @@ TOW-0102;Cukier puder 1 kg;;szt</pre>
     i nadmiarowych spacji);</li>
   <li>po <strong>GTIN z kartoteki</strong> — towar o tym samym GTIN (dlatego np. próbka <code>epsilon.json</code> dopasowuje towary sama).</li>
 </ol>
-<p>Mapowanie zapisuje kod, a gdy go brak — GTIN, a gdy brak obu — nazwę. Pozycji bez kodu, GTIN i nazwy nie da się
+<p>Mapowanie zapisuje kod i GTIN pozycji (jeśli je ma), a nazwę — tylko gdy brak obu. Pozycji bez kodu, GTIN i nazwy nie da się
   zapamiętać — przypisz towar tylko dla tej faktury. Nieprzypisany towar daje problem
   <a href="{{ url_for('help.topic', slug='statusy-i-problemy') }}#unmapped_product"><code>unmapped_product</code></a>.</p>
 {% endblock %}
