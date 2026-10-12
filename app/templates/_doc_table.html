@@ -1,16 +1,24 @@
+{#- Tabela dokumentów — także na pulpicie, gdzie nie ma `q`, `queue` ani kluczy stronicowania. -#}
+<div class="table-responsive">
 <table class="table table-sm table-hover bg-white">
   <thead><tr><th>#</th><th>Plik</th><th>Format</th><th>Dostawca</th><th>Numer</th><th>Status</th><th>Problemy</th><th>Utworzono</th></tr></thead>
   <tbody>
   {% for d in docs %}
     <tr>
       <td><a href="{{ url_for('docs.detail', doc_id=d.id) }}">{{ d.id }}</a></td>
-      <td>{{ d.filename }}</td><td>{{ (d.fmt or '—')|upper }}</td>
+      <td><span class="d-inline-block text-truncate cell-truncate" title="{{ d.filename }}">{{ d.filename }}</span></td><td>{{ (d.fmt or '—')|upper }}</td>
       <td>{{ d.supplier.name if d.supplier else '—' }}</td><td>{{ d.number or '—' }}</td>
       <td><span class="badge text-bg-{{ {'approved':'success','needs_review':'warning','duplicate':'secondary','rejected':'danger'}.get(d.status,'light') }}">{{ d.status_label }}</span></td>
-      <td>{{ (d.issues or [])|length }}</td><td class="small">{{ d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at }}</td>
+      <td>{{ (d.issues or [])|length }}</td><td class="small text-nowrap">{{ d.created_at|dt }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="8" class="text-muted">Brak dokumentów.</td></tr>
+    <tr><td colspan="8" class="text-muted">
+      {%- if queue is defined and queue %}Kolejka pusta — wszystko wyjaśnione.
+      {%- elif q is defined and q %}Brak dokumentów pasujących do „{{ q }}”.
+      {%- else %}Brak dokumentów. <a href="{{ url_for('docs.upload') }}">Wgraj fakturę →</a>
+      {%- endif -%}
+    </td></tr>
   {% endfor %}
   </tbody>
 </table>
+</div>

@@ -1,13 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Historia{% endblock %}
 {% block content %}
-<h1 class="h4 mb-3">Historia zmian</h1>
+<h1 class="h4 mb-3">Historia</h1>
+<form method="get" action="{{ url_for('history.index') }}" role="search" class="row g-2 align-items-end mb-3">
+  <div class="col-auto">
+    <label for="history-action" class="form-label small mb-0">Akcja</label>
+    <select id="history-action" name="action" class="form-select form-select-sm">
+      <option value="">Wszystkie</option>
+      {% for code, label in actions %}<option value="{{ code }}"{% if code == action %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label for="history-user" class="form-label small mb-0">Użytkownik</label>
+    <input id="history-user" name="user" list="history-users" value="{{ user }}" class="form-control form-control-sm" placeholder="e-mail">
+    <datalist id="history-users">{% for u in users %}<option value="{{ u }}">{% endfor %}</datalist>
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-sm btn-outline-primary">Filtruj</button>
+    {% if action or user %}<a class="btn btn-sm btn-link" href="{{ url_for('history.index') }}">Wyczyść</a>{% endif %}
+  </div>
+</form>
+<div class="table-responsive">
 <table class="table table-sm bg-white small">
   <thead><tr><th>Kiedy</th><th>Kto</th><th>Akcja</th><th>Obiekt</th><th>Szczegóły</th></tr></thead>
   <tbody>{% for r in rows %}
-    <tr><td class="text-nowrap">{{ r.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td>{{ r.user }}</td><td>{{ r.action }}</td>
+    <tr><td class="text-nowrap">{{ r.created_at|dts }}</td><td>{{ r.user }}</td><td><span title="{{ r.action }}">{{ labels.get(r.action, r.action) }}</span></td>
       <td>{% if r.entity == 'document' and r.entity_id %}<a href="{{ url_for('docs.detail', doc_id=r.entity_id) }}">dokument #{{ r.entity_id }}</a>{% else %}{{ r.entity }}{% if r.entity_id %} #{{ r.entity_id }}{% endif %}{% endif %}</td>
-      <td><code class="small">{{ r.payload|tojson }}</code></td></tr>
-  {% else %}<tr><td colspan="5" class="text-muted">Brak wpisów.</td></tr>{% endfor %}</tbody>
+      <td><code class="small text-break">{{ r.payload|tojson }}</code></td></tr>
+  {% else %}<tr><td colspan="5" class="text-muted">{{ "Brak wpisów dla wybranych filtrów." if action or user else "Brak wpisów." }}</td></tr>{% endfor %}</tbody>
 </table>
+</div>
+{% with pager_mode = "cursor_desc" %}{% include "_pager.html" %}{% endwith %}
 {% endblock %}

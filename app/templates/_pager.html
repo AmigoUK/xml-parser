@@ -1,0 +1,21 @@
+{#- Pager list panelu. Wołający wybiera wariant przez `pager_mode` (np. {% with pager_mode="cursor_desc" %}{% include "_pager.html" %}{% endwith %}):
+    cursor_desc — kursor ?before= (najnowsze najpierw): „Starsze →” / „← Najnowsze”; klucze shown, next_url, first_url;
+    cursor_asc  — kursor ?after= (rosnąco, kolejka i szablony): neutralne „Następne →” / „← Pierwsze”; te same klucze;
+    numbered    — ?page=N (listy CRUD): „Strona p z n”, „← Poprzednia” / „Następna →”; klucze page, pages, total, prev_url, next_url.
+    Link do pierwszej strony (first_url) jest tylko wtedy, gdy kursor jest w adresie. -#}
+{%- set mode = pager_mode | default("cursor_desc") -%}
+{%- if mode == "numbered" -%}
+{%- if pages > 1 %}
+<nav aria-label="Stronicowanie" class="d-flex flex-wrap align-items-center gap-2 small my-2">
+  {% if prev_url %}<a class="btn btn-sm btn-outline-secondary" rel="prev" href="{{ prev_url }}">← Poprzednia</a>{% endif %}
+  <span class="text-muted">Strona {{ page }} z {{ pages }} (razem {{ total }})</span>
+  {% if next_url %}<a class="btn btn-sm btn-outline-secondary" rel="next" href="{{ next_url }}">Następna →</a>{% endif %}
+</nav>
+{%- endif -%}
+{%- elif shown %}
+<nav aria-label="Stronicowanie" class="d-flex flex-wrap align-items-center gap-2 small my-2">
+  <span class="text-muted">Pokazano {{ shown }}{% if mode == "cursor_desc" and not first_url %} (najnowsze){% endif %}</span>
+  {% if first_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ first_url }}">{{ "← Najnowsze" if mode == "cursor_desc" else "← Pierwsze" }}</a>{% endif %}
+  {% if next_url %}<a class="btn btn-sm btn-outline-secondary" rel="next" href="{{ next_url }}">{{ "Starsze →" if mode == "cursor_desc" else "Następne →" }}</a>{% endif %}
+</nav>
+{%- endif %}
