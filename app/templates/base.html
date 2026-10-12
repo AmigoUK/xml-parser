@@ -19,7 +19,10 @@
   <main class="{% if full_screen %}editor-main{% else %}container py-4{% endif %}">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
-        <div class="alert alert-{{ 'danger' if cat == 'error' else cat }} alert-dismissible">{{ msg }}</div>
+        <div class="alert alert-{{ 'danger' if cat == 'error' else cat }} alert-dismissible fade show" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Zamknij"></button>
+        </div>
       {% endfor %}
     {% endwith %}
     {% block content %}{% endblock %}

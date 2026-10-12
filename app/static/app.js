@@ -25,7 +25,11 @@ document.addEventListener("alpine:init", function () {
   Alpine.data("uploadForm", function () {
     return {
       name: "",
+      submitting: false,
       noop() {},
+      // Blokada podwójnego wysłania: przycisk wyłączony po pierwszym submit (ustawiane przez @submit w szablonie).
+      submitted() { this.submitting = true; },
+      submitLabel() { return this.submitting ? "Przetwarzanie…" : "Przetwórz"; },
       dropped(event) {
         this.$refs.f.files = event.dataTransfer.files;
         this.name = this.fileName(this.$refs.f.files);
