@@ -106,8 +106,8 @@ W `.env` aplikacji: `TRUSTED_PROXY_COUNT=1` (jedno proxy), `SESSION_COOKIE_SECUR
   (worker startuje po `service_healthy` aplikacji; na innej platformie uruchom go po migracjach). Healthcheck
   sprawdza wiek pliku `WEBHOOK_HEARTBEAT_FILE` (< 60 s) zamiast `/healthz`; `restart: unless-stopped`, SIGTERM łagodnie
   kończy pętlę i wychodzi. Może być wiele workerów (dostawy są blokowane dzierżawą), ale jeden wystarcza. Bez
-  workera dostawy zostają `pending`; awaryjnie: `flask webhooks-worker --once` z crona. Usuwanie starych dostaw:
-  `flask prune-webhooks` (cron, `WEBHOOK_RETENTION_DAYS`). Zrzut bazy zawiera sekrety webhooków
+  workera dostawy zostają `pending`; awaryjnie: `docker compose run --rm -T worker flask webhooks-worker --once` z crona (`-T`, bo cron nie ma TTY; wpis musi najpierw `cd` do katalogu projektu). Usuwanie starych dostaw:
+  `docker compose exec -T app flask prune-webhooks` (cron, też z `cd` do katalogu projektu; `WEBHOOK_RETENTION_DAYS`). Zrzut bazy zawiera sekrety webhooków
   (`api_keys.webhook_secret`) — kopie traktuj jak sekret.
 - **Hasło administratora i dziennik.** Po wdrożeniu (i po każdym wycieku `.env`) ustaw hasło poleceniem
   `flask set-admin-password` (albo „Zmień hasło” w panelu) — seed nie nadpisuje hasła istniejącego konta. Do crona:

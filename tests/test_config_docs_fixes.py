@@ -142,6 +142,6 @@ def test_readme_env_table_lists_webhook_variables():
 
 def test_wdrozenie_mentions_worker_and_public_base_url():
     text = (ROOT / "docs" / "wdrozenie.md").read_text(encoding="utf-8")
-    for needle in ("PUBLIC_BASE_URL", "WEBHOOK_ALLOWED_HOSTS", "WEBHOOK_ALLOW_HTTP", "worker", "99f2fe61d963",
-                   "webhooks-worker"):
+    for needle in ("PUBLIC_BASE_URL", "WEBHOOK_ALLOWED_HOSTS", "WEBHOOK_ALLOW_HTTP", "99f2fe61d963",
+                   "webhooks-worker", "run --rm -T worker", "exec -T app flask prune-webhooks", "heartbeat"):
         assert needle in text, needle

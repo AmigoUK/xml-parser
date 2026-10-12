@@ -136,9 +136,12 @@ jako `healthy` (sonda: plik heartbeat nie starszy niż 60 s), a `docker compose 
 docker compose ps worker                      # healthy
 docker compose logs -f worker                 # webhooks-worker: start …
 # awaryjnie (worker wyłączony) — jednorazowy przebieg, np. z crona co minutę:
-docker compose run --rm worker flask webhooks-worker --once
+# cron nie ma TTY (stąd -T) i musi wejść do katalogu projektu, jak przy kopiach zapasowych:
+#   * * * * *  cd /ścieżka/do/xml-parser && docker compose run --rm -T worker flask webhooks-worker --once
+docker compose run --rm -T worker flask webhooks-worker --once
 # retencja: usuwa zakończone dostawy (sent/failed) starsze niż WEBHOOK_RETENTION_DAYS (domyślnie 30), np. raz na dobę
-docker compose exec app flask prune-webhooks            # --days N nadpisuje retencję
+#   30 3 * * *  cd /ścieżka/do/xml-parser && docker compose exec -T app flask prune-webhooks
+docker compose exec -T app flask prune-webhooks        # --days N nadpisuje retencję
 ```
 
 Adresy niepubliczne (prywatne, loopback, link-local, CGNAT) są domyślnie blokowane (SSRF). Odbiorca w sieci
@@ -214,7 +217,7 @@ Wartości i komentarze: [`.env.example`](.env.example); kontrakt dla platform be
 | Kontener | `STORAGE_DIR`, `MIGRATE_ON_START`, `MIGRATE_LOCK_TIMEOUT`, `DB_WAIT_ATTEMPTS`, `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR`, `GUNICORN_CMD_ARGS`, `APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS` |
 | Webhooki | `PUBLIC_BASE_URL` (domyślnie puste — publiczny adres panelu do `document_url`; puste = adres z żądania, w workerze `null`), `WEBHOOK_ALLOW_HTTP` (domyślnie 0 — 1 dopuszcza `http://`, tylko sieć wewnętrzna i testy), `WEBHOOK_ALLOWED_HOSTS` (domyślnie puste — wyjątki od blokady adresów niepublicznych: nazwy hostów i CIDR po przecinku), `WEBHOOK_RETENTION_DAYS` (domyślnie 30 — retencja dla `flask prune-webhooks`), `WEBHOOK_HEARTBEAT_FILE` (puste = bez heartbeatu; compose ustawia ją workerowi sam) |
 | Worker | `WORKER_MEM_LIMIT` (domyślnie 512m), `WORKER_CPUS` (domyślnie 1.0) — limity usługi `worker` |
-| Kopie | `BACKUP_DIR, `BACKUP_RETENTION_DAYS` (skrypt `tools/backup.sh`) |
+| Kopie | `BACKUP_DIR`, `BACKUP_RETENTION_DAYS` (skrypt `tools/backup.sh`) |
 | Tylko testy i narzędzia | `TEST_MARIADB_URL`, `PYTHON_DOTENV_DISABLED`, `FLASK_SKIP_DOTENV` |
 
 ## Rozwój lokalny
