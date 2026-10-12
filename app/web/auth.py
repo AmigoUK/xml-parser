@@ -8,7 +8,13 @@ from app.extensions import db
 from app.models import AuditLog, User, utcnow
 from app.services.accounts import password_problem
 from app.services.audit import audit
-from app.services.login_guard import clear_failures, discard_attempt, lockout_minutes, reserve_attempt
+from app.services.login_guard import (
+    PASSWORD_CHANGE_PREFIX,
+    clear_failures,
+    discard_attempt,
+    lockout_minutes,
+    reserve_attempt,
+)
 
 bp = Blueprint("auth", __name__)
 # e-mail z formularza w dzienniku: wystarczy do identyfikacji, a nie daje atakującemu 255 znaków na wiersz
@@ -86,9 +92,23 @@ def change_password():
         current = request.form.get("current_password") or ""
         new, new2 = request.form.get("new_password") or "", request.form.get("new_password2") or ""
         problem = password_problem(new)
+        # limit prób obecnego hasła: osobna pula `pwchange:<e-mail>`, najpierw zapis próby, potem liczenie
+        pool, ip = PASSWORD_CHANGE_PREFIX + current_user.email, request.remote_addr or "?"
+        attempt = reserve_attempt(pool, ip)
+        minutes = lockout_minutes(attempt)
+        if minutes:
+            discard_attempt(attempt)
+            db.session.commit()
+            flash(f"Zbyt wiele nieudanych prób zmiany hasła. Spróbuj ponownie za {minutes} min.", "error")
+            return render_template("password_change.html"), 429
         if not current_user.check_password(current):
-            flash("Obecne hasło jest nieprawidłowe.", "error")
-        elif new != new2:
+            flash("Obecne hasło jest nieprawidłowe.", "error")  # próba zostaje w puli
+            return render_template("password_change.html")
+        # obecne hasło poprawne: próba się nie liczy, wcześniejsze porażki tej puli są kasowane
+        discard_attempt(attempt)
+        clear_failures(pool, ip)
+        db.session.commit()
+        if new != new2:
             flash("Nowe hasła nie są takie same.", "error")
         elif problem:
             flash(problem, "error")

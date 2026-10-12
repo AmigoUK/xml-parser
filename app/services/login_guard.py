@@ -20,6 +20,10 @@ from flask import current_app
 from app.extensions import db
 from app.models import LoginAttempt, utcnow
 
+# osobna pula prób zmiany hasła: wpisy w `LoginAttempt.email` z tym prefiksem nie mieszają się z logowaniem
+# (limit per IP jest wspólny z logowaniem celowo)
+PASSWORD_CHANGE_PREFIX = "pwchange:"
+
 
 @dataclass
 class Rule:
