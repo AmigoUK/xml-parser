@@ -56,7 +56,7 @@ Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples
 | ![Pomoc](app/static/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](app/static/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
 | ![O demo](app/static/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](app/static/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
 | ![Przewodnik integracji](app/static/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | ![FAQ: worki → kilogramy](app/static/screenshots/13-faq-worek.png)<br/>**Negocjacja przelicznika** `1 worek = 25 kg` — scenariusz z [FAQ](docs/pomoc/faq.md#worek-na-kg) |
-| ![Zestaw demo](app/static/screenshots/14-demo-zestaw.png)<br/>**Zestaw demo „Miesiąc faktur”** — karta z przyciskami faz i tabelą postępu (status oczekiwany a rzeczywisty) | ![Tryb demo](app/static/screenshots/01-demo.png)<br/>**Strona „O demo”** z próbkami faktur i kartą zestawu |
+| ![Zestaw demo](app/static/screenshots/14-demo-zestaw.png)<br/>**Zestaw demo „Miesiąc faktur”** — karta z przyciskami faz i tabelą postępu (status oczekiwany a rzeczywisty) | |
 
 ## API w 30 sekund
 
