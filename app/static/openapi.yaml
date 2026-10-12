@@ -18,6 +18,13 @@ info:
     **Synchronizacja zmian statusów:** `GET /documents?updated_since=…&status=approved&limit=500`,
     a kolejne strony z tymi samymi parametrami i `cursor=<next_cursor>`, aż `next_cursor` = `null`.
     Opis algorytmu: Pomoc → „Integracja z własną aplikacją”.
+
+    **Webhooki:** zamiast odpytywać API, możesz ustawić w panelu adres webhooka klucza — przy każdej zmianie
+    statusu dokumentu wyślemy na niego `POST` z JSON-em `WebhookEvent` (`webhook.test` to zdarzenie próbne).
+    Nagłówki: `X-XP-Timestamp` (czas wysyłki, sekundy UNIX), `X-XP-Signature` (`sha256=<hex>` — HMAC-SHA256
+    sekretu klucza z „<timestamp>.<body>”) i `X-XP-Delivery` (stały `uuid` dostawy, także przy ponowieniach).
+    Odpowiedź 2xx kończy dostawę; inaczej ponawiamy po 1 min, 5 min, 30 min, 2 h i 12 h (razem 6 prób),
+    po czym dostawa dostaje status `failed`. Historię dostaw zwraca `GET /webhook-deliveries`.
 servers: [{ url: /api/v1 }]
 security: [{ ApiKey: [] }]
 components:
@@ -158,6 +165,44 @@ components:
             pola nie ma. Nieprzezroczysty token pozycji ostatniego zwróconego dokumentu: kolejną stronę
             pobierasz z tymi samymi `status`, `since`, `updated_since` i `limit` oraz `cursor=<next_cursor>`.
             `null` = to ostatnia strona.
+    WebhookEvent:
+      type: object
+      description: |
+        Ładunek (body) webhooka. Wysyłka niesie nagłówki `X-XP-Timestamp` (sekundy UNIX),
+        `X-XP-Signature` (`sha256=<hex HMAC-SHA256 z "<timestamp>.<body>">`, kluczem jest sekret webhooka)
+        i `X-XP-Delivery` (`uuid` dostawy). Dla zdarzenia `webhook.test` pola dokumentu
+        (`id`, `status`, `previous_status`, `updated_at`, `document_url`) mają wartość `null`.
+      properties:
+        event: { type: string, enum: [document.status_changed, webhook.test], example: document.status_changed }
+        id: { type: integer, nullable: true, example: 7 }
+        status: { type: string, nullable: true, example: approved }
+        previous_status: { type: string, nullable: true, example: needs_review }
+        updated_at: { type: string, format: date-time, nullable: true, example: "2026-10-11T06:04:38.412811Z" }
+        document_url: { type: string, nullable: true, example: https://parser.example.com/dokumenty/7 }
+    WebhookDelivery:
+      type: object
+      description: Dostawa webhooka (jedno zdarzenie do wysłania). Publiczny identyfikator to `uuid`.
+      properties:
+        uuid: { type: string, format: uuid, example: 3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f }
+        event: { type: string, enum: [document.status_changed, webhook.test], example: document.status_changed }
+        status: { type: string, enum: [pending, sent, failed], example: sent }
+        attempts: { type: integer, example: 1 }
+        document_id: { type: integer, nullable: true, example: 7 }
+        payload: { $ref: "#/components/schemas/WebhookEvent" }
+        created_at: { type: string, format: date-time, example: "2026-10-11T06:04:38.412811Z" }
+        next_attempt_at: { type: string, format: date-time, nullable: true, example: "2026-10-11T06:05:38.412811Z" }
+        sent_at: { type: string, format: date-time, nullable: true, example: "2026-10-11T06:04:39.001234Z" }
+        last_status_code: { type: integer, nullable: true, example: 200 }
+        last_error: { type: string, nullable: true, example: null }
+    WebhookDeliveryList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/WebhookDelivery" } }
+        next_cursor:
+          type: string
+          nullable: true
+          description: Token pozycji ostatniej dostawy strony (kolejną pobierz z `cursor=<next_cursor>`); `null` = ostatnia strona.
 paths:
   /documents:
     post:
@@ -261,4 +306,33 @@ paths:
       description: Tylko dostawcy z dokumentów tego klucza API (klucz nie widzi całej kartoteki), rosnąco po nazwie.
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SupplierList" } } } }
+        "401": { description: Brak klucza API }
+  /webhook-deliveries:
+    get:
+      summary: Lista dostaw webhooków
+      description: Tylko dostawy tego klucza API, od najnowszych (malejąco po `created_at`, `id`).
+      parameters:
+        - name: status
+          in: query
+          description: Tylko dostawy w tym statusie.
+          schema: { type: string, enum: [pending, sent, failed] }
+        - name: document_id
+          in: query
+          description: Tylko dostawy dotyczące tego dokumentu (dodatnia liczba całkowita).
+          schema: { type: integer, minimum: 1 }
+        - name: limit
+          in: query
+          description: Liczba wyników na stronę — większe wartości są obcinane do 500, mniejsze od 1 podnoszone do 1.
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+        - name: cursor
+          in: query
+          description: Kolejna strona — wartość `next_cursor` z poprzedniej odpowiedzi. Pusta wartość daje 400.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Dostawy klucza API.
+          content: { application/json: { schema: { $ref: "#/components/schemas/WebhookDeliveryList" } } }
+        "400":
+          description: Zły `status`, `document_id`, `limit` albo `cursor` — kod `bad_request`.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "401": { description: Brak klucza API }

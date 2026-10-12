@@ -97,7 +97,8 @@ def test_openapi_suppliers_schema_401_and_filename_header(seeded, client):
     spec = yaml.safe_load((ROOT / "app" / "static" / "openapi.yaml").read_text(encoding="utf-8"))
     paths, schemas = spec["paths"], spec["components"]["schemas"]
     for path, method in (("/documents", "post"), ("/documents", "get"), ("/documents/{id}", "get"),
-                         ("/documents/{id}/reprocess", "post"), ("/suppliers", "get")):
+                         ("/documents/{id}/reprocess", "post"), ("/suppliers", "get"),
+                         ("/webhook-deliveries", "get")):
         assert "401" in paths[path][method]["responses"], (path, method)
     header = [p for p in paths["/documents"]["post"].get("parameters", []) if p["in"] == "header"]
     assert header and header[0]["name"] == "X-Filename" and header[0]["required"] is False

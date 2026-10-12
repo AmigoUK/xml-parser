@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.extensions import db
 from app.ids import parse_id
-from app.models import Document
+from app.models import Document, WebhookDelivery
 
 from .timeutil import format_api_datetime
 
@@ -52,3 +52,16 @@ def doc_to_json(doc: Document, full: bool = True) -> dict:
         out["invoice"] = doc.result
         out["issues"] = api_issues(doc)
     return out
+
+
+def delivery_to_json(d: WebhookDelivery) -> dict:
+    """Dostawa webhooka dla klienta API. Publiczny identyfikator to `uuid` (numeryczne `id` i `api_key_id` nie
+    wychodzą); bez sekretu klucza — ładunek zdarzenia nie zawiera danych poza dokumentem klucza."""
+    return {
+        "uuid": d.uuid, "event": d.event, "status": d.status, "attempts": d.attempts,
+        "document_id": d.document_id, "payload": d.payload,
+        "created_at": format_api_datetime(d.created_at),
+        "next_attempt_at": format_api_datetime(d.next_attempt_at),
+        "sent_at": format_api_datetime(d.sent_at),
+        "last_status_code": d.last_status_code, "last_error": d.last_error,
+    }
