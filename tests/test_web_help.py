@@ -616,8 +616,11 @@ def test_dataset_topic_step_two_prose_matches_manifest(client):
     assert [e.order for e in review] == [15, 16, 17, 18] and len(dups) == 1
     step2 = html.index("Wczytaj pozostałe (18)”.")
     table = html.index("Wszystkie 24 faktury")
-    for e in review + dups:
-        assert e.filename in html[step2:table], e.filename
+    prose = html[step2:table]
+    approved = [e for e in rest if e.on_ingest.status == "approved"]
+    assert f"{len(approved)} zostaje zatwierdzonych" in prose
+    assert f"{review[0].order}–{review[-1].order}" in prose
+    assert "1 jest duplikatem" in prose
     gbp = html.index("wybierz GBP")
     assert html.index("Wczytaj pierwsze (6)”.") < step2 < gbp
     assert gbp < html.index("Wczytaj wszystko”</strong>")
