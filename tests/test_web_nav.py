@@ -54,3 +54,9 @@ def test_toggler_and_dropdown_aria_attributes(auth_client):
 def test_no_active_item_on_login_page(client):
     html = client.get("/login").get_data(as_text=True)
     assert "aria-current" not in html
+
+
+def test_demo_page_activates_o_demo(auth_client):
+    html = auth_client.get("/demo").get_data(as_text=True)
+    assert html.count('aria-current="page"') == 1
+    assert 'aria-current="page" href="/">O demo</a>' in html

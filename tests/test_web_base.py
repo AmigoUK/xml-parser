@@ -50,6 +50,8 @@ def test_upload_component_has_submitting_state():
     assert "submitted()" in js
     assert "submitLabel()" in js
     assert "Przetwarzanie…" in js
+    assert "pageshow" in js and "e.persisted" in js and "this.submitting = false" in js  # powrót z bfcache
+    assert "submitted() { this.submitting = true; }" in js
 
 
 def test_no_inline_handlers_in_base_and_api_docs(client):

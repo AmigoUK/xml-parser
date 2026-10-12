@@ -15,7 +15,7 @@
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav" aria-controls="nav" aria-expanded="false" aria-label="Przełącz nawigację"><span class="navbar-toggler-icon"></span></button>
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
-        {% if DEMO_MODE %}<li class="nav-item">{{ nav_link(url_for('docs.index'), 'O demo', ep == 'docs.index') }}</li>{% endif %}
+        {% if DEMO_MODE %}<li class="nav-item">{{ nav_link(url_for('docs.index'), 'O demo', bp == 'demo') }}</li>{% endif %}
         {% if current_user.is_authenticated %}
         <li class="nav-item">{{ nav_link(url_for('docs.dashboard'), 'Pulpit', ep == 'docs.dashboard') }}</li>
         <li class="nav-item">{{ nav_link(url_for('docs.upload'), 'Wgraj fakturę', ep == 'docs.upload') }}</li>

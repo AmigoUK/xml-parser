@@ -437,7 +437,7 @@ def _process(doc: Document) -> Document:
 def ingest(data: bytes, filename: str | None, source: str = "upload", api_key_id: int | None = None) -> Document:
     limit = current_app.config["MAX_DOCUMENT_BYTES"]
     if len(data) > limit:
-        raise DocumentTooLarge(f"Plik przekracza limit {mib(limit)} MB.")
+        raise DocumentTooLarge(f"Plik przekracza limit {mib(limit)} MiB.")
     storage = get_storage()
     try:
         sha, created = storage.store(data)

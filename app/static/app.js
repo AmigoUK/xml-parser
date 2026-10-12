@@ -26,6 +26,8 @@ document.addEventListener("alpine:init", function () {
     return {
       name: "",
       submitting: false,
+      // Powrót przyciskiem „Wstecz” (bfcache) przywraca stronę ze stanem „Przetwarzanie…” — odblokuj przycisk.
+      init() { window.addEventListener("pageshow", (e) => { if (e.persisted) this.submitting = false; }); },
       noop() {},
       // Blokada podwójnego wysłania: przycisk wyłączony po pierwszym submit (ustawiane przez @submit w szablonie).
       submitted() { this.submitting = true; },

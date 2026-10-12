@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from app.formatting import mib
+from app.web import filters
 
 
 def _render(app, tpl, **ctx):
@@ -42,6 +43,7 @@ def test_display_tz_configurable(app):
 
 
 def test_invalid_display_tz_falls_back_to_utc_with_warning(app, caplog):
+    filters._zone.cache_clear()
     app.config["DISPLAY_TZ"] = "Mars/Olympus"
     with caplog.at_level(logging.WARNING):
         html = _render(app, "{{ v|dt }}", v=datetime(2026, 1, 15, 11, 30))
@@ -92,3 +94,10 @@ def test_filters_registered_in_jinja_env(app):
 def test_zoneinfo_warsaw_available():
     from zoneinfo import ZoneInfo
     assert ZoneInfo("Europe/Warsaw").utcoffset(datetime(2026, 7, 1)).total_seconds() == 7200
+
+
+def test_number_filters_pass_through_values_too_large_to_quantize(app):
+    big = "1" + "0" * 29  # 30 cyfr: quantize wymaga >28 cyfr znaczących → InvalidOperation
+    for name in ("money", "price", "qty"):
+        assert _render(app, "{{ v|" + name + " }}", v=big) == big, name
+        assert _render(app, "{{ v|" + name + " }}", v=Decimal(big)) == big, name

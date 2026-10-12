@@ -1,5 +1,6 @@
 """Panel kluczy API: flashe po akcjach, etykiety formularzy, limity długości, potwierdzenia i pusty stan."""
 import html as htmllib
+from datetime import datetime
 
 from app.extensions import db
 from app.models import ApiKey
@@ -48,13 +49,15 @@ def test_delete_flashes_name(auth_client):
 
 def test_page_markup_labels_maxlength_confirms(auth_client):
     k = _key()
+    k.last_used_at = datetime(2026, 10, 1, 12, 0)
+    db.session.commit()
     html = _text(auth_client.get("/klucze-api"))
     assert 'for="new-key-name"' in html and 'id="new-key-name"' in html
     assert "w-form-key" in html and "table-responsive" in html
     assert f'maxlength="{ApiKey.name.type.length}"' in html
     assert 'aria-label="Nowa nazwa klucza"' in html and "Zmień nazwę" in html
     assert 'data-confirm="Wyłączyć klucz „System ERP”? Systemy używające go przestaną działać."' in html
-    assert "<time " in html or k.last_used_at is None
+    assert "<time " in html
     # klucz wyłączony: bez potwierdzenia przy włączaniu
     k.active = False
     db.session.commit()

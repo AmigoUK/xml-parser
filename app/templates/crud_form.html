@@ -19,7 +19,7 @@
           <textarea class="form-control form-control-sm" name="{{ f.name }}" id="f-{{ f.name }}" rows="3" maxlength="{{ textarea_max }}">{{ val or '' }}</textarea>
         {% else %}
           {% set maxlen = spec.model.__table__.columns[f.name].type.length if f.name in spec.model.__table__.columns else none %}
-          <input class="form-control form-control-sm" name="{{ f.name }}"{% if f.type == 'number' %} inputmode="decimal" placeholder="np. 12,5"{% endif %} id="f-{{ f.name }}" value="{{ val if val is not none else '' }}" {% if f.required %}required{% endif %}{% if maxlen %} maxlength="{{ maxlen }}"{% endif %}>
+          <input class="form-control form-control-sm" name="{{ f.name }}"{% if f.type == 'number' %} inputmode="decimal" placeholder="np. 12 albo 1.125"{% endif %} id="f-{{ f.name }}" value="{{ val if val is not none else '' }}" {% if f.required %}required{% endif %}{% if maxlen %} maxlength="{{ maxlen }}"{% endif %}>
         {% endif %}
       {% endif %}
     </div>

@@ -8,7 +8,7 @@ KEY = {"X-API-Key": "xp_test_demo_key"}
 def _assert_shell(html):
     """Strona błędu ma pełną skorupę panelu: nawigację, link do Pulpitu i Pomocy oraz stopkę z kredytami."""
     assert "<nav" in html
-    assert '<a class="btn btn-primary" href="/">Wróć do Pulpitu</a>' in html
+    assert '<a class="btn btn-primary" href="/pulpit">Wróć do Pulpitu</a>' in html
     assert 'href="/pomoc"' in html
     assert "<footer" in html and "dev@attv.uk" in html
 
@@ -109,6 +109,59 @@ def test_error_pages_keep_security_headers(auth_client):
     assert r.status_code == 404
     assert "Content-Security-Policy" in r.headers
     assert r.headers["X-Frame-Options"] == "DENY"
+
+
+def test_500_page_keeps_security_headers(seeded, app):
+    app.config["PROPAGATE_EXCEPTIONS"] = False
+
+    @app.get("/test-boom-headers")
+    def boom():
+        raise RuntimeError("x")
+
+    client = app.test_client()
+    client.post("/login", data={"email": "admin@example.com", "password": "haslo123"})
+    r = client.get("/test-boom-headers")
+    assert r.status_code == 500
+    assert "Content-Security-Policy" in r.headers
+    assert r.headers["X-Frame-Options"] == "DENY"
+
+
+def test_catalog_import_413_redirects_with_flash(auth_client, app):
+    app.config["MAX_CONTENT_LENGTH"] = 1000
+    r = auth_client.post("/towary/import", data={"file": (__import__("io").BytesIO(b"x" * 5000), "a.csv")},
+                         content_type="multipart/form-data")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/towary/import")
+    assert "za duży" in auth_client.get("/towary/import").get_data(as_text=True)
+
+
+def test_csrf_failure_renders_polish_400_page(seeded, app):
+    app.config["WTF_CSRF_ENABLED"] = True
+    client = app.test_client()
+    r = client.post("/login", data={"email": "admin@example.com", "password": "haslo123"})
+    html = r.get_data(as_text=True)
+    assert r.status_code == 400
+    assert "Formularz wygasł lub jest nieprawidłowy" in html and "Odśwież stronę" in html
+    _assert_shell(html)
+    assert "Bad Request" not in html and "CSRF" not in html
+
+
+def test_non_csrf_400_panel_page_is_generic_polish(seeded, app):
+    from werkzeug.exceptions import BadRequest
+
+    @app.get("/test-400")
+    def bad():
+        raise BadRequest()
+
+    r = app.test_client().get("/test-400")
+    html = r.get_data(as_text=True)
+    assert r.status_code == 400 and "Nieprawidłowe żądanie" in html
+    _assert_shell(html)
+
+
+def test_api_400_stays_json_even_with_csrf_enabled(seeded, app):
+    app.config["WTF_CSRF_ENABLED"] = True
+    r = app.test_client().post("/api/v1/documents", headers=KEY, data=b"   ")
+    assert r.status_code == 400 and r.get_json()["error"]["code"] == "empty_body"
 
 
 def test_api_errors_still_json(seeded, client):
