@@ -113,3 +113,26 @@ def mariadb_url():
     wipe_mariadb(url)
     yield url
     wipe_mariadb(url)  # także po nieudanym teście
+
+
+# ---- webhooki: lokalny odbiorca HTTP i blokada połączeń (tests/webhook_helpers.py)
+
+@pytest.fixture
+def receiver(app):
+    app.config.update(WEBHOOK_ALLOW_HTTP=True, WEBHOOK_ALLOWED_HOSTS="127.0.0.1")
+    from tests.webhook_helpers import Receiver
+    rec = Receiver()
+    try:
+        yield rec
+    finally:
+        rec.close()
+
+
+@pytest.fixture
+def no_connection(monkeypatch):
+    """Każda próba połączenia z celem kończy test błędem (cel zablokowany = zero ruchu sieciowego)."""
+    from app.services import webhooks
+
+    def boom(*args, **kwargs):
+        raise AssertionError(f"niedozwolone połączenie: {args!r}")
+    monkeypatch.setattr(webhooks.socket, "create_connection", boom)

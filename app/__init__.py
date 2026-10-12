@@ -112,6 +112,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     from .services.accounts import password_problem, set_admin_password
     from .services.audit import prune_audit
     from .services.seed import reset_demo, seed_base, seed_demo
+    from .services.webhooks import deliver_pending, prune_deliveries, run_worker
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -185,6 +186,47 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         db.session.commit()
         scope = "wszystkie akcje" if all_actions else "login_failed, login_blocked"
         click.echo(f"Usunięto {removed} wpisów dziennika starszych niż {days} dni ({scope}).")
+
+    @app.cli.command("webhooks-worker")
+    @click.option("--once", is_flag=True, help="Jedna runda wysyłki i koniec (awaryjnie z crona).")
+    @click.option("--interval", type=click.FloatRange(min=0.1), default=5.0, show_default=True,
+                  help="Odstęp między rundami w sekundach.")
+    def webhooks_worker_cmd(once, interval):
+        """Worker webhooków: wysyła zaległe dostawy z ponowieniami; SIGTERM/SIGINT kończy pętlę."""
+        from .models import utcnow
+        if once:
+            sent = deliver_pending(utcnow())
+            click.echo(f"Wysłano {sent} dostaw webhooków (jedna runda).")
+            return
+        import logging
+        import signal
+        import threading
+        if app.logger.level == logging.NOTSET:
+            app.logger.setLevel(logging.INFO)  # start/stop i liczba wysłanych widoczne w `docker compose logs`
+        stop = threading.Event()
+        previous = {}
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                previous[sig] = signal.signal(sig, lambda *_: stop.set())
+            except ValueError:  # nie w głównym wątku (np. osadzenie w testach) — zatrzymanie tylko przez `stop`
+                pass
+        try:
+            run_worker(app, interval=interval, stop=stop, heartbeat=app.config.get("WEBHOOK_HEARTBEAT_FILE") or None)
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+
+    @app.cli.command("prune-webhooks")
+    @click.option("--days", type=int, default=None, help="Starsze niż N dni (domyślnie WEBHOOK_RETENTION_DAYS).")
+    def prune_webhooks_cmd(days):
+        """Retencja dostaw webhooków: usuwa wysłane i porzucone starsze niż N dni (oczekujące zostają)."""
+        days = app.config["WEBHOOK_RETENTION_DAYS"] if days is None else days
+        if days < 1:
+            click.echo("--days musi być liczbą dni ≥ 1.", err=True)
+            raise SystemExit(2)
+        removed = prune_deliveries(days)
+        db.session.commit()
+        click.echo(f"Usunięto {removed} dostaw webhooków (wysłanych i porzuconych) starszych niż {days} dni.")
 
     @app.cli.command("reset-demo")
     def reset_demo_cmd():
