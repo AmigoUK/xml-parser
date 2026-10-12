@@ -10,12 +10,12 @@
       "address": {"street": "1 Example Street", "city": "Testford", "postcode": "TF1 1AA"}
     },
     "buyer": {"name": "Piekarnia Demo Ltd", "vat_number": "GB999000055"},
-    "totals": {"net": 83.10, "vat": 0.00, "gross": 83.10},
+    "totals": {"net": 55.50, "vat": 0.00, "gross": 55.50},
     "items": [
-      {"sku": "E-1", "ean": "5909999000082", "description": "Masło 82% 1 kg", "quantity": 11, "uom": "EA",
-       "unit_price": 5.10, "net_amount": 56.10, "vat_rate": 0},
-      {"sku": "E-2", "ean": "5909999000099", "description": "Śmietanka 30% 1 l", "quantity": 9, "uom": "EA",
-       "unit_price": 3.00, "net_amount": 27.00, "vat_rate": 0}
+      {"sku": "E-1", "ean": "5909999000082", "description": "Masło 82% 1 kg", "quantity": 5, "uom": "EA",
+       "unit_price": 5.10, "net_amount": 25.50, "vat_rate": 0},
+      {"sku": "E-2", "ean": "5909999000099", "description": "Śmietanka 30% 1 l", "quantity": 10, "uom": "EA",
+       "unit_price": 3.00, "net_amount": 30.00, "vat_rate": 0}
     ]
   }
 }

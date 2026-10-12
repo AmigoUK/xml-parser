@@ -37,7 +37,7 @@ Plik `manifest.json` opisuje każdy plik i oczekiwany wynik: `on_ingest` — sta
 | 14 | 14-beta-3.xml | Młyn Beta Sp. z o.o. | czysta faktura | zatwierdzona | — |
 | 15 | 15-eta-3.xml | Eta Packaging Sp. z o.o. | towar spoza kartoteki (nowy GTIN) — „utwórz towar” | do przejrzenia: `unmapped_product` | zatwierdzona |
 | 16 | 16-gamma-3.xml | Gamma Aromen GmbH | nowy alias jednostki „PCE” zamiast „C62” | do przejrzenia: `unknown_unit` | zatwierdzona |
-| 17 | 17-epsilon-3.json | Epsilon Dairy Ltd | brak klucza „currency” — waluta do uzupełnienia | do przejrzenia: `unmapped_field` | zatwierdzona |
+| 17 | 17-epsilon-3.json | Epsilon Dairy Ltd | brak klucza waluty — pierwsza podpowiedź to PLN, ale ten dostawca rozlicza się w GBP: wybierz GBP | do przejrzenia: `unmapped_field` | zatwierdzona |
 | 18 | 18-zeta-3.csv | Hurtownia Zeta Sp. j. | „kart.” → karton (obok pełnej nazwy „karton”), 1 karton = 20 szt z nazwy towaru, nowy towar | do przejrzenia: `missing_conversion`, `unknown_unit`, `unmapped_product` | zatwierdzona |
 | 19 | 19-alfa-4.xml | Hurtownia Alfa Sp. z o.o. | czysta faktura | zatwierdzona | — |
 | 20 | 20-beta-3-ponownie.xml | Młyn Beta Sp. z o.o. | ten sam plik co 14-beta-3.xml wysłany drugi raz — duplikat | duplikat: `duplicate` | — |

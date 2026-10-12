@@ -33,6 +33,8 @@
     </ol>
   </div>
 
+  <div class="col-12 order-last">{% include "_demo_dataset.html" %}</div>
+
   <div class="col-lg-5">
     <div class="card mb-3"><div class="card-body small">
       <h2 class="h6">Dostęp demo</h2>
@@ -53,8 +55,8 @@
         {% endfor %}
       </table>
       {% if current_user.is_authenticated and current_user.role == 'admin' %}
-      <form method="post" action="{{ url_for('demo.reset') }}" data-confirm="Wyczyścić wszystkie dane demo?">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Wyczyść dane demo</button>
+      <form method="post" action="{{ url_for('demo.reset') }}" data-confirm="Zresetować zestaw demo? Wszystkie dokumenty demo zostaną usunięte, a kartoteka towarów i jednostki przywrócone.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Resetuj zestaw demo</button>
       </form>
       {% endif %}
     </div></div>

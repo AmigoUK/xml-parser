@@ -233,3 +233,28 @@ def test_expected_statuses_on_fresh_db(seeded, manifest):
         if exp["after_resolve"] is not None:
             resolve_with_top_suggestions(doc)
             assert _codes(doc) == exp["after_resolve"], (f["filename"], doc.issues)
+
+
+def test_rest_phase_as_one_batch_matches_manifest(seeded, manifest):
+    """Kryterium planu: po nauce na sześciu pierwszych fakturach cała faza „pozostałe” wczytana JEDNĄ partią (jak
+    przycisk w panelu i skrypt API) daje 13× approved (1 z ostrzeżeniem), 4× needs_review (15–18), 1× duplicate —
+    czyste faktury nie mogą zależeć od nauki z pułapek 15–18."""
+    from app.services import demo_dataset as dd
+
+    by_name = {f["filename"]: f for f in manifest["files"]}
+    for doc in dd.load_phase("pierwsze").loaded:
+        resolve_with_top_suggestions(doc)
+        assert _codes(doc) == by_name[doc.filename]["expected"]["after_resolve"], doc.filename
+    batch = dd.load_phase("pozostale")
+    assert not batch.skipped and len(batch.loaded) == 18
+    for doc in batch.loaded:  # wszystkie stany sprawdzane PRZED rozwiązaniem którejkolwiek faktury partii
+        assert _codes(doc) == by_name[doc.filename]["expected"]["on_ingest"], (doc.filename, doc.issues)
+    statuses = [d.status for d in batch.loaded]
+    assert (statuses.count("approved"), statuses.count("needs_review"), statuses.count("duplicate")) == (13, 4, 1)
+    assert [d.filename[:2] for d in batch.loaded if d.status == "needs_review"] == ["15", "16", "17", "18"]
+    assert sum(bool(_codes(d)["warnings"]) for d in batch.loaded) == 1
+    for doc in batch.loaded:
+        after = by_name[doc.filename]["expected"]["after_resolve"]
+        if after is not None:
+            resolve_with_top_suggestions(doc)
+            assert _codes(doc) == after, (doc.filename, doc.issues)

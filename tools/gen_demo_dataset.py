@@ -129,6 +129,9 @@ class Spec:
 APPROVED = ("approved", [], [])
 
 # Kolejność = kolejność plików, dat wystawienia i wczytywania (pierwsza faktura każdego dostawcy na początku).
+# Faza „pozostałe” (07–24) bywa wczytywana JEDNĄ partią zaraz po nauce na pierwszych fakturach — czyste faktury
+# (07–12, 14, 19, 21–24) mogą więc używać wyłącznie towarów, jednostek, aliasów, przeliczników i waluty znanych po
+# rozwiązaniu faktur 01–06 (plus kartoteka demo), nigdy nauki z pułapek 15–18.
 SPECS: list[Spec] = [
     Spec("alfa", 1, "FA/2026/10/101", ["A-100", "A-200", "A-300"],
          "nowy dostawca, brak waluty, jednostka „pcs”, towar po kodzie dostawcy",
@@ -172,7 +175,7 @@ SPECS: list[Spec] = [
          "nowy alias jednostki „PCE” zamiast „C62”",
          ("needs_review", ["unknown_unit"], []), APPROVED, unit_overrides={"G-01": "PCE"}),
     Spec("epsilon", 3, "E-2026-0103", ["E-1", "E-2"],
-         "brak klucza „currency” — waluta do uzupełnienia",
+         "brak klucza waluty — pierwsza podpowiedź to PLN, ale ten dostawca rozlicza się w GBP: wybierz GBP",
          ("needs_review", ["unmapped_field"], []), APPROVED, no_currency=True),
     Spec("zeta", 3, "Z/403/2026", ["Z-25", "Z-40", "Z-50"],
          "„kart.” → karton (obok pełnej nazwy „karton”), 1 karton = 20 szt z nazwy towaru, nowy towar",
@@ -180,10 +183,10 @@ SPECS: list[Spec] = [
     Spec("alfa", 4, "FA/2026/10/104", ["A-200", "A-300"], "czysta faktura", APPROVED),
     Spec("beta", 3, None, [], "ten sam plik co 14-beta-3.xml wysłany drugi raz — duplikat",
          ("duplicate", ["duplicate"], []), suffix="-ponownie", copy_of=14),
-    Spec("eta", 4, "ETA/2026/10/0004", ["E-02", "E-03"], "czysta faktura", APPROVED),
+    Spec("eta", 4, "ETA/2026/10/0004", ["E-01", "E-02"], "czysta faktura", APPROVED),
     Spec("gamma", 4, "GAM-2026-0404", ["G-01", "G-02"], "czysta faktura", APPROVED),
     Spec("epsilon", 4, "E-2026-0104", ["E-1", "E-2"], "czysta faktura", APPROVED),
-    Spec("zeta", 4, "Z/404/2026", ["Z-26", "Z-40", "Z-50"], "czysta faktura", APPROVED),
+    Spec("zeta", 4, "Z/404/2026", ["Z-25", "Z-26"], "czysta faktura", APPROVED),
 ]
 
 
