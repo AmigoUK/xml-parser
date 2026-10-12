@@ -15,6 +15,10 @@ from app.extensions import db
 from app.ids import parse_id
 from app.services.audit import audit
 
+from .paging import first_url, like_pattern, next_url, page_by_number, search_arg
+
+CRUD_PAGE_SIZE = 200  # rozmiar strony listy słownika (`?page=N`)
+
 
 @dataclass
 class CrudField:
@@ -37,6 +41,15 @@ class CrudSpec:
     before_save: Callable[[Any], None] | None = None      # rzuca ValueError z komunikatem PL
     delete_blocker: Callable[[Any], str | None] | None = None
     extra_actions: list[tuple[str, str]] = field(default_factory=list)  # (etykieta, endpoint)
+    new_label: str = "Dodaj"              # przycisk dodawania, np. „Nowy dostawca”
+    singular_acc: str = "rekord"          # biernik l. poj. do komunikatów: „Zapisano dostawcę …”
+    search_fields: tuple[str, ...] = ()   # kolumny tekstowe przeszukiwane przez `?q=` (ilike)
+    display: Callable[[Any], Any] | None = None  # etykieta rekordu; domyślnie pierwsza kolumna listy
+
+    def label_of(self, obj) -> str:
+        """Czytelna nazwa rekordu do komunikatów i potwierdzeń."""
+        getter = self.display or self.columns[0][1]
+        return str(getter(obj) or f"#{obj.id}")
 
 
 def _max_length(model, name: str) -> int | None:
@@ -78,8 +91,19 @@ def _snapshot(obj, spec: CrudSpec) -> dict:
 
 def register_crud(bp, spec: CrudSpec) -> None:
     def list_view():
-        rows = spec.model.query.order_by(spec.order_by()).all()
-        return render_template("crud_list.html", spec=spec, rows=rows)
+        query = spec.model.query
+        q = search_arg() if spec.search_fields else ""
+        if q:
+            pattern = like_pattern(q)
+            query = query.filter(db.or_(*(getattr(spec.model, name).ilike(pattern, escape="\\")
+                                          for name in spec.search_fields)))
+        rows, page, pages, total = page_by_number(query.order_by(spec.order_by()), CRUD_PAGE_SIZE,
+                                                  parse_id(request.args.get("page")))
+        return render_template(
+            "crud_list.html", spec=spec, rows=rows, q=q, page=page, pages=pages, total=total,
+            prev_url=next_url("page", page - 1) if page > 1 else None,
+            next_url=next_url("page", page + 1) if page < pages else None,
+            first_url=first_url("page"))
 
     def form_view(obj_id: int | None = None):
         obj = db.session.get(spec.model, obj_id) if obj_id else spec.model()
@@ -97,7 +121,7 @@ def register_crud(bp, spec: CrudSpec) -> None:
                 db.session.flush()
                 audit("update" if obj_id else "create", spec.key, obj.id, _snapshot(obj, spec))
                 db.session.commit()
-                flash("Zapisano.", "success")
+                flash(f"Zapisano {spec.singular_acc} „{spec.label_of(obj)}”.", "success")
                 return redirect(url_for(f"catalog.list_{spec.key}"))
             except ValueError as exc:
                 db.session.rollback()
@@ -123,10 +147,11 @@ def register_crud(bp, spec: CrudSpec) -> None:
                 flash(f"Nie można usunąć: {reason}", "error")
             else:
                 try:
+                    label = spec.label_of(obj)  # przed usunięciem — potem relacje mogą być niedostępne
                     audit("delete", spec.key, obj.id, _snapshot(obj, spec))
                     db.session.delete(obj)
                     db.session.commit()
-                    flash("Usunięto.", "success")
+                    flash(f"Usunięto {spec.singular_acc} „{label}”.", "success")
                 except IntegrityError:
                     db.session.rollback()
                     flash("Nie można usunąć: rekord jest powiązany z innymi danymi.", "error")

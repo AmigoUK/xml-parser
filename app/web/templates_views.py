@@ -3,7 +3,9 @@ import json
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.engine.canonical import HEADER_FIELDS, LINE_FIELDS
 from app.engine.suggest import field_candidates, learned_pairs, load_synonyms
@@ -21,9 +23,12 @@ from app.services.negotiation import CONFLICT_MSG, save_rules
 from app.services.pipeline import current_rules, load_tree, process
 from app.services.templates import active_rule_sets, locked_active_version_id, new_version
 
+from .paging import cursor_arg, first_url, next_url, page_by_id
+
 bp = Blueprint("templates_views", __name__, url_prefix="/szablony")
 COMMENT_MAX = TemplateVersion.comment.type.length  # komentarz wersji obcinany do kolumny
 EDITOR_CANDIDATES = 3  # podpowiedzi ścieżek na pole w edytorze
+TEMPLATES_PAGE_SIZE = 100  # rozmiar strony listy szablonów (`?after=`)
 
 
 def _tpl(tid: int) -> Template:
@@ -43,11 +48,19 @@ def _doc(doc_id: int) -> Document:
 @bp.get("")
 @login_required
 def index():
-    rows = []
-    for t in Template.query.order_by(Template.id).all():
-        rows.append({"t": t, "docs": Document.query.filter_by(template_id=t.id).count(),
-                     "active": t.active_version})
-    return render_template("templates_list.html", rows=rows)
+    # rosnąco po id (jak dotąd), kolejna strona po `?after=`; stała liczba zapytań niezależnie od liczby szablonów
+    templates, cursor = page_by_id(Template.query.options(selectinload(Template.supplier)), Template.id,
+                                   TEMPLATES_PAGE_SIZE, after=cursor_arg("after") or 0)
+    ids = [t.id for t in templates]
+    counts = dict(db.session.query(Document.template_id, func.count(Document.id))
+                  .filter(Document.template_id.in_(ids)).group_by(Document.template_id)) if ids else {}
+    active_ids = [t.active_version_id for t in templates if t.active_version_id is not None]
+    # jedno zapytanie wypełnia mapę tożsamości — t.active_version (session.get) nie pyta już bazy
+    active = {v.id: v for v in TemplateVersion.query.filter(TemplateVersion.id.in_(active_ids))} if active_ids else {}
+    rows = [{"t": t, "docs": counts.get(t.id, 0), "active": active.get(t.active_version_id)} for t in templates]
+    return render_template("templates_list.html", rows=rows, shown=len(rows),
+                           next_url=next_url("after", cursor) if cursor else None,
+                           first_url=first_url("after") if cursor_arg("after") else None)
 
 
 @bp.get("/<int:tid>")
