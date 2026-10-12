@@ -1,0 +1,196 @@
+{% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
+{% block help_content %}
+<p>Webhook to powiadomienie, które parser sam wysyła do Twojego systemu, gdy zmieni się status dokumentu — na
+  przykład gdy operator rozwiąże problemy w panelu i faktura zostanie zatwierdzona. Ten temat opisuje, jak go włączyć,
+  co dokładnie przychodzi, jak sprawdzić podpis i co się dzieje, gdy Twój serwer nie odpowiada. Ogólny przebieg
+  integracji (wysyłka, struktura wyniku) opisuje
+  <a href="{{ url_for('help.topic', slug='integracja') }}">Integracja z własną aplikacją</a>.</p>
+
+<h2 class="h5 mt-4" id="po-co">1. Po co webhook</h2>
+<p>Bez webhooka o zmianie statusu dowiadujesz się, pytając API: synchronizacją listy
+  (<code>updated_since</code> + <code>cursor</code>) albo odpytując dokument. Webhook odwraca kierunek: zamiast pytać
+  co kilka minut, Twój system dostaje <code>POST</code> zaraz po zmianie — zwykle w ciągu kilku sekund.</p>
+<ul>
+  <li>Powiadomienie mówi tylko, <strong>że</strong> status się zmienił (<code>id</code>, nowy i poprzedni status, czas).
+    Fakturę pobierasz jak dotąd: <code>GET {{ api_base }}/api/v1/documents/{id}</code>.</li>
+  <li>Zdarzenia dotyczą wyłącznie dokumentów wysłanych przez REST API <strong>tym kluczem</strong>, przy którym ustawiono
+    webhook. Faktury wgrane w panelu i przykłady z trybu demo nie wysyłają powiadomień; klucz nieaktywny — też nie.</li>
+  <li>Webhook nie zastępuje całkiem synchronizacji: gdy Twój serwer był długo niedostępny, jeden przebieg
+    synchronizacji (<a href="{{ url_for('help.topic', slug='integracja') }}#synchronizacja">sposób B</a>) wyrówna stan.
+    Dobrą praktyką jest webhook do szybkiej reakcji plus rzadka synchronizacja, np. raz na dobę.</li>
+</ul>
+
+<h2 class="h5 mt-4" id="wlaczenie">2. Jak włączyć</h2>
+<p>Webhook ustawia się przy kluczu API w panelu, na stronie <em>Klucze API</em>. Zmieniać go może tylko użytkownik
+  z rolą administratora.</p>
+<ol>
+  <li>Przy kluczu wpisz <strong>adres webhooka</strong> — adres Twojego serwera, który przyjmie <code>POST</code>, np.
+    <code>https://erp.example.com/xp/webhook</code> — i zapisz.</li>
+  <li>Panel wygeneruje <strong>sekret webhooka</strong> i pokaże go <strong>tylko raz</strong>. Skopiuj go od razu do
+    konfiguracji odbiorcy (w przykładach: zmienna <code>XP_WEBHOOK_SECRET</code>). Sekret nie pojawia się później
+    nigdzie: ani w panelu, ani w Historii, ani w API.</li>
+  <li>Kliknij „Wyślij testowe zdarzenie”. Parser od razu wyśle zdarzenie <code>webhook.test</code>, a wynik (kod
+    odpowiedzi albo błąd) zobaczysz na liście dostaw przy kluczu.</li>
+</ol>
+<p>Zgubiony lub ujawniony sekret wymienisz przyciskiem „Rotuj sekret” — nowy sekret też jest pokazywany raz, a stary
+  przestaje działać od razu, także dla dostaw czekających na ponowienie. „Wyczyść” wyłącza webhook: usuwa adres
+  i sekret. Pod ustawieniami jest lista 50 najnowszych dostaw z kluczem: stan, liczba prób, ostatni błąd
+  i przycisk „Ponów”.</p>
+{{ shot("15-klucze-webhook.png", "Strona Klucze API: przy kluczu sekcja webhooka — adres, przyciski „Rotuj sekret”, "
+        "„Wyczyść” i „Wyślij testowe zdarzenie” oraz lista najnowszych dostaw ze stanem, liczbą prób, ostatnim "
+        "błędem i przyciskiem „Ponów”.",
+        "Lista kluczy API w panelu z rozwiniętymi ustawieniami webhooka jednego klucza i tabelą dostaw") }}
+
+<h2 class="h5 mt-4" id="zdarzenie">3. Co przychodzi</h2>
+<p>Parser wysyła <code>POST</code> na Twój adres z JSON-em w ciele. Zdarzenia są dwa:</p>
+<ul>
+  <li><code>document.status_changed</code> — status dokumentu się zmienił: przy przyjęciu pliku (z
+    <code>received</code> na wynik przetwarzania), po decyzjach operatora w panelu, „Przetwórz ponownie”,
+    <code>reprocess</code> przez API, „Odrzuć” i „Przywróć”. Ponowne przetworzenie, po którym status jest taki sam,
+    nie wysyła zdarzenia.</li>
+  <li><code>webhook.test</code> — zdarzenie próbne z przycisku „Wyślij testowe zdarzenie”; ma te same pola, ale pola
+    dokumentu są puste (<code>null</code>).</li>
+</ul>
+<pre class="bg-light border p-2 small"><code class="language-json">{
+  "document_url": "{{ api_base }}/dokumenty/42",
+  "event": "document.status_changed",
+  "id": 42,
+  "previous_status": "needs_review",
+  "status": "approved",
+  "updated_at": "2026-10-12T09:15:02.123456Z"
+}</code></pre>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>Pole</th><th>Znaczenie</th></tr></thead>
+  <tbody>
+    <tr><td><code>event</code></td><td><code>document.status_changed</code> albo <code>webhook.test</code></td></tr>
+    <tr><td><code>id</code></td><td>identyfikator dokumentu — ten sam, który dostałeś w odpowiedzi <code>201</code></td></tr>
+    <tr><td><code>status</code>, <code>previous_status</code></td><td>nowy i poprzedni status (kody jak w API:
+      {% for code, label, text in statuses %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %})</td></tr>
+    <tr><td><code>updated_at</code></td><td>chwila zmiany — ten sam format co w API (UTC z mikrosekundami i <code>Z</code>)</td></tr>
+    <tr><td><code>document_url</code></td><td>adres dokumentu w panelu (dla człowieka); może być <code>null</code> — patrz „Eksploatacja”</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Ciało jest wysyłane zwięźle — bez spacji, z kluczami w kolejności alfabetycznej. Każde żądanie ma trzy nagłówki
+  (wartości przykładowe; czas i podpis pochodzą z wektora testowego z rozdziału 4, nie z ładunku powyżej):</p>
+<pre class="bg-light border p-2 small"><code class="language-text">X-XP-Timestamp: 1760000000
+X-XP-Signature: sha256=3bbaa1b01d7597a96349f290bbb59f27e7fdfe7d4918adbf949e7c3379973d46
+X-XP-Delivery: 0b6f3c1e-8d2a-4f47-9a51-2c7e5d9b1a03</code></pre>
+<ul>
+  <li><code>X-XP-Timestamp</code> — czas wysyłki w sekundach unixowych (tekst);</li>
+  <li><code>X-XP-Signature</code> — <code>sha256=&lt;hex HMAC-SHA256(sekret, "&lt;timestamp&gt;.&lt;ciało&gt;")&gt;</code>;</li>
+  <li><code>X-XP-Delivery</code> — identyfikator dostawy (UUID), <strong>taki sam przy każdym ponowieniu</strong> tej
+    samej dostawy — to Twój klucz idempotencji.</li>
+</ul>
+<p>Kolejność powiadomień nie jest gwarantowana (ponowienie starszej dostawy może przyjść po nowszej), a to samo
+  zdarzenie może przyjść więcej niż raz. Porównuj <code>updated_at</code> z tym, co już masz, a w razie wątpliwości
+  pobierz dokument z API — tam jest zawsze stan aktualny.</p>
+
+<h2 class="h5 mt-4" id="podpis">4. Jak zweryfikować podpis</h2>
+<p>Każde żądanie sprawdź, zanim cokolwiek przetworzysz — tylko tak masz pewność, że wysłał je parser:</p>
+<ol>
+  <li>Odczytaj <strong>surowe bajty ciała</strong> (nie parsuj i nie serializuj JSON-a od nowa przed sprawdzeniem).</li>
+  <li>Odrzuć żądanie, którego <code>X-XP-Timestamp</code> różni się od Twojego zegara o więcej niż 300 s.</li>
+  <li>Policz HMAC-SHA256 sekretem z tekstu <code>&lt;X-XP-Timestamp&gt;.&lt;ciało&gt;</code>, zapisz szesnastkowo
+    z przedrostkiem <code>sha256=</code> i porównaj z <code>X-XP-Signature</code> w stałym czasie. Niezgodność →
+    <code>401</code>.</li>
+  <li>Odpowiedz szybko <code>2xx</code> (limit to 5 s), a dłuższą pracę — np. pobranie faktury — wykonaj
+    w tle.</li>
+</ol>
+<p>Gotowi odbiorcy poniżej robią to wszystko. Sekret czytają ze zmiennej <code>XP_WEBHOOK_SECRET</code>. Działają
+  w dwóch trybach: serwer HTTP (Python, PHP, Node.js) oraz <code>--check &lt;ts&gt; &lt;podpis&gt;</code> — sprawdzenie
+  podpisu ciała podanego na wejściu, bez sieci, z wynikiem <code>OK</code> (kod 0) albo powodem odrzucenia (kod 1).
+  Opcja <code>--now &lt;ts&gt;</code> podstawia czas zamiast zegara systemowego. Wektor do sprawdzenia własnej
+  implementacji — sekret <code>whsec_test_0123456789abcdef</code>, czas <code>1760000000</code>, ciało
+  <code>{"event":"webhook.test","id":null}</code>:</p>
+<pre class="bg-light border p-2 small"><code class="language-bash">export XP_WEBHOOK_SECRET='whsec_test_0123456789abcdef'
+printf '%s' '{"event":"webhook.test","id":null}' \
+  | python3 webhook-odbiorca.py --check 1760000000 \
+      sha256=3bbaa1b01d7597a96349f290bbb59f27e7fdfe7d4918adbf949e7c3379973d46 --now 1760000000
+# → OK (kod 0); zmień jeden znak ciała albo podpisu, a odbiorca wypisze powód odrzucenia (kod 1)
+
+export XP_WEBHOOK_SECRET='…'   # Twój sekret z „Klucze API”
+python3 webhook-odbiorca.py --port 9000              # serwer: Python
+XP_WEBHOOK_SECRET='…' php -S 0.0.0.0:9000 webhook-odbiorca.php   # serwer: PHP
+node webhook-odbiorca.mjs --port 9000                # serwer: Node.js</code></pre>
+<div class="alert alert-info small"><strong>Powtórzenia i replay.</strong> Podpis obejmuje czas i ciało, ale nie
+  <code>X-XP-Delivery</code>, więc w oknie 300 s ktoś, kto przechwycił żądanie, mógłby je odtworzyć. Zapamiętuj
+  identyfikatory <code>X-XP-Delivery</code> trwale (np. tabela z unikalnym kluczem albo Redis z czasem życia dłuższym
+  niż 300 s) i powtórzony identyfikator traktuj jak sukces: <code>200</code> bez ponownego przetwarzania.
+  Deduplikuj <strong>dopiero po</strong> poprawnej weryfikacji podpisu — inaczej żądanie bez sekretu mogłoby „zająć”
+  identyfikator prawdziwej dostawy.</div>
+{% for ex in examples %}
+<h3 class="h6 mt-3" id="odbiorca-{{ ex.lang }}">{{ ex.title }}</h3>
+<pre class="bg-light border p-2 small"><code class="language-{{ ex.lang }}">{{ ex.code }}</code></pre>
+{% endfor %}
+
+<h2 class="h5 mt-4" id="ponowienia">5. Ponowienia i stany dostaw</h2>
+<p>Za dostarczone uznawana jest tylko odpowiedź <code>2xx</code>. Każda inna odpowiedź, przekierowanie (parser nie idzie
+  za <code>3xx</code>), błąd sieci i brak odpowiedzi w ciągu 5 s to porażka. Po kolejnych porażkach parser ponawia
+  wysyłkę po 1 min, 5 min, 30 min, 2 h i 12 h — razem 6 prób w ciągu mniej więcej 15 godzin.</p>
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>Stan dostawy</th><th>Znaczenie</th></tr></thead>
+  <tbody>
+    <tr><td><code>pending</code></td><td>czeka na wysyłkę albo na kolejną próbę</td></tr>
+    <tr><td><code>sent</code></td><td>dostarczona — odbiorca odpowiedział <code>2xx</code></td></tr>
+    <tr><td><code>failed</code></td><td>6. próba też się nie udała (albo klucz wyłączono lub usunięto adres webhooka) —
+      parser już nie ponawia</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Dostawę <code>failed</code> wznowisz przyciskiem „Ponów” przy dostawie na stronie <em>Klucze API</em>: licznik prób
+  zaczyna się od nowa, a dostawa ma ten sam <code>X-XP-Delivery</code>. Przy każdej wysyłce adres jest sprawdzany od
+  nowa (rozdział 6), a podpis liczony aktualnym sekretem.</p>
+
+<h2 class="h5 mt-4" id="cel">6. Bezpieczeństwo adresu docelowego</h2>
+<p>Żeby webhook nie mógł posłużyć do sięgania w głąb sieci serwera parsera, adres musi spełniać kilka warunków —
+  sprawdzanych przy zapisie i ponownie przy każdej wysyłce:</p>
+<ul>
+  <li>tylko <code>https</code>; <code>http</code> dopuszcza dopiero <code>WEBHOOK_ALLOW_HTTP=1</code> — wyłącznie do
+    testów albo w zamkniętej sieci wewnętrznej;</li>
+  <li>bez adresów niepublicznych: prywatnych (np. <code>10.0.0.0/8</code>, <code>192.168.0.0/16</code>), lokalnych
+    (<code>127.0.0.1</code>, <code>::1</code>), link-local (w tym <code>169.254.169.254</code>) i CGNAT
+    (<code>100.64.0.0/10</code>, m.in. Tailscale). Liczą się wszystkie adresy, które zwraca DNS — wystarczy jeden
+    zablokowany;</li>
+  <li>bez danych logowania w adresie (<code>user:hasło@</code>) i bez fragmentu (<code>#…</code>); najwyżej 500 znaków.</li>
+</ul>
+<p>Odbiorca w sieci firmowej albo w tailnecie? Administrator instancji dopisuje go do zmiennej
+  <code>WEBHOOK_ALLOWED_HOSTS</code>: nazwy hostów i podsieci CIDR rozdzielone przecinkami, np.
+  <code>WEBHOOK_ALLOWED_HOSTS=erp.local,10.20.0.0/16</code>. Wyjątek zdejmuje tylko blokadę adresu — wymóg
+  <code>https</code> zostaje.</p>
+
+<h2 class="h5 mt-4" id="lista-dostaw">7. Lista dostaw w API</h2>
+<p>Historię dostaw swojego klucza pobierzesz bez panelu: <code>GET /api/v1/webhook-deliveries</code>.</p>
+<pre class="bg-light border p-2 small"><code class="language-bash">curl -H "X-API-Key: $XP_API_KEY" "{{ api_base }}/api/v1/webhook-deliveries?status=failed&amp;limit=50"</code></pre>
+<ul>
+  <li>Parametry: <code>status</code> (<code>pending</code>, <code>sent</code> albo <code>failed</code>),
+    <code>document_id</code>, <code>limit</code> (domyślnie {{ limits.list_default }}, maks. {{ limits.list_max }})
+    i <code>cursor</code>. Wyniki od najnowszych; gdy jest ich więcej, <code>next_cursor</code> wskazuje następną
+    stronę (powtórz filtry i dodaj <code>cursor=&lt;next_cursor&gt;</code>; <code>null</code> — ostatnia strona).</li>
+  <li>Pola dostawy: <code>uuid</code> (to samo co <code>X-XP-Delivery</code>), <code>event</code>, <code>status</code>,
+    <code>attempts</code>, <code>document_id</code>, <code>payload</code> (wysyłane zdarzenie), <code>created_at</code>,
+    <code>next_attempt_at</code>, <code>sent_at</code>, <code>last_status_code</code>, <code>last_error</code>.</li>
+  <li>Klucz widzi tylko swoje dostawy; sekretu nie ma w żadnej odpowiedzi. Pełny opis:
+    <a href="{{ url_for('api_docs') }}">dokumentacja interaktywna</a>.</li>
+</ul>
+
+<h2 class="h5 mt-4" id="eksploatacja">8. Eksploatacja (administrator instancji)</h2>
+<ul>
+  <li><strong>Worker.</strong> Powiadomienia wysyła osobna usługa Docker Compose <code>worker</code> (polecenie
+    <code>flask webhooks-worker</code>, sprawdza kolejkę co 5 s). Stan sprawdzisz poleceniem
+    <code>docker compose ps</code> — <code>worker</code> powinien być <code>healthy</code>. Gdy nie działa, dostawy
+    czekają w stanie <code>pending</code>; awaryjnie wyślesz je z crona poleceniem
+    <code>flask webhooks-worker --once</code> (jeden przebieg i koniec).</li>
+  <li><strong><code>PUBLIC_BASE_URL</code></strong> — publiczny adres panelu (np. <code>https://faktury.example.com</code>)
+    używany w <code>document_url</code>. Bez niego trafia tam adres żądania, które zmieniło status (może być
+    wewnętrzny), a przy zmianach poza żądaniem HTTP — <code>null</code>.</li>
+  <li><strong>Retencja.</strong> <code>flask prune-webhooks</code> usuwa dostawy zakończone (<code>sent</code>,
+    <code>failed</code>) starsze niż <code>WEBHOOK_RETENTION_DAYS</code> dni (domyślnie 30; inna wartość:
+    <code>--days N</code>). Uruchamiaj je z crona, np. raz na dobę.</li>
+  <li><strong>Adresy docelowe</strong>: <code>WEBHOOK_ALLOWED_HOSTS</code> i <code>WEBHOOK_ALLOW_HTTP</code>
+    (rozdział 6). Wszystkie zmienne opisuje <code>.env.example</code>.</li>
+</ul>
+{% endblock %}

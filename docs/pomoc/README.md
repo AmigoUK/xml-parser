@@ -52,7 +52,11 @@ Klucze API, przykłady curl dla każdego endpointu, kody odpowiedzi i limity.
 
 ### [Integracja z własną aplikacją](integracja.md)
 
-Przewodnik krok po kroku: wysyłka, odbiór wyniku, synchronizacja zmian statusów, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.
+Przewodnik krok po kroku: wysyłka, odbiór wyniku, synchronizacja zmian statusów albo webhook, ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce.
+
+### [Webhooki](webhooki.md)
+
+Parser sam powiadamia Twój system o zmianie statusu dokumentu: włączenie przy kluczu API, podpis HMAC, ponowienia i gotowy odbiorca w Pythonie, PHP, Node.js i powłoce.
 
 ### [Najczęstsze pytania](faq.md)
 

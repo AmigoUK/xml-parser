@@ -1,0 +1,20 @@
+{# FAQ „webhook z parsera?”: rozwinięcie odpowiedzi — kroki weryfikacji i sprawdzenie podpisu bez serwera (--check).
+   Renderowane w akordeonie FAQ (faq.html) pod krótką odpowiedzią. #}
+<h3 class="h6 mt-3">Krok po kroku</h3>
+<ol>
+  <li><strong>Czytaj surowe bajty ciała</strong>, zanim cokolwiek z nimi zrobisz. Podpis obejmuje dokładnie te bajty —
+    JSON sparsowany i zapisany od nowa (inna kolejność kluczy, spacje) da inny wynik.</li>
+  <li><strong>Sprawdź czas</strong>: <code>X-XP-Timestamp</code> to liczba sekund; odrzuć żądanie, gdy różni się od
+    Twojego zegara o więcej niż 300 s (w obie strony).</li>
+  <li><strong>Policz podpis</strong>: HMAC-SHA256 sekretem webhooka z tekstu <code>&lt;X-XP-Timestamp&gt;.&lt;ciało&gt;</code>,
+    zapis szesnastkowy małymi literami, z przedrostkiem <code>sha256=</code>. Porównaj z <code>X-XP-Signature</code>
+    funkcją o stałym czasie (<code>hmac.compare_digest</code>, <code>hash_equals</code>, <code>timingSafeEqual</code>).
+    Niezgodność → odpowiedz <code>401</code> i nic nie przetwarzaj.</li>
+  <li><strong>Dopiero po poprawnym podpisie</strong> deduplikuj po <code>X-XP-Delivery</code> — ten sam identyfikator
+    oznacza ponowienie tej samej dostawy; odpowiedz wtedy <code>200</code> bez ponownego przetwarzania.</li>
+</ol>
+<p>Każdy z gotowych odbiorców w temacie <a href="{{ url_for('help.topic', slug='webhooki') }}#podpis">Webhooki</a>
+  ma tryb <code>--check &lt;ts&gt; &lt;podpis&gt;</code>: sprawdza podpis ciała podanego na wejściu, bez serwera i bez
+  sieci (sekret ze zmiennej <code>XP_WEBHOOK_SECRET</code>), i wypisuje <code>OK</code> albo powód odrzucenia.
+  Jeśli podpis się nie zgadza, a sekret jest na pewno aktualny, sprawdź, czy po „Rotuj sekret” odbiorca dostał nowy
+  sekret — stary przestaje działać od razu.</p>

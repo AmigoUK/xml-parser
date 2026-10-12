@@ -123,9 +123,12 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" \
 </ul>
 
 <h2 class="h5 mt-4">Powiadomienia (webhook)</h2>
-<p>Aplikacja nie wysyła obecnie webhooków (planowane w kolejnej wersji). Aby dowiedzieć się o zmianie statusu (np. po
-  rozwiązaniu problemów w panelu), synchronizuj listę <code>GET /api/v1/documents?updated_since=…</code> z kursorem
-  (zalecane) albo odpytuj <code>GET /api/v1/documents/{id}</code> — jak robić to bezpiecznie, opisuje
+<p>Przy kluczu API możesz ustawić adres webhooka (strona <em>Klucze API</em>, rola administratora). Parser wysyła wtedy
+  podpisany <code>POST</code> ze zdarzeniem <code>document.status_changed</code> przy każdej zmianie statusu dokumentu
+  wysłanego tym kluczem, a nieudane dostawy ponawia. Historię dostaw zwraca
+  <code>GET {{ api_base }}/api/v1/webhook-deliveries</code>. Ładunek, podpis HMAC, ponowienia i gotowych odbiorców opisuje
+  temat <a href="{{ url_for('help.topic', slug='webhooki') }}">Webhooki</a>. Bez webhooka zmiany odbierasz synchronizacją
+  <code>GET /api/v1/documents?updated_since=…</code> z kursorem albo odpytując <code>GET /api/v1/documents/{id}</code> —
   <a href="{{ url_for('help.topic', slug='integracja') }}#odbior">Integracja z własną aplikacją</a>.</p>
 
 <h2 class="h5 mt-4">Stan usługi</h2>

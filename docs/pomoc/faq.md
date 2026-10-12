@@ -136,8 +136,39 @@ Bo może oznaczać 1,234 albo 1234. Wskaż separator dziesiętny transformacją 
 
 ## Jak podłączyć swoją aplikację?
 
-Utwórz klucz w „Klucze API”, wysyłaj faktury przez POST /api/v1/documents z nagłówkiem X-API-Key i zapisuj zwrócone id. Status approved oznacza gotowy dokument kanoniczny w polu invoice; needs_review — wynik przyjdzie później. Zmiany statusów odbieraj synchronizacją GET /api/v1/documents?updated_since=… z kursorem next_cursor albo odpytując GET /api/v1/documents/{id} (webhooków nie ma). Przewodnik z gotowym kodem w Pythonie, PHP, JavaScripcie i powłoce. [Więcej →](integracja.md)
+Utwórz klucz w „Klucze API”, wysyłaj faktury przez POST /api/v1/documents z nagłówkiem X-API-Key i zapisuj zwrócone id. Status approved oznacza gotowy dokument kanoniczny w polu invoice; needs_review — wynik przyjdzie później. Zmiany statusów odbieraj synchronizacją GET /api/v1/documents?updated_since=… z kursorem next_cursor, odpytując GET /api/v1/documents/{id} albo ustaw przy kluczu webhook — parser sam wyśle powiadomienie o zmianie statusu (temat „Webhooki”). Przewodnik z gotowym kodem w Pythonie, PHP, JavaScripcie i powłoce. [Więcej →](integracja.md)
 
 ## Jak dowiedzieć się, że operator zatwierdził fakturę wysłaną przez API?
 
-Synchronizuj listę: GET /api/v1/documents?updated_since=…&status=approved zwraca dokumenty zatwierdzone od podanej chwili — także przyjęte wcześniej, a zatwierdzone przez operatora w panelu dopiero teraz. Kolejne strony pobierasz z cursor=&lt;next_cursor>, aż next_cursor będzie null; każdy przebieg zaczynaj od ostatniego odebranego updated_at minus 5 minut, a powtórzenia odrzucaj po id i updated_at. Parametr since tu nie pomoże — filtruje po czasie przyjęcia faktury. [Więcej →](integracja.md)
+Synchronizuj listę: GET /api/v1/documents?updated_since=…&status=approved zwraca dokumenty zatwierdzone od podanej chwili — także przyjęte wcześniej, a zatwierdzone przez operatora w panelu dopiero teraz. Kolejne strony pobierasz z cursor=&lt;next_cursor>, aż next_cursor będzie null; każdy przebieg zaczynaj od ostatniego odebranego updated_at minus 5 minut, a powtórzenia odrzucaj po id i updated_at. Parametr since tu nie pomoże — filtruje po czasie przyjęcia faktury. Zamiast odpytywać możesz też ustawić webhook przy kluczu: parser wyśle powiadomienie document.status_changed, gdy status się zmieni. [Więcej →](integracja.md)
+
+<a id="webhook-podpis"></a>
+
+## Jak sprawdzić, że webhook naprawdę przyszedł z parsera?
+
+Sprawdź podpis. Każde powiadomienie ma nagłówki X-XP-Timestamp (czas wysyłki w sekundach unixowych) i X-XP-Signature (sha256= i HMAC-SHA256 w zapisie szesnastkowym). Policz HMAC-SHA256 sekretem webhooka z tekstu „X-XP-Timestamp, kropka, surowe bajty ciała”, porównaj z podpisem w stałym czasie i odrzuć żądanie, którego czas różni się od Twojego zegara o więcej niż 300 s. Sekretu nie zna nikt poza Tobą i parserem — panel pokazuje go tylko raz. [Więcej →](webhooki.md)
+
+### Krok po kroku
+
+1. **Czytaj surowe bajty ciała**, zanim cokolwiek z nimi zrobisz. Podpis obejmuje dokładnie te bajty — JSON sparsowany i zapisany od nowa (inna kolejność kluczy, spacje) da inny wynik.
+2. **Sprawdź czas**: `X-XP-Timestamp` to liczba sekund; odrzuć żądanie, gdy różni się od Twojego zegara o więcej niż 300 s (w obie strony).
+3. **Policz podpis**: HMAC-SHA256 sekretem webhooka z tekstu `<X-XP-Timestamp>.<ciało>`, zapis szesnastkowy małymi literami, z przedrostkiem `sha256=`. Porównaj z `X-XP-Signature` funkcją o stałym czasie (`hmac.compare_digest`, `hash_equals`, `timingSafeEqual`). Niezgodność → odpowiedz `401` i nic nie przetwarzaj.
+4. **Dopiero po poprawnym podpisie** deduplikuj po `X-XP-Delivery` — ten sam identyfikator oznacza ponowienie tej samej dostawy; odpowiedz wtedy `200` bez ponownego przetwarzania.
+
+Każdy z gotowych odbiorców w temacie [Webhooki](webhooki.md#podpis) ma tryb `--check <ts> <podpis>`: sprawdza podpis ciała podanego na wejściu, bez serwera i bez sieci (sekret ze zmiennej `XP_WEBHOOK_SECRET`), i wypisuje `OK` albo powód odrzucenia. Jeśli podpis się nie zgadza, a sekret jest na pewno aktualny, sprawdź, czy po „Rotuj sekret” odbiorca dostał nowy sekret — stary przestaje działać od razu.
+
+<a id="webhook-brak-dostawy"></a>
+
+## Ustawiłem webhook, ale nic nie przychodzi — dlaczego?
+
+Najczęściej dokument nie przyszedł przez ten klucz albo powiadomienia czekają w kolejce, bo nie działa worker. Sprawdź po kolei punkty poniżej; każdą próbę dostawy (z kodem odpowiedzi i błędem) widzisz na liście dostaw klucza w panelu i w API. [Więcej →](webhooki.md)
+
+### Sprawdź po kolei
+
+1. **Dokument nie przyszedł przez ten klucz.** Powiadomienia dotyczą wyłącznie dokumentów wysłanych przez REST API kluczem, przy którym ustawiono webhook. Faktura wgrana w panelu albo przykład z trybu demo nie wysyła zdarzeń. Do próby użyj „Wyślij testowe zdarzenie” przy kluczu albo wyślij plik tym kluczem.
+2. **Klucz jest nieaktywny albo nie ma adresu webhooka.** Wyłączony klucz nie wysyła zdarzeń, a dostawy czekające w kolejce kończą się stanem `failed`. Sprawdź w „Klucze API”, czy klucz jest aktywny, a adres zapisany.
+3. **Nie działa worker.** Powiadomienia wysyła osobna usługa `worker`; bez niej dostawy zostają w stanie `pending`. Sprawdź `docker compose ps` — usługa `worker` powinna być uruchomiona i zdrowa (`healthy`); awaryjnie wyślij kolejkę poleceniem `flask webhooks-worker --once`.
+4. **Adres jest zablokowany.** Parser nie wysyła na adresy prywatne, lokalne ani z sieci CGNAT (np. Tailscale) i wymaga `https`. Adres w sieci firmowej albo w tailnecie administrator instancji dopuszcza zmienną `WEBHOOK_ALLOWED_HOSTS` (nazwy hostów i podsieci CIDR).
+5. **Odbiorca odpowiada błędem.** Za dostarczone uznawana jest tylko odpowiedź 2xx w ciągu 5 s; przekierowanie, inny kod albo przekroczenie czasu to porażka i ponowienie. Po 6 nieudanych próbach dostawa ma stan `failed` — popraw odbiorcę i kliknij „Ponów” przy dostawie.
+
+Ostatni kod odpowiedzi i treść błędu każdej dostawy zobaczysz na liście dostaw przy kluczu w panelu albo w API: `GET /api/v1/webhook-deliveries?status=failed` (opis w temacie [Webhooki](webhooki.md#lista-dostaw)).

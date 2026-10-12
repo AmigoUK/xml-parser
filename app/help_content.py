@@ -28,8 +28,11 @@ TOPICS: list[dict] = [
     {"slug": "api", "title": "REST API",
      "summary": "Klucze API, przykłady curl dla każdego endpointu, kody odpowiedzi i limity."},
     {"slug": "integracja", "title": "Integracja z własną aplikacją",
-     "summary": "Przewodnik krok po kroku: wysyłka, odbiór wyniku, synchronizacja zmian statusów, ponowienia "
-                "i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce."},
+     "summary": "Przewodnik krok po kroku: wysyłka, odbiór wyniku, synchronizacja zmian statusów albo webhook, "
+                "ponowienia i gotowy kod w Pythonie, PHP, JavaScripcie i powłoce."},
+    {"slug": "webhooki", "title": "Webhooki",
+     "summary": "Parser sam powiadamia Twój system o zmianie statusu dokumentu: włączenie przy kluczu API, "
+                "podpis HMAC, ponowienia i gotowy odbiorca w Pythonie, PHP, Node.js i powłoce."},
     {"slug": "faq", "title": "Najczęstsze pytania",
      "summary": "Krótkie odpowiedzi na pytania, które pojawiają się najczęściej."},
 ]
@@ -359,13 +362,28 @@ FAQ: list[dict] = [
      "a": "Utwórz klucz w „Klucze API”, wysyłaj faktury przez POST /api/v1/documents z nagłówkiem X-API-Key "
           "i zapisuj zwrócone id. Status approved oznacza gotowy dokument kanoniczny w polu invoice; "
           "needs_review — wynik przyjdzie później. Zmiany statusów odbieraj synchronizacją "
-          "GET /api/v1/documents?updated_since=… z kursorem next_cursor albo odpytując GET /api/v1/documents/{id} "
-          "(webhooków nie ma). Przewodnik z gotowym kodem w Pythonie, PHP, JavaScripcie i powłoce.",
+          "GET /api/v1/documents?updated_since=… z kursorem next_cursor, odpytując GET /api/v1/documents/{id} "
+          "albo ustaw przy kluczu webhook — parser sam wyśle powiadomienie o zmianie statusu (temat „Webhooki”). "
+          "Przewodnik z gotowym kodem w Pythonie, PHP, JavaScripcie i powłoce.",
      "link": "integracja"},
     {"q": "Jak dowiedzieć się, że operator zatwierdził fakturę wysłaną przez API?",
      "a": "Synchronizuj listę: GET /api/v1/documents?updated_since=…&status=approved zwraca dokumenty zatwierdzone "
           "od podanej chwili — także przyjęte wcześniej, a zatwierdzone przez operatora w panelu dopiero teraz. "
           "Kolejne strony pobierasz z cursor=<next_cursor>, aż next_cursor będzie null; każdy przebieg zaczynaj "
           "od ostatniego odebranego updated_at minus 5 minut, a powtórzenia odrzucaj po id i updated_at. Parametr "
-          "since tu nie pomoże — filtruje po czasie przyjęcia faktury.", "link": "integracja"},
+          "since tu nie pomoże — filtruje po czasie przyjęcia faktury. Zamiast odpytywać możesz też ustawić "
+          "webhook przy kluczu: parser wyśle powiadomienie document.status_changed, gdy status się zmieni.",
+     "link": "integracja"},
+    {"q": "Jak sprawdzić, że webhook naprawdę przyszedł z parsera?",
+     "slug": "webhook-podpis", "template": "_webhook-podpis.html",
+     "a": "Sprawdź podpis. Każde powiadomienie ma nagłówki X-XP-Timestamp (czas wysyłki w sekundach unixowych) "
+          "i X-XP-Signature (sha256= i HMAC-SHA256 w zapisie szesnastkowym). Policz HMAC-SHA256 sekretem webhooka "
+          "z tekstu „X-XP-Timestamp, kropka, surowe bajty ciała”, porównaj z podpisem w stałym czasie i odrzuć "
+          "żądanie, którego czas różni się od Twojego zegara o więcej niż 300 s. Sekretu nie zna nikt poza Tobą "
+          "i parserem — panel pokazuje go tylko raz.", "link": "webhooki"},
+    {"q": "Ustawiłem webhook, ale nic nie przychodzi — dlaczego?",
+     "slug": "webhook-brak-dostawy", "template": "_webhook-brak-dostawy.html",
+     "a": "Najczęściej dokument nie przyszedł przez ten klucz albo powiadomienia czekają w kolejce, bo nie działa "
+          "worker. Sprawdź po kolei punkty poniżej; każdą próbę dostawy (z kodem odpowiedzi i błędem) widzisz "
+          "na liście dostaw klucza w panelu i w API.", "link": "webhooki"},
 ]
