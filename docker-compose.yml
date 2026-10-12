@@ -82,6 +82,7 @@ services:
   worker:
     # ten sam obraz co app (budowany raz przez usługę app; `up -d --build` buduje go przed startem workera)
     image: xml-parser:local
+    pull_policy: never  # obraz powstaje lokalnie z usługi app — bez próby pobierania z rejestru
     stop_grace_period: 30s
     restart: unless-stopped
     command: ["flask", "webhooks-worker"]

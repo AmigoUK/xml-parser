@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nic jeszcze._
 
+## [0.9.0] — 2026-10-12
+
+### Uwagi do aktualizacji
+- Nowa migracja `99f2fe61d963` tworzy tabelę `webhook_deliveries` (CREATE TABLE, wykonuje się w sekundy; `MIGRATE_ON_START=1` na usłudze `app` robi to automatycznie).
+- Nowa usługa Compose `worker` (`flask webhooks-worker`) wysyła dostawy webhooków. Bez niej dostawy czekają w stanie `pending`. Awaryjnie z crona: `docker compose run --rm -T worker flask webhooks-worker --once`.
+- Nowe zmienne: `PUBLIC_BASE_URL` (adres panelu w polu `document_url` ładunku — bez niej adres z żądania albo `null`), `WEBHOOK_ALLOWED_HOSTS` (nazwy i CIDR dopuszczone mimo blokady adresów prywatnych, np. `100.64.0.0/10` dla tailnetu), `WEBHOOK_ALLOW_HTTP` (tylko do testów), `WEBHOOK_RETENTION_DAYS` (domyślnie 30), `WEBHOOK_HEARTBEAT_FILE` (ustawia Compose), `WORKER_MEM_LIMIT`, `WORKER_CPUS`.
+- Sekrety webhooków są zapisane jawnie w `api_keys.webhook_secret`, więc trafiają do zrzutów bazy — katalog `backups/` traktuj jak sekret.
+- `docker compose up -d --build` buduje też obraz usługi `worker`. Poza Compose uruchom `flask webhooks-worker` jako osobny, stały proces po migracjach (heartbeat w `WEBHOOK_HEARTBEAT_FILE`) i dodaj do crona `flask prune-webhooks` (retencja dostaw).
+
+### Added
+- Webhooki: przy każdej zmianie statusu dokumentu wgranego aktywnym kluczem API z ustawionym adresem webhooka powstaje dostawa (`document.status_changed`) z ładunkiem `{event, id, status, previous_status, updated_at, document_url}`; zdarzenie testowe `webhook.test` z pustymi polami dokumentu. Dokumenty z panelu i demo nie wysyłają zdarzeń.
+- Podpis HMAC-SHA256 nad `"<ts>.<body>"` w nagłówkach `X-XP-Timestamp`, `X-XP-Signature` (`sha256=…`), stały identyfikator dostawy `X-XP-Delivery` (ten sam przy ponowieniach).
+- Worker dostaw: dzierżawa wierszy (`FOR UPDATE SKIP LOCKED` na MariaDB), ponowienia po 1 min, 5 min, 30 min, 2 h i 12 h, po szóstej porażce stan `failed`; limit 5 s na całe żądanie (także przy odpowiedzi sączonej bajt po bajcie), bez podążania za przekierowaniami, odczyt odpowiedzi do 1 KiB; heartbeat dla healthchecku; komendy `flask webhooks-worker [--once] [--interval]` i `flask prune-webhooks [--days]`.
+- Ochrona przed SSRF: tylko `https` (http za `WEBHOOK_ALLOW_HTTP=1`), odrzucane adresy prywatne, loopback, link-local i CGNAT — także ukryte w IPv6 (mapowane IPv4, NAT64) — oraz userinfo, fragment, białe znaki i długość ponad 500 znaków; nazwa rozwiązywana przy każdej wysyłce, połączenie wyłącznie z sprawdzonym adresem IP (SNI z nazwą hosta).
+- Panel „Klucze API” (tylko administrator): adres webhooka, sekret pokazany jeden raz, „Rotuj sekret”, „Wyczyść”, „Wyślij testowe zdarzenie”, lista 50 najnowszych dostaw z przyciskiem „Ponów” (tylko dla dostaw `failed`; wysyła worker). Użytkownik bez roli administratora widzi tylko informację, że ustawienia webhooków zmienia administrator.
+- API: `GET /api/v1/webhook-deliveries` (filtry `status`, `document_id`, kursor) oraz schematy OpenAPI `WebhookEvent`, `WebhookDelivery`, `WebhookDeliveryList`.
+- Przykłady odbiorcy z weryfikacją podpisu (`app/help_examples/webhook-odbiorca.*`): serwery w Pythonie, PHP i Node.js (deduplikacja po `X-XP-Delivery` dopiero po sprawdzeniu podpisu) oraz bash — tylko tryb `--check`; wszystkie mają `--check` do testów bez serwera.
+- Pomoc: temat „Webhooki”, FAQ „Jak sprawdzić, że webhook naprawdę przyszedł z parsera?” i „Ustawiłem webhook, ale nic nie przychodzi — dlaczego?”, „Sposób C — webhook” w temacie Integracja; zrzut `15-klucze-webhook`.
+- Compose: kotwica `x-app-env`, usługa `worker` z healthcheckiem po heartbeacie; entrypoint w trybie polecenia (`exec "$@"` po sondzie bazy).
+- README i `docs/wdrozenie.md`: sekcje o workerze, zmiennych webhooków, cronie i kopiach zapasowych.
+
+### Changed
+- `reset_demo` kasuje dostawy webhooków przed dokumentami.
+- Pomoc i API nie mówią już, że webhooków nie ma; temat Integracja (diagram, lista kontrolna, typowe błędy) i FAQ uwzględniają webhook.
+- `tools/screenshots.py`: pole `Shot.click` (otwieranie elementu przed zrzutem) i dane webhooka dla zrzutu 15.
+
+### Security
+- Sekret webhooka nigdy nie trafia do Historii, komunikatów, logów ani API; rotacja unieważnia poprzedni. Odpowiedzi z jednorazowym sekretem (i z nowo utworzonym kluczem API) mają `Cache-Control: no-store`.
+
 ## [0.8.0] — 2026-10-12
 
 ### Added
@@ -333,7 +362,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/AmigoUK/xml-parser/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AmigoUK/xml-parser/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/AmigoUK/xml-parser/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/AmigoUK/xml-parser/compare/v0.6.0...v0.7.0
