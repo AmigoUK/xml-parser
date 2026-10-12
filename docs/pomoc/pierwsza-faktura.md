@@ -6,7 +6,7 @@ Pierwsza faktura nowego dostawcy prawie zawsze trafia do **Kolejki** ze statusem
 
 ![Lista dokumentów w kolejce do wyjaśnienia z dostawcą, plikiem i liczbą problemów](../../app/static/screenshots/03-kolejka.png)
 
-*Kolejka do wyjaśnienia: pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json, zeta.csv) ze statusem „Do wyjaśnienia” i liczbą problemów; numer w kolumnie „#” otwiera widok dokumentu.*
+*Kolejka do wyjaśnienia: sześć pierwszych faktur zestawu demo oraz próbki gamma-ubl.xml, epsilon.json, zeta.csv ze statusem „Do wyjaśnienia” i liczbą problemów; numer w kolumnie „#” otwiera widok dokumentu.*
 
 ## Widok dokumentu
 
