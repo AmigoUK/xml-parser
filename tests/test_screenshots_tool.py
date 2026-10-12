@@ -174,6 +174,40 @@ def test_browser_error_before_shots_is_tool_error(tool, tmp_path, fail_at):
     assert closed == [True]
 
 
+def test_shot_click_defaults_to_none_and_webhook_shot_opens_details(tool):
+    shots = {s.name: s for s in tool.PAGES}
+    assert tool.Shot("x", "/x", False).click is None
+    assert shots["15-klucze-webhook"].click == "details summary"
+    assert all(s.click is None for n, s in shots.items() if n != "15-klucze-webhook")
+
+
+def test_missing_click_selector_is_tool_error(tool, tmp_path):
+    """Brak elementu do kliknięcia (np. panel bez <details>) to ToolError z nazwą zrzutu, nie traceback."""
+    class FakeError(Exception):
+        pass
+
+    def no_click(selector, **kwargs):
+        if selector != "form button":  # kliknięcie logowania przechodzi, brakuje dopiero elementu zrzutu
+            raise FakeError("timeout")
+
+    closed = []
+    page = SimpleNamespace(on=lambda *args: None, goto=lambda url: None, wait_for_load_state=lambda *a: None,
+                           wait_for_timeout=lambda ms: None, click=no_click, url="x", title=lambda: "t",
+                           content=lambda: "Wyloguj", fill=lambda *a: None)
+    context = SimpleNamespace(new_page=lambda: page)
+    browser = SimpleNamespace(new_context=lambda **kwargs: context, close=lambda: closed.append(True))
+    pw = SimpleNamespace(chromium=SimpleNamespace(launch=lambda: browser))
+
+    @contextmanager
+    def fake_sync_playwright():
+        yield pw
+
+    shot = tool.Shot("99-x", "/x", False, click="details summary")
+    with pytest.raises(tool.ToolError, match=r"99-x.*details summary"):
+        tool.take_screenshots((fake_sync_playwright, FakeError), "http://127.0.0.1:1", [shot], tmp_path, "x")
+    assert closed == [True]
+
+
 def test_serve_mode_starts_isolated_instance(tool, tmp_path):
     """Prawdziwy podproces --serve (świeża SQLite w tmp, seed i nauka na próbkach): /healthz z wersją aplikacji,
     /demo dostępne; serwer zatrzymany po PID. Najwolniejszy test tego modułu (kilkanaście sekund)."""
@@ -193,6 +227,7 @@ def test_serve_mode_starts_isolated_instance(tool, tmp_path):
     for entry in load_manifest().by_phase("pierwsze"):
         assert f": {entry.filename} — " in log, entry.filename
     assert "dokument 7: alfa-1.xml" in log
+    assert "webhook demo: adres i 3 dostawy (sent/failed/pending)" in log
     assert (tmp_path / "serwer.log").read_text(encoding="utf-8").count(tool.READY) == 1
 
 

@@ -686,8 +686,8 @@ def test_webhooks_topic_documents_contract(client):
 def test_webhooks_topic_screenshot_is_provisional_copy_until_regenerated():
     """Zrzut 15-klucze-webhook.png istnieje i jest w PAGES narzędzia zrzutów (tymczasowo kopia, później z danymi)."""
     assert (SCREENSHOTS_DIR / "15-klucze-webhook.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
-    assert 'Shot("15-klucze-webhook", "/klucze-api", True)' in (ROOT / "tools" / "screenshots.py").read_text(
-        encoding="utf-8")
+    source = (ROOT / "tools" / "screenshots.py").read_text(encoding="utf-8")
+    assert 'Shot("15-klucze-webhook", "/klucze-api", True, click="details summary")' in source
 
 
 def test_help_no_longer_says_webhooks_missing(client):

@@ -60,6 +60,7 @@ LIVE_DEMO_PORT = 18506  # domyślny port żywego demo (APP_PORT w compose) — z
 ADMIN_EMAIL = "admin@example.com"
 DEMO_API_KEY = "xp_demo_zrzuty_0000000000"  # fikcyjny i stały — widać go na zrzucie strony „O demo”
 VIEWPORT = {"width": 1400, "height": 900}
+CLICK_TIMEOUT_MS = 5000  # ile czekać na element z Shot.click
 SETTLE_MS = 600  # pauza po „networkidle” (Alpine.js, czcionki, przewinięcie do kotwicy)
 READY = "SERWER GOTOWY"
 SERVER_TIMEOUT = 180  # s na start instancji (seed i nauka na próbkach)
@@ -76,6 +77,7 @@ class Shot(NamedTuple):
     path: str  # adres w panelu
     full_page: bool  # cała strona albo tylko okno 1400×900
     wait_for: str | None = None  # selektor, na który trzeba poczekać po załadowaniu
+    click: str | None = None  # selektor klikany po wait_for, przed zrzutem (np. rozwinięcie <details>)
 
 
 # Próbki demo w kolejności wgrywania; True = problemy rozwiązane pętlą „pierwsza podpowiedź + zapamiętaj”,
@@ -134,7 +136,7 @@ PAGES = [
     Shot("13-faq-worek", f"/dokumenty/{ZETA_ID}", False),  # FAQ: „1 worek = 25 kg” w negocjacji
     # karta zestawu demo z postępem pierwszej fazy; zrzut po zalogowaniu (przyciski karty widzą tylko zalogowani)
     Shot("14-demo-zestaw", "/demo#zestaw", False),
-    Shot("15-klucze-webhook", "/klucze-api", True),
+    Shot("15-klucze-webhook", "/klucze-api", True, click="details summary"),
 ]
 
 
@@ -184,9 +186,43 @@ def serve(port: int, workdir: Path) -> None:
             print(f"  dokument {doc.id}: {name} — {doc.status}", flush=True)
             if doc.id != expected_id:
                 raise SystemExit(f"Oczekiwano dokumentu {expected_id}, jest {doc.id} — adresy w PAGES byłyby złe.")
+        seed_webhook_demo(offset)
     server = make_server(HOST, port, app, threaded=True)
     print(READY, flush=True)
     server.serve_forever()
+
+
+def seed_webhook_demo(offset: int) -> None:
+    """Klucz demo z adresem webhooka i trzema dostawami (sent/failed/pending) dla zrzutu 15-klucze-webhook. Adres
+    ustawiany wprost na modelu — fikcyjny host, bez walidacji i DNS. Tylko w odizolowanej instancji (serve())."""
+    from datetime import timedelta
+
+    from app.extensions import db
+    from app.models import WEBHOOK_FAILED, WEBHOOK_PENDING, WEBHOOK_SENT, ApiKey, Document, WebhookDelivery, utcnow
+    from app.services.apikeys import hash_key
+    from app.services.webhook_outbox import build_payload
+    from app.services.webhook_security import new_secret
+
+    key = ApiKey.query.filter_by(key_hash=hash_key(DEMO_API_KEY)).first()
+    if key is None:
+        raise SystemExit("Brak klucza demo — webhook do zrzutu nie ma do czego się przypiąć.")
+    key.webhook_url = "https://erp.example.com/webhooki/parser"
+    key.webhook_secret = new_secret()
+    now = utcnow()
+    docs = [db.session.get(Document, offset + i) for i in (1, 3, 4)]  # alfa-1, beta-ksef, delta: zatwierdzone
+    sent, failed, pending = (WebhookDelivery(api_key_id=key.id, document_id=d.id, event="document.status_changed",
+                                             payload=build_payload(d, "received")) for d in docs)
+    sent.status, sent.attempts, sent.last_status_code = WEBHOOK_SENT, 1, 200
+    sent.created_at, sent.sent_at = now - timedelta(minutes=47), now - timedelta(minutes=47, seconds=-2)
+    failed.status, failed.attempts, failed.last_status_code = WEBHOOK_FAILED, 6, 503
+    failed.last_error, failed.next_attempt_at = "HTTP 503: Service Unavailable", None
+    failed.created_at = now - timedelta(hours=3)
+    pending.status, pending.attempts, pending.last_status_code = WEBHOOK_PENDING, 1, None
+    pending.last_error, pending.next_attempt_at = "Przekroczono limit czasu (5 s)", now + timedelta(minutes=5)
+    pending.created_at = now - timedelta(minutes=2)
+    db.session.add_all([sent, failed, pending])
+    db.session.commit()
+    print("  webhook demo: adres i 3 dostawy (sent/failed/pending)", flush=True)
 
 
 def server_env(password: str) -> dict[str, str]:
@@ -338,6 +374,12 @@ def take_screenshots(playwright, base: str, shots: list[Shot], out: Path, passwo
                     page.wait_for_load_state("networkidle")
                     if shot.wait_for:
                         page.wait_for_selector(shot.wait_for)
+                    if shot.click:
+                        try:
+                            page.click(shot.click, timeout=CLICK_TIMEOUT_MS)
+                        except playwright_error as e:
+                            raise ToolError(f"{shot.name}: brak elementu do kliknięcia „{shot.click}” na "
+                                            f"{shot.path} — {e}") from e
                     page.wait_for_timeout(SETTLE_MS)
                     target = out / f"{shot.name}.png"
                     page.screenshot(path=str(target), full_page=shot.full_page)
