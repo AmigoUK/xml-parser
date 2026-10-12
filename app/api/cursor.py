@@ -9,10 +9,11 @@ import base64
 import re
 from datetime import datetime
 
+from app.ids import MAX_ID  # największe id kolumny całkowitej — wspólny strażnik (app/ids.py)
+
 from .timeutil import parse_api_datetime
 
 SEPARATOR = "|"
-MAX_ID = 2**63 - 1  # największe id kolumny całkowitej (BIGINT, SQLite INTEGER) — większe nie istnieje w żadnej bazie
 _BASE64URL = re.compile(r"[A-Za-z0-9_-]+")  # alfabet base64url, bez dopełnienia „=”
 
 

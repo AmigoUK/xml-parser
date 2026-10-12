@@ -113,6 +113,7 @@ Błędy mają postać `{"error": {"code": "…", "message": "…"}}`.
 | 409 | `rejected` | `reprocess` dokumentu odrzuconego ręcznie |
 | 413 | `too_large` | plik większy niż 10 MB |
 | 500 | `internal_error` | wewnętrzny błąd serwera |
+| 503 | `storage_unavailable` | nie udało się zapisać pliku w magazynie (pełny dysk, niedostępny wolumen) — ponów później |
 
 ## Limity
 

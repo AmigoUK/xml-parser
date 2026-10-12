@@ -61,7 +61,8 @@ def test_editor_rejects_non_positive_convert(auth_client):
                 [{"convert": "1,000"}], [{"decimal": ";"}], [{"decimal": 5}]):
         r = _editor_save(auth_client, bad)
         assert r.status_code == 400, bad
-        Template.query.delete()
+        # szablon zostaje jeden: ten sam plik i dostawca → _attach_supplier używa istniejącego; bulk DELETE szablonów
+        # naruszałby klucze obce dokumentów i wersji (SQLite z PRAGMA foreign_keys=ON odrzuca go jak MariaDB)
 
 
 def test_editor_accepts_exponent_convert_and_decimal_separator(auth_client):

@@ -7,12 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.6.0] — 2026-10-12
+
+### Added
+- Wspólny strażnik identyfikatorów (`app/ids.py`): `<int:…>` w adresach panelu i API jest ograniczony do zakresu kolumny `id` (2⁶³−1), a identyfikatory z formularzy i parametrów zapytania (`unit_id`, `supplier_id`, porównanie wersji `a`/`b`, kursor) przechodzą przez `parse_id`. Liczba spoza zakresu dawała na SQLite `OverflowError` → 500 w 10 ścieżkach (`GET /api/v1/documents/99999999999999999999`, `/dokumenty/<id>`, `/szablony/<id>`, `/klucze-api/<id>/…`, `POST /towary/nowy`…); teraz to 404 albo komunikat formularza, tak samo jak na MariaDB. Siatka bezpieczeństwa: `OverflowError` z bazy → 400 w API, 404 w panelu.
+- `POST /api/v1/documents` odpowiada `503 storage_unavailable`, a panel komunikatem, gdy zapis pliku w magazynie się nie powiódł (pełny dysk, utracony wolumen) — zamiast 500; szczegóły w logu. Kod opisany w Pomocy (REST API, Integracja) i w OpenAPI.
+- `flask check-storage`: po przeniesieniu danych sprawdza, czy każdy dokument ma plik `raw/<sha256>` w magazynie (kod wyjścia 1 i lista id brakujących).
+- Ostrzeżenia konfiguracji proxy w logu: żądanie z `X-Forwarded-For` przy `TRUSTED_PROXY_COUNT=0` (limit logowań per IP działałby jak globalny; raz na proces) oraz `TRUSTED_PROXY_COUNT>0` z `SESSION_COOKIE_SECURE=0` (przy starcie). Nowa zmienna `PREFERRED_URL_SCHEME`.
+- Kontener: `HEALTHCHECK` w obrazie (compose go dziedziczy), port wewnętrzny z `APP_INTERNAL_PORT` (`PORT` platformy ma pierwszeństwo) w jednym miejscu dla entrypointu, compose i sondy; migracje i seed pod blokadą po stronie bazy (`app/dblock.py`, `GET_LOCK`) — bezpieczne przy kilku replikach startujących naraz; `MIGRATE_ON_START=0` zostawia je osobnemu zadaniu; sonda bazy `app/dbprobe.py` wypisuje cel połączenia bez hasła i nie ponawia przy złym użytkowniku/haśle/bazie (1044, 1045, 1049, 1698).
+- `tools/backup.sh`: `BACKUP_DIR` (katalog kopii na innym dysku) i ścieżka storage z `STORAGE_DIR` kontenera.
+- `docs/wdrozenie.md`: lista kontrolna przeniesienia na nową platformę — kontrakt zmiennych, konfiguracja reverse proxy (limit body ≥ 11 MB, timeouty, `X-Forwarded-*`, HSTS, rate limit `/login` i `/api/`), repliki i migracje, wolumen storage (uid 10001 / `fsGroup`), baza zarządzana, procedura przeniesienia danych z weryfikacją.
+- Testy: `PRAGMA foreign_keys=ON` dla SQLite w `tests/conftest.py` — klucze obce są egzekwowane jak na MariaDB/InnoDB (test edytora używał bulk `DELETE` szablonów naruszającego klucze obce); testy na prawdziwej MariaDB dla kolacji `products.code`, blokady migracji i sondy bazy; testy entrypointu dla `DATABASE_URL`, SQLite, `APP_INTERNAL_PORT`/`PORT`, `MIGRATE_ON_START` i blokady.
+
 ### Changed
+- **BREAKING (compose):** usługa `app` nie dostaje już całego `.env` (`env_file`), tylko zmienne aplikacji wymienione w `docker-compose.yml` (`environment:` z wartościami z `.env`) — `MARIADB_ROOT_PASSWORD` i inne sekrety usługi `db` nie trafiają do kontenera aplikacji. Własne zmienne spoza tej listy trzeba dopisać w compose.
+- Entrypoint odmawia startu bez `DATABASE_URL` albo z adresem `sqlite:` (w kontenerze cichy fallback na plik SQLite w `/app` kończył się mylącym „Baza nieosiągalna po 10 próbach”); `chown -R` wolumenu storage tylko, gdy właściciel jest inny niż uid 10001, a jego niepowodzenie to ostrzeżenie (rozstrzyga sonda zapisu).
+- `products.code` ma w MariaDB kolację binarną `utf8mb4_bin` (migracja `d2c1e7a94f30`, ponawialna): `ABC-1` i `abc-1` to różne indeksy — jak w SQLite i w testach. Z domyślną `utf8mb4_unicode_ci` import CSV nadpisywał po cichu towar o kodzie różniącym się wielkością liter lub akcentem. `flask db downgrade` nie powiedzie się, gdy kartoteka ma takie pary kodów — najpierw je scal.
+- Zależności: `cryptography` w `requirements.txt`/`requirements.lock` (wtyczki uwierzytelniania MariaDB `caching_sha2_password`/`ed25519` w PyMySQL). CI instaluje dokładnie `requirements.lock` na Pythonie 3.12.15 (jak obraz), `pip check`, `pip-audit --strict` na locku, `timeout-minutes`.
+- `.env.example`: `APP_INTERNAL_PORT`, `MIGRATE_ON_START`, `MIGRATE_LOCK_TIMEOUT`, `PREFERRED_URL_SCHEME`, `DB_WAIT_ATTEMPTS`, `GUNICORN_CMD_ARGS`, `BACKUP_DIR`, `BACKUP_RETENTION_DAYS`; README: sekcja uruchomienia i kopii, tabela bezpieczeństwa panelu; `.audit/` w `.gitignore` i `.dockerignore`.
 - CI uruchamia testy na prawdziwej MariaDB 11.4 (tymczasowy kontener); fixtury MariaDB w `tests/conftest.py`; strażnik nazwy bazy testowej dopasowuje człon `test`; test planu zapytania synchronizacji (EXPLAIN: indeks `ix_documents_api_key_updated`, bez filesort).
 - Pomoc: zrzuty mają wymiary (bez skoku układu), osobny tekst alternatywny i wskazówkę o nowej karcie; „Jak to działa” pokazuje pionowy diagram przetwarzania czytelny w kolumnie Pomocy.
 - Przykłady integracji (Python, bash, Node, PHP) są uruchamiane w testach wobec prawdziwego serwera HTTP: wysyłka i wynik, duplikat, synchronizacja z plikiem stanu, błąd protokołu bez `next_cursor`.
 
+### Uwagi do aktualizacji
+Przed wdrożeniem przeczytaj wpis **BREAKING** w sekcji „Changed”, a przy przenoszeniu na nową platformę — `docs/wdrozenie.md`. Kolejność i pułapki:
+1. **Kopia zapasowa przed migracją** — `tools/backup.sh`. `flask db upgrade` (uruchamiany przez `docker/entrypoint.sh` przy starcie kontenera, pod blokadą `GET_LOCK`) wykonuje `ALTER TABLE products MODIFY code … COLLATE utf8mb4_bin` — przebudowę indeksu `products.code`; przy dużej kartotece poza godzinami pracy. Migracja w górę nie może trafić na duplikaty (kolacja binarna rozróżnia więcej kodów, nie mniej), a ponowne uruchomienie po awarii jest bezpieczne. Od tej wersji wyszukiwanie towaru po kodzie w MariaDB rozróżnia wielkość liter i akcenty (jak dotąd w SQLite i testach) — import CSV z kodem w innej wielkości liter tworzy nowy towar zamiast po cichu nadpisać istniejący.
+2. **Compose: usługa `app` bez `env_file`** — jeśli `.env` zawiera tylko zmienne z `.env.example`, nic nie trzeba robić: wartości nadal pochodzą z `.env` przez interpolację w `docker-compose.yml`. Własne zmienne spoza tej listy dopisz jako wiersze `environment:` usługi `app`. Sprawdź wynik poleceniem `docker compose config` — w usłudze `app` nie powinno być `MARIADB_ROOT_PASSWORD` ani `MARIADB_PASSWORD`.
+3. **Start kontenera** — entrypoint kończy się kodem 1 z komunikatem bez `DATABASE_URL` albo z adresem `sqlite:`, a compose odmawia startu już przy `docker compose up`, gdy w `.env` brak `SECRET_KEY` lub `DATABASE_URL`. Zły użytkownik, hasło lub nazwa bazy nie są już ponawiane 10 razy — kontener kończy się od razu z komunikatem sondy (`Baza: mysql+pymysql://xmlparser:***@db:3306/xmlparser`). Przy kilku replikach startujących naraz migracje wykonuje jedna, pozostałe czekają do `MIGRATE_LOCK_TIMEOUT` (domyślnie 600 s); na platformie z osobnym zadaniem migracji ustaw `MIGRATE_ON_START=0`. Po przeniesieniu wolumenu storage uruchom `docker compose exec app flask check-storage`.
+4. **Cofnięcie do v0.5.0** — obraz v0.5.0 nie wystartuje na bazie ze stampem `d2c1e7a94f30` (jego `flask db upgrade` nie zna tej rewizji, więc kontener wpada w pętlę restartów). Przed podmianą obrazu wykonaj na działającym kontenerze v0.6.0 `docker compose exec app flask db downgrade 2eff54106035` (nie powiedzie się, gdy kartoteka ma kody różniące się tylko wielkością liter lub akcentem — najpierw je scal) albo przywróć kopię zapasową. `docker compose run app flask …` nie zadziała (entrypoint ignoruje argumenty i startuje gunicorn) — używaj `exec` na działającym kontenerze.
+
 ### Fixed
+- Negocjacja (`create_supplier`, `use_supplier`) i „Pobierz plik” przy braku pliku źródłowego w magazynie (utracony wolumen, reset storage) kończyły się 500 — teraz komunikat „Brak pliku źródłowego dokumentu w magazynie plików…” (negocjacja wycofuje transakcję, pobranie wraca do dokumentu). Nieczytelny plik w negocjacji też daje komunikat zamiast 500.
+- `use_supplier` z nieprawidłowym `supplier_id` (tekst, liczba spoza zakresu) pokazuje „Nieprawidłowy identyfikator dostawcy.” zamiast surowego komunikatu Pythona.
 - API: zapis daty w formacie podstawowym ze strefą bez godziny (`20261011+0200`) jest odrzucany (400) zamiast czytany jako godzina 02:00 UTC — tak jak `2026-10-11+02:00`.
 - `tools/screenshots.py`: błąd uruchomienia interpretera serwera albo przeglądarki daje czytelny komunikat i kod wyjścia 2 zamiast tracebacku; testy `server_env()` i trybu `--serve`.
 - Przykład bash: brak `curl`/`jq` kończy się czytelnym komunikatem, a plik stanu o złym kształcie — błędem zamiast cichych błędów `jq`.
@@ -215,7 +243,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/AmigoUK/xml-parser/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/AmigoUK/xml-parser/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/AmigoUK/xml-parser/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AmigoUK/xml-parser/compare/v0.2.0...v0.3.0

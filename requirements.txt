@@ -8,6 +8,8 @@ lxml==6.1.3
 rapidfuzz==3.14.6
 PyYAML==6.0.3
 PyMySQL==1.2.3
+# wymagane przez PyMySQL dla wtyczek uwierzytelniania caching_sha2_password / sha256_password / ed25519
+cryptography==50.0.2
 gunicorn==26.2.0
 python-dotenv==1.2.4
 regex==2026.9.29

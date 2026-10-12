@@ -3,11 +3,13 @@ from functools import wraps
 from flask import current_app, g, jsonify, request
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import defer
+from werkzeug.exceptions import NotFound
 
 from app.extensions import db
+from app.ids import parse_id
 from app.models import STATUS_LABELS, Document, Supplier
 from app.services.apikeys import verify_key
-from app.services.pipeline import DocumentTooLarge, ingest, process
+from app.services.pipeline import DocumentTooLarge, StorageUnavailable, ingest, process
 
 from . import bp
 from .cursor import decode_cursor, encode_cursor
@@ -43,10 +45,10 @@ LIST_DEFERRED_COLUMNS = (Document.result, Document.overrides, Document.draft_rul
 
 
 def _duplicate_owned_by_other_key(issue: dict, api_key_id: int | None) -> bool:
-    ref = str(issue.get("source_value") or "")
-    if not ref.isdigit():
+    ref = parse_id(issue.get("source_value"))
+    if ref is None:
         return True  # brak wskazania — traktuj ostrożnie
-    other = db.session.get(Document, int(ref))
+    other = db.session.get(Document, ref)
     return other is None or other.api_key_id != api_key_id
 
 
@@ -94,6 +96,8 @@ def create_document():
         doc = ingest(data, filename, source="api", api_key_id=g.api_key.id)
     except DocumentTooLarge as exc:
         return api_error("too_large", str(exc), 413)
+    except StorageUnavailable as exc:  # pełny dysk / utracony wolumen: klient ma ponowić później
+        return api_error("storage_unavailable", str(exc), 503)
     return jsonify(doc_to_json(doc)), 201
 
 
@@ -227,6 +231,15 @@ def _not_found(exc):
 @bp.app_errorhandler(405)
 def _method_not_allowed(exc):
     return _json_or_default(exc, "method_not_allowed", "Metoda niedozwolona dla tego adresu.")
+
+
+@bp.app_errorhandler(OverflowError)
+def _overflow(exc):
+    """Siatka bezpieczeństwa: liczba ponad zakres kolumny związana w zapytaniu (SQLite rzuca surowy
+    OverflowError, nieopakowany przez SQLAlchemy) to błąd wejścia, nie awaria — 400 w API, 404 w panelu."""
+    if request.path.startswith("/api/"):
+        return api_error("bad_request", "Identyfikator poza dopuszczalnym zakresem.", 400)
+    return NotFound()
 
 
 @bp.app_errorhandler(500)

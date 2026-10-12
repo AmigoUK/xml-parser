@@ -48,3 +48,5 @@ class Config:
     LOGIN_EMAIL_LOCKOUT_MINUTES = int(os.environ.get("LOGIN_EMAIL_LOCKOUT_MINUTES", 5))
     # liczba zaufanych reverse proxy przed aplikacją (OPS-8); 0 = nagłówki X-Forwarded-* ignorowane
     TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", 0))
+    # schemat adresów budowanych poza żądaniem (CLI, zadania); w żądaniu za proxy decyduje X-Forwarded-Proto
+    PREFERRED_URL_SCHEME = os.environ.get("PREFERRED_URL_SCHEME", "http")

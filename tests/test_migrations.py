@@ -386,3 +386,74 @@ def test_sync_index_migration_on_mariadb(mariadb_url, tmp_path):
     """Prawdziwe CREATE / DROP INDEX na InnoDB — DROP przechodzi, bo klucz obcy api_key_id ma nadal indeks
     ix_documents_api_status_created (api_key_id na pierwszej pozycji)."""
     _check_sync_index_migration(lambda *args: _ok(_flask(None, tmp_path, *args, url=mariadb_url)), mariadb_url)
+
+
+# --- d2c1e7a94f30: kolacja binarna products.code (MariaDB) -------------------------------------------------
+
+CODE_COLLATION = "d2c1e7a94f30"
+
+
+def _code_collation(engine):
+    with engine.connect() as conn:
+        return conn.execute(sa.text(
+            "SELECT COLLATION_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'code'")).scalar()
+
+
+@needs_mariadb
+def test_product_code_collation_migration_on_mariadb(mariadb_url, tmp_path):
+    """`ABC-1` i `abc-1` to po migracji dwa różne indeksy (jak w SQLite i w testach), nie jeden nadpisywany;
+    migracja ponawialna, downgrade wraca do kolacji tabeli."""
+    def flask(*args):
+        return _ok(_flask(None, tmp_path, *args, url=mariadb_url))
+
+    engine = sa.create_engine(mariadb_url)
+    try:
+        flask("upgrade", SYNC_INDEX)
+        assert _code_collation(engine) == "utf8mb4_unicode_ci"
+        with engine.begin() as conn:
+            conn.execute(sa.text("INSERT INTO products (code, name) VALUES ('ABC-1', 'duże')"))
+        with engine.begin() as conn, pytest.raises(sa.exc.IntegrityError):  # przed migracją: ten sam klucz
+            conn.execute(sa.text("INSERT INTO products (code, name) VALUES ('abc-1', 'małe')"))
+
+        flask("upgrade", CODE_COLLATION)
+        assert _code_collation(engine) == "utf8mb4_bin"
+        with engine.begin() as conn:
+            conn.execute(sa.text("INSERT INTO products (code, name) VALUES ('abc-1', 'małe')"))
+            assert conn.execute(sa.text("SELECT name FROM products WHERE code = 'abc-1'")).scalars().all() == ["małe"]
+            assert conn.execute(sa.text("SELECT COUNT(*) FROM products")).scalar() == 2
+        flask("upgrade", CODE_COLLATION)  # ponowny przebieg: bez zmian i bez błędu
+        assert _code_collation(engine) == "utf8mb4_bin"
+
+        with engine.begin() as conn:
+            conn.execute(sa.text("DELETE FROM products WHERE code = 'abc-1'"))
+        flask("downgrade", SYNC_INDEX)
+        assert _code_collation(engine) == "utf8mb4_unicode_ci"
+        flask("upgrade")
+        assert _code_collation(engine) == "utf8mb4_bin"
+        _ok(_flask(None, tmp_path, "check", url=mariadb_url))  # modele = schemat po migracjach także na MariaDB
+    finally:
+        engine.dispose()
+
+
+@needs_mariadb
+def test_product_code_is_case_sensitive_in_app_on_mariadb(mariadb_url, tmp_path):
+    """Schemat z modeli (`db.create_all`) ma tę samą kolację co migracje; import i kartoteka nie sklejają kodów."""
+    from app import create_app
+    from app.models import Product
+
+    app = create_app({"TESTING": True, "SECRET_KEY": "x", "SQLALCHEMY_DATABASE_URI": mariadb_url,
+                      "STORAGE_DIR": str(tmp_path / "s"), "DEMO_MODE": True, "ADMIN_PASSWORD": ""})
+    with app.app_context():
+        try:
+            db.create_all()
+            assert _code_collation(db.engine) == "utf8mb4_bin"
+            db.session.add(Product(code="ABC-1", name="Duże"))
+            db.session.commit()
+            db.session.add(Product(code="abc-1", name="Małe"))
+            db.session.commit()
+            assert Product.query.filter_by(code="abc-1").one().name == "Małe"
+            assert Product.query.count() == 2
+        finally:
+            db.session.remove()
+            db.engine.dispose()

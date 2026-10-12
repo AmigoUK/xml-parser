@@ -1,11 +1,12 @@
 import hmac
 
 import click
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import PLACEHOLDER_SECRET_KEYS, Config
 from .extensions import csrf, db, login_manager, migrate
+from .ids import BoundedIntConverter, parse_id
 from .version import __version__
 
 # Alpine.js (standardowy build) wylicza wyrażenia z atrybutów przez konstruktor Function, stąd 'unsafe-eval'
@@ -26,6 +27,9 @@ SECURITY_HEADERS = {
 
 def create_app(config_overrides: dict | None = None) -> Flask:
     app = Flask(__name__)
+    # `<int:…>` w adresach ograniczony do zakresu kolumny id (przed rejestracją tras) — większe id to 404,
+    # a nie OverflowError/500 na SQLite
+    app.url_map.converters["int"] = BoundedIntConverter
     app.config.from_object(Config)
     if config_overrides:
         app.config.update(config_overrides)
@@ -39,12 +43,30 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "python -c \"import secrets;print(secrets.token_hex(32))\" i wpisz go do .env."
         )
 
-    from .services.storage import check_storage_dir
+    from .services.storage import check_storage_dir, get_storage
     check_storage_dir(app.config["STORAGE_DIR"])  # BE-9: brak zapisu = błąd przy starcie, nie 500 przy uploadzie
 
     proxies = int(app.config.get("TRUSTED_PROXY_COUNT") or 0)
     if proxies > 0:  # OPS-8: X-Forwarded-* tylko od zaufanych proxy
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxies, x_proto=proxies, x_host=proxies, x_port=proxies)
+        if not app.config.get("SESSION_COOKIE_SECURE"):
+            app.logger.warning("TRUSTED_PROXY_COUNT=%s (aplikacja za reverse proxy, zwykle z TLS), a "
+                               "SESSION_COOKIE_SECURE=0 — ciasteczko sesji może wyjść zwykłym HTTP. Ustaw "
+                               "SESSION_COOKIE_SECURE=1 i PREFERRED_URL_SCHEME=https.", proxies)
+    else:
+        forwarded_warned = False
+
+        @app.before_request
+        def warn_forwarded_without_trusted_proxy():
+            # proxy jest, a ProxyFix wyłączony: wszystkie żądania mają adres proxy, więc limit logowań per IP
+            # działa jak globalny, a adresy zewnętrzne mają schemat http — ostrzegamy raz na proces
+            nonlocal forwarded_warned
+            if not forwarded_warned and "X-Forwarded-For" in request.headers:
+                forwarded_warned = True
+                app.logger.warning("Żądanie z nagłówkiem X-Forwarded-For od %s przy TRUSTED_PROXY_COUNT=0 — "
+                                   "nagłówki proxy są ignorowane (limit logowań per IP działa jak globalny). "
+                                   "Ustaw TRUSTED_PROXY_COUNT na liczbę proxy przed aplikacją.",
+                                   request.remote_addr)
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -80,10 +102,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
 
     @login_manager.user_loader
     def load_user(user_id):
-        uid, _, token = (user_id or "").partition(":")
-        if not uid.isdigit() or not token:
+        raw_uid, _, token = (user_id or "").partition(":")
+        uid = parse_id(raw_uid)
+        if uid is None or not token:
             return None  # ciasteczko w starym formacie albo uszkodzone
-        user = db.session.get(models.User, int(uid))
+        user = db.session.get(models.User, uid)
         if user is None or not user.session_token or not hmac.compare_digest(user.session_token, token):
             return None
         return user
@@ -95,6 +118,20 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if app.config["DEMO_MODE"]:
             seed_demo()
         click.echo("Seed OK")
+
+    @app.cli.command("check-storage")
+    def check_storage_cmd():
+        """Czy każdy dokument ma plik raw/<sha256> w magazynie (po przeniesieniu danych); brak = kod 1."""
+        storage = get_storage()
+        rows = db.session.query(models.Document.id, models.Document.sha256).order_by(models.Document.id).all()
+        missing = [(doc_id, sha) for doc_id, sha in rows if not (storage.base / sha).is_file()]
+        click.echo(f"Magazyn {storage.base}: dokumentów: {len(rows)}, brakujących plików: {len(missing)}")
+        for doc_id, sha in missing[:200]:
+            click.echo(f"  brak: dokument #{doc_id} → raw/{sha}")
+        if len(missing) > 200:
+            click.echo(f"  … i {len(missing) - 200} więcej")
+        if missing:
+            raise SystemExit(1)
 
     @app.cli.command("reset-demo")
     def reset_demo_cmd():

@@ -10,7 +10,7 @@ from app.extensions import db
 from app.ingest import ReaderError
 from app.models import STATUS_LABELS, STATUS_NEEDS_REVIEW, Document, Product, Supplier, Unit
 from app.services.negotiation import NegotiationError, resolve, restore
-from app.services.pipeline import DocumentTooLarge, ingest, load_tree, process
+from app.services.pipeline import FILE_MISSING_MSG, DocumentTooLarge, StorageUnavailable, ingest, load_tree, process
 from app.services.storage import get_storage
 
 bp = Blueprint("docs", __name__)
@@ -76,7 +76,7 @@ def upload():
             return redirect(url_for("docs.upload"))
         try:
             doc = ingest(data, f.filename, source="upload")
-        except DocumentTooLarge as exc:
+        except (DocumentTooLarge, StorageUnavailable) as exc:
             flash(str(exc), "error")
             return redirect(url_for("docs.upload"))
         return redirect(url_for("docs.detail", doc_id=doc.id))
@@ -175,7 +175,12 @@ def raw(doc_id):
     doc = _get(doc_id)
     mime = {"xml": "application/xml", "json": "application/json", "csv": "text/csv"}.get(doc.fmt,
                                                                                           "application/octet-stream")
-    resp = send_file(io.BytesIO(get_storage().load(doc.sha256)), mimetype=mime, as_attachment=True,
+    try:
+        data = get_storage().load(doc.sha256)
+    except OSError:  # plik zniknął z magazynu — komunikat przy dokumencie zamiast 500
+        flash(FILE_MISSING_MSG, "error")
+        return redirect(url_for("docs.detail", doc_id=doc.id))
+    resp = send_file(io.BytesIO(data), mimetype=mime, as_attachment=True,
                      download_name=re.sub(r"[\x00-\x1f\x7f]", "", doc.filename or "") or "dokument")
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp

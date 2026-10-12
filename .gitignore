@@ -28,5 +28,8 @@ htmlcov/
 # Kopie zapasowe (dump bazy + storage)
 backups/
 
+# Raporty robocze audytu (skill AuditProject)
+.audit/
+
 # Claude Code (lokalne worktree agentów)
 .claude/

@@ -93,12 +93,18 @@ wystawia aplikację na całą sieć. Aby udostępnić panel przez Tailscale, ust
 `APP_BIND=<IP interfejsu tailscale0>` (`tailscale ip -4`) i zrestartuj stack — albo wystaw panel po HTTPS
 przez `tailscale serve` (niżej).
 
-`MARIADB_PASSWORD` i `MARIADB_ROOT_PASSWORD` są wymagane (compose przerwie start bez nich).
-Kontener aplikacji działa jako użytkownik nie-root (uid 10001); entrypoint przy starcie naprawia
-właściciela wolumenu storage i czeka na bazę (migracje z ponawianiem). `/healthz` sprawdza połączenie
-z bazą (503 przy awarii), a compose ma healthcheck usługi `app`. Limity zasobów: `APP_MEM_LIMIT`,
-`APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS`. Logi dockera są rotowane (10 MB x 3). Zależności runtime
-są przypięte w `requirements.lock` (używany w obrazie), obrazy bazowe w konkretnych wersjach.
+`SECRET_KEY`, `DATABASE_URL`, `MARIADB_PASSWORD` i `MARIADB_ROOT_PASSWORD` są wymagane (compose przerwie start
+bez nich). Usługa `app` dostaje z `.env` **tylko zmienne aplikacji** wymienione w `docker-compose.yml`
+(bez hasła roota bazy) — nową zmienną aplikacji trzeba dopisać także tam. Kontener działa jako użytkownik
+nie-root (uid 10001); entrypoint przy starcie naprawia właściciela wolumenu storage (gdy trzeba), odmawia
+startu bez `DATABASE_URL` (albo z SQLite), czeka na bazę (błąd hasła/użytkownika/bazy kończy start od razu)
+i uruchamia migracje oraz seed pod blokadą po stronie bazy (bezpieczne przy kilku replikach; `MIGRATE_ON_START=0`
+zostawia je osobnemu zadaniu). `/healthz` sprawdza połączenie z bazą (503 przy awarii); sondę `HEALTHCHECK`
+ma obraz, compose ją dziedziczy. Port wewnętrzny: `APP_INTERNAL_PORT` (domyślnie 5010; `PORT` platformy ma
+pierwszeństwo). Limity zasobów: `APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS`. Logi dockera są rotowane
+(10 MB x 3). Zależności runtime są przypięte w `requirements.lock` (używany w obrazie i w CI), obrazy bazowe
+w konkretnych wersjach. **Przeniesienie na inną platformę** (reverse proxy, repliki, baza zarządzana,
+procedura migracji danych): [docs/wdrozenie.md](docs/wdrozenie.md).
 
 ### HTTPS w tailnecie (tailscale serve)
 
@@ -125,6 +131,7 @@ tailscale serve --https=${APP_PORT} off   # wyłączenie
 
 ```bash
 tools/backup.sh          # dump MariaDB + archiwum storage do backups/<data>/ (retencja 14 dni; argument = liczba dni)
+BACKUP_DIR=/mnt/kopie tools/backup.sh   # inny katalog/dysk kopii; archiwum storage czyta STORAGE_DIR kontenera app
 # cron (codziennie 03:15):  15 3 * * *  cd /ścieżka/do/xml-parser && tools/backup.sh >> backups/backup.log 2>&1
 ```
 
@@ -135,9 +142,11 @@ B=backups/<data>
 gunzip -c $B/db.sql.gz | docker compose exec -T db sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot'
 gunzip -c $B/storage.tar.gz | docker compose exec -T app tar -C /data/storage -xf -
 docker compose restart app
+docker compose exec app flask check-storage   # każdy dokument ma plik w magazynie? (kod 1 + lista id, gdy nie)
 ```
 
-Okresowo sprawdź kopię, odtwarzając ją na osobnym środowisku.
+Okresowo sprawdź kopię, odtwarzając ją na osobnym środowisku. Pełna procedura przeniesienia na inny host:
+[docs/wdrozenie.md](docs/wdrozenie.md).
 
 Serwer: gunicorn z workerami wątkowymi (`-k gthread -w 2 --threads 8 --timeout 60`), dzięki czemu
 bezczynne połączenia przeglądarki nie blokują aplikacji. Ustawienia można nadpisać zmienną
@@ -202,7 +211,8 @@ z prawdziwymi danymi.
 | Zmienna | Domyślnie | Znaczenie |
 |---|---|---|
 | `SESSION_COOKIE_SECURE` | `0` | `1` = ciasteczka sesji tylko po HTTPS. Domyślnie wyłączone, bo demo działa po HTTP przez Tailscale (tunel szyfrowany). Włącz, gdy panel stoi za TLS (np. `tailscale serve` / reverse proxy z HTTPS) — inaczej logowanie przestanie działać. |
-| `TRUSTED_PROXY_COUNT` | `0` | Liczba zaufanych reverse proxy przed aplikacją. `0` = nagłówki `X-Forwarded-*` ignorowane (bez proxy ktoś mógłby podszyć IP). Ustaw `1`, gdy aplikacja stoi za jednym proxy, np. `tailscale serve` (adres klienta, schemat https). |
+| `TRUSTED_PROXY_COUNT` | `0` | Liczba zaufanych reverse proxy przed aplikacją. `0` = nagłówki `X-Forwarded-*` ignorowane (bez proxy ktoś mógłby podszyć IP). Ustaw `1`, gdy aplikacja stoi za jednym proxy, np. `tailscale serve` (adres klienta, schemat https). Gdy przy `0` przyjdzie żądanie z `X-Forwarded-For`, aplikacja ostrzega w logu (raz na proces); przy `>0` i `SESSION_COOKIE_SECURE=0` ostrzega przy starcie. |
+| `PREFERRED_URL_SCHEME` | `http` | Schemat adresów zewnętrznych budowanych poza żądaniem (CLI). Za proxy z TLS ustaw `https`. |
 | `LOGIN_MAX_ATTEMPTS` | `5` | Główny limit: nieudane logowania dla pary (e-mail, adres IP), po których ta para jest blokowana. `0` wyłącza ten próg. |
 | `LOGIN_LOCKOUT_MINUTES` | `15` | Okno liczenia i czas blokady dla progów per (e-mail, IP) i per IP. |
 | `LOGIN_MAX_ATTEMPTS_PER_IP` | `20` | Nieudane logowania z jednego IP na dowolne konta (rozpylanie haseł). |
@@ -214,7 +224,8 @@ siebie (parę e-mail + jego IP) — admin z innego adresu loguje się normalnie.
 następuje dopiero po 50 nieudanych próbach w 5 min z wielu adresów i trwa krótko. Próby odrzucone
 blokadą nie są liczone (nie przedłużają blokady). Próba jest zapisywana w bazie przed sprawdzeniem
 hasła, więc równoległe żądania nie omijają limitu. Uwaga: jeśli wszyscy klienci docierają z jednego
-adresu (NAT Dockera, proxy bez `TRUSTED_PROXY_COUNT`), progi per IP działają jak globalne.
+adresu (NAT Dockera, proxy bez `TRUSTED_PROXY_COUNT`), progi per IP działają jak globalne — dlatego za proxy
+`TRUSTED_PROXY_COUNT` jest obowiązkowy (patrz [docs/wdrozenie.md](docs/wdrozenie.md)).
 
 Pozostałe zabezpieczenia: nagłówki `Content-Security-Policy` (bez skryptów inline; `'unsafe-eval'`
 jest wymagany przez standardowy build Alpine.js), `X-Frame-Options: DENY`, `X-Content-Type-Options`,

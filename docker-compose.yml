@@ -25,22 +25,42 @@ services:
   app:
     build: .
     restart: unless-stopped
-    env_file: .env
+    # Tylko zmienne aplikacji (wartości z .env przez interpolację) — bez MARIADB_ROOT_PASSWORD i reszty sekretów
+    # usługi db. Nowa zmienna aplikacji = nowy wiersz tutaj; brak w .env daje bezpieczną wartość domyślną.
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Ustaw SECRET_KEY w .env}
+      DATABASE_URL: ${DATABASE_URL:?Ustaw DATABASE_URL w .env}
+      STORAGE_DIR: ${STORAGE_DIR:-/data/storage}
+      MAX_DOCUMENT_BYTES: ${MAX_DOCUMENT_BYTES:-10485760}
+      MAX_TREE_NODES: ${MAX_TREE_NODES:-200000}
+      MAX_LINES: ${MAX_LINES:-5000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      DEMO_MODE: ${DEMO_MODE:-0}
+      DEMO_API_KEY: ${DEMO_API_KEY:-}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
+      TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
+      PREFERRED_URL_SCHEME: ${PREFERRED_URL_SCHEME:-http}
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}
+      LOGIN_MAX_ATTEMPTS_PER_IP: ${LOGIN_MAX_ATTEMPTS_PER_IP:-20}
+      LOGIN_MAX_ATTEMPTS_PER_EMAIL: ${LOGIN_MAX_ATTEMPTS_PER_EMAIL:-50}
+      LOGIN_EMAIL_LOCKOUT_MINUTES: ${LOGIN_EMAIL_LOCKOUT_MINUTES:-5}
+      APP_INTERNAL_PORT: ${APP_INTERNAL_PORT:-5010}
+      MIGRATE_ON_START: ${MIGRATE_ON_START:-1}
+      MIGRATE_LOCK_TIMEOUT: ${MIGRATE_LOCK_TIMEOUT:-600}
+      DB_WAIT_ATTEMPTS: ${DB_WAIT_ATTEMPTS:-10}
+      GUNICORN_CMD_ARGS: ${GUNICORN_CMD_ARGS:-}
     depends_on:
       db: { condition: service_healthy }
     ports:
       # Domyślnie tylko localhost. Dla dostępu przez Tailscale ustaw APP_BIND=<IP tailscale0>.
-      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-18506}:5010"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-18506}:${APP_INTERNAL_PORT:-5010}"
     volumes: [storage:/data/storage]
     mem_limit: ${APP_MEM_LIMIT:-1g}
     cpus: ${APP_CPUS:-2.0}
     logging: *logging
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5010/healthz', timeout=4).status == 200 else 1)"]
-      interval: 30s
-      timeout: 6s
-      retries: 3
-      start_period: 60s
+    # sonda zdrowia: HEALTHCHECK z obrazu (Dockerfile) — /healthz na porcie aplikacji
 volumes:
   dbdata:
   storage:

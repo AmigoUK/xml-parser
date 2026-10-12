@@ -75,6 +75,7 @@
     <tr><td>401</td><td><code>unauthorized</code></td><td>sprawdź klucz i czy nie został wyłączony; nie ponawiaj w pętli</td></tr>
     <tr><td>413</td><td><code>too_large</code></td><td>plik większy niż {{ limits.max_document }} — nie ponawiaj</td></tr>
     <tr><td>500</td><td><code>internal_error</code></td><td>ponów z przerwą (rozdział 6); błędy sieci i odpowiedzi 5xx serwera pośredniczącego traktuj tak samo</td></tr>
+    <tr><td>503</td><td><code>storage_unavailable</code></td><td>magazyn plików chwilowo niedostępny (dokument nie powstał) — ponów z przerwą jak przy 500</td></tr>
   </tbody>
 </table>
 </div>

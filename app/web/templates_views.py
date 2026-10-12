@@ -15,6 +15,7 @@ from app.engine.transforms import MAX_PATTERN, REGISTRY, TRANSFORM_LABELS, parse
 from app.engine.validate import validate_invoice
 from app.engine.values import DECIMAL_SEPARATORS
 from app.extensions import db
+from app.ids import parse_id
 from app.ingest import ReaderError
 from app.models import Document, Template, TemplateVersion
 from app.services.audit import audit
@@ -56,7 +57,7 @@ def index():
 def detail(tid):
     t = _tpl(tid)
     diff = None
-    a, b = request.args.get("a", type=int), request.args.get("b", type=int)
+    a, b = parse_id(request.args.get("a")), parse_id(request.args.get("b"))
     if a and b:
         va, vb = db.session.get(TemplateVersion, a), db.session.get(TemplateVersion, b)
         if va and vb and va.template_id == vb.template_id == t.id:

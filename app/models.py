@@ -137,7 +137,11 @@ class UnitConversion(db.Model):
 class Product(db.Model):
     __tablename__ = "products"
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(64), unique=True, nullable=False)
+    # kolacja binarna w MariaDB (migracja d2c1e7a94f30): `ABC-1` i `abc-1` to różne indeksy — jak w SQLite
+    # i w testach; z domyślną utf8mb4_unicode_ci import CSV nadpisywałby po cichu towar o kodzie różniącym się
+    # tylko wielkością liter lub akcentem
+    code = db.Column(db.String(64).with_variant(mysql.VARCHAR(64, collation="utf8mb4_bin"), "mysql", "mariadb"),
+                     unique=True, nullable=False)
     name = db.Column(db.String(255), nullable=False)
     gtin = db.Column(db.String(14), index=True)
     unit_id = db.Column(db.Integer, db.ForeignKey("units.id"))

@@ -7,16 +7,20 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.12.15"  # ta sama wersja co obraz python:3.12.15-slim-trixie (Dockerfile)
           cache: pip
           cache-dependency-path: |
-            requirements.txt
+            requirements.lock
             requirements-dev.txt
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+      # te same piny co w obrazie (requirements.lock) + narzędzia deweloperskie; pip check wykrywa niespójne wersje
+      - run: pip install -r requirements.lock -r requirements-dev.txt && pip check
+      - name: Znane podatności zależności runtime (requirements.lock)
+        run: pip-audit -r requirements.lock --strict --progress-spinner off
       - name: MariaDB testowa (tymczasowy kontener, jak w docker-compose.yml)
         run: |
           docker run -d --name mariadb-test -e MARIADB_ROOT_PASSWORD=ci-root -e MARIADB_DATABASE=xp_test \
@@ -35,6 +39,7 @@ jobs:
 
   no-private-files:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Brak private/ i .env w repozytorium

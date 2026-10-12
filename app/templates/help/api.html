@@ -109,6 +109,7 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" \
     <tr><td>409</td><td><code>rejected</code></td><td><code>reprocess</code> dokumentu odrzuconego ręcznie</td></tr>
     <tr><td>413</td><td><code>too_large</code></td><td>plik większy niż {{ limits.max_document }}</td></tr>
     <tr><td>500</td><td><code>internal_error</code></td><td>wewnętrzny błąd serwera</td></tr>
+    <tr><td>503</td><td><code>storage_unavailable</code></td><td>nie udało się zapisać pliku w magazynie (pełny dysk, niedostępny wolumen) — ponów później</td></tr>
   </tbody>
 </table>
 </div>

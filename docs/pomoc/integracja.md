@@ -59,6 +59,7 @@ Format (XML, JSON, CSV) rozpoznawany jest po treści, nie po nazwie ani `Content
 | 401 | `unauthorized` | sprawdź klucz i czy nie został wyłączony; nie ponawiaj w pętli |
 | 413 | `too_large` | plik większy niż 10 MB — nie ponawiaj |
 | 500 | `internal_error` | ponów z przerwą (rozdział 6); błędy sieci i odpowiedzi 5xx serwera pośredniczącego traktuj tak samo |
+| 503 | `storage_unavailable` | magazyn plików chwilowo niedostępny (dokument nie powstał) — ponów z przerwą jak przy 500 |
 
 Błędy mają zawsze postać `{"error": {"code": "…", "message": "…"}}`; komunikat (`message`) jest po polsku i nadaje się do logu.
 

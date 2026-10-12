@@ -8,6 +8,7 @@ os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 os.environ.setdefault("FLASK_SKIP_DOTENV", "1")
 
 import re  # noqa: E402
+import sqlite3  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
@@ -15,6 +16,14 @@ import sqlalchemy as sa  # noqa: E402
 
 from app import create_app, models  # noqa: E402, F401 (models: tabele w db.metadata — potrzebne wipe_mariadb)
 from app.extensions import db  # noqa: E402
+
+
+@sa.event.listens_for(sa.engine.Engine, "connect")
+def _sqlite_foreign_keys(dbapi_connection, _record):
+    """SQLite domyślnie NIE egzekwuje kluczy obcych — w testach włączamy je, żeby każdy DELETE/UPDATE naruszający
+    klucz obcy kończył się IntegrityError tak jak na MariaDB/InnoDB (inaczej testy nie wykryłyby regresji)."""
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")
 
 
 @pytest.fixture

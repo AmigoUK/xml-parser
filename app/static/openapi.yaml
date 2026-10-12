@@ -164,6 +164,7 @@ paths:
         "400": { description: Pusty plik, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401": { description: Brak klucza API }
         "413": { description: Plik za duży }
+        "503": { description: Magazyn plików niedostępny (dokument nie powstał) — ponów później, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     get:
       summary: Lista dokumentów i synchronizacja zmian
       description: |

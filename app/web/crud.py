@@ -11,6 +11,7 @@ from sqlalchemy.exc import DataError, IntegrityError
 
 from app.engine.values import parse_factor
 from app.extensions import db
+from app.ids import parse_id
 from app.services.audit import audit
 
 
@@ -56,9 +57,10 @@ def _parse(f: CrudField, raw: str | None, model=None):
         except ValueError as exc:
             raise ValueError(f"Pole „{f.label}”: {exc}") from None
     if f.type == "select":
-        if not raw.isdigit():
+        value = parse_id(raw)  # id spoza zakresu kolumny = zła wartość, nie 500 (SQLite)
+        if value is None:
             raise ValueError(f"Nieprawidłowa wartość pola „{f.label}”.")
-        return int(raw)
+        return value
     limit = _max_length(model, f.name) if model is not None else None
     if limit and len(raw) > limit:  # MariaDB strict odrzuciłaby to DataError → 500 (BE-8/EDGE-18)
         raise ValueError(f"Pole „{f.label}” może mieć maks. {limit} znaków (wpisano {len(raw)}).")

@@ -13,12 +13,14 @@ from app.engine.values import normalize_gtin, parse_factor
 from sqlalchemy.exc import DataError, IntegrityError
 
 from app.extensions import db
+from app.ids import parse_id
+from app.ingest import ReaderError
 from app.models import (STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
                         STATUS_REJECTED, Document, Product, ProductMapping, Supplier, Template, Unit,
                         UnitAlias, UnitConversion)
 from app.services.audit import audit
-from app.services.pipeline import (best_template_for, current_rules, load_tree, next_product_code, process,
-                                   same_scope, touch)
+from app.services.pipeline import (FILE_MISSING_MSG, best_template_for, current_rules, load_tree,
+                                   next_product_code, process, same_scope, touch)
 from app.services.templates import create_template, new_version
 
 NEED_SUPPLIER = "Najpierw rozpoznaj dostawcę — to pierwszy problem na liście."
@@ -37,10 +39,21 @@ def _set_override(doc: Document, section: str | None, key: str, value) -> None:
     doc.overrides = ov
 
 
+def _tree(doc: Document):
+    """Drzewo pliku źródłowego: brak pliku w magazynie albo plik nieczytelny to błąd negocjacji (komunikat
+    dla operatora, transakcja wycofana), nie 500 — tak jak w pipeline.process()."""
+    try:
+        return load_tree(doc)
+    except OSError:
+        raise NegotiationError(FILE_MISSING_MSG) from None
+    except ReaderError as exc:
+        raise NegotiationError(f"Nie można odczytać pliku źródłowego dokumentu: {exc}") from None
+
+
 def ensure_template(doc: Document, rules: dict, user: str | None) -> Template:
     """Tworzy szablon dla rozpoznanego dostawcy z podanych reguł i podpina go do dokumentu."""
     supplier = db.session.get(Supplier, doc.supplier_id)
-    tree = load_tree(doc)
+    tree = _tree(doc)
     tpl = create_template(supplier, tree.leaf_paths(), tree.fingerprint(), tree.fmt, rules, user)
     doc.template_id = tpl.id
     doc.draft_rules = None
@@ -105,7 +118,7 @@ def find_supplier_by_tax_id(tax_id: str | None, exclude_id: int | None = None) -
 
 def _attach_supplier(doc: Document, supplier: Supplier, user: str | None) -> None:
     doc.supplier_id = supplier.id
-    tree = load_tree(doc)
+    tree = _tree(doc)
     if best_template_for(supplier.id, tree.path_set()) is None:
         ensure_template(doc, doc.draft_rules or current_rules(doc), user)
 
@@ -126,7 +139,10 @@ def a_create_supplier(doc, data, remember, user):
 
 
 def a_use_supplier(doc, data, remember, user):
-    s = db.session.get(Supplier, int(data.get("supplier_id") or 0))
+    supplier_id = parse_id(data.get("supplier_id"))
+    if supplier_id is None:
+        raise NegotiationError("Nieprawidłowy identyfikator dostawcy.")
+    s = db.session.get(Supplier, supplier_id)
     if not s:
         raise NegotiationError("Nie znaleziono dostawcy.")
     inv_tax = norm_tax_id(((doc.result or {}).get("supplier") or {}).get("tax_id"))[:64]

@@ -5,9 +5,13 @@ APP_UID=10001
 APP_GID=10001
 
 # Jako root: popraw właściciela wolumenu (starsze wolumeny mają pliki roota), potem zrzuć uprawnienia.
+# chown tylko, gdy katalog nie należy już do app (duże wolumeny / NFS: pełny chown -R trwa i bywa niemożliwy);
+# niepowodzenie to ostrzeżenie — rozstrzyga sonda zapisu niżej.
 if [ "$(id -u)" = "0" ]; then
   mkdir -p "$STORAGE"
-  chown -R "$APP_UID:$APP_GID" "$STORAGE"
+  if [ "$(stat -c %u "$STORAGE" 2>/dev/null)" != "$APP_UID" ]; then
+    chown -R "$APP_UID:$APP_GID" "$STORAGE" || echo "OSTRZEŻENIE: chown $STORAGE nie powiódł się (wolumen sieciowy? ustaw właściciela uid $APP_UID po stronie platformy, np. fsGroup)." >&2
+  fi
   exec setpriv --reuid="$APP_UID" --regid="$APP_GID" --init-groups "$0" "$@"
 fi
 
@@ -19,32 +23,25 @@ if ! { mkdir -p "$STORAGE" && : > "$probe" && rm -f "$probe"; } 2>/dev/null; the
   exit 1
 fi
 
+# W kontenerze baza musi być wskazana jawnie: bez DATABASE_URL aplikacja użyłaby pliku SQLite w /app (katalog roota,
+# nietrwały) i padła dopiero na sondzie z mylącym „baza niegotowa”.
+case "${DATABASE_URL:-}" in
+  "")
+    echo "Błąd konfiguracji: brak DATABASE_URL (adres MariaDB, np. mysql+pymysql://xmlparser:haslo@db:3306/xmlparser?charset=utf8mb4) - przerywam." >&2
+    exit 1 ;;
+  [Ss][Qq][Ll][Ii][Tt][Ee]:*)
+    echo "Błąd konfiguracji: DATABASE_URL wskazuje SQLite - w kontenerze wymagana jest MariaDB (plik SQLite w obrazie nie jest trwały ani zapisywalny dla uid $(id -u)) - przerywam." >&2
+    exit 1 ;;
+esac
+
 if [ -d migrations ]; then
-  # Sonda połączenia: kod 3 = baza nieosiągalna/niegotowa (ponawiamy), inny = błąd konfiguracji (koniec).
+  # Sonda połączenia (app/dbprobe.py): kod 3 = baza nieosiągalna/niegotowa (ponawiamy), inny = błąd konfiguracji (koniec).
   attempt=1
   delay=2
   max="${DB_WAIT_ATTEMPTS:-10}"
   while :; do
     rc=0
-    python - <<'PY' || rc=$?
-import os, sys
-try:
-    import sqlalchemy as sa
-    from sqlalchemy.exc import OperationalError
-    engine = sa.create_engine(os.environ.get("DATABASE_URL", "sqlite:///xmlparser-dev.db"))
-except Exception as exc:  # zły URL, brak sterownika itp.
-    print(f"Błąd konfiguracji bazy (DATABASE_URL): {type(exc).__name__}: {exc}", file=sys.stderr)
-    sys.exit(1)
-try:
-    with engine.connect():
-        pass
-except OperationalError as exc:
-    print(f"OperationalError: {exc.orig if exc.orig is not None else exc}", file=sys.stderr)
-    sys.exit(3)
-except Exception as exc:
-    print(f"Błąd konfiguracji bazy: {type(exc).__name__}: {exc}", file=sys.stderr)
-    sys.exit(1)
-PY
+    python -m app.dbprobe || rc=$?
     [ "$rc" -eq 0 ] && break
     if [ "$rc" -ne 3 ]; then
       echo "Błąd konfiguracji połączenia z bazą (szczegóły powyżej) - nie ponawiam, przerywam." >&2
@@ -60,15 +57,21 @@ PY
     delay=$((delay * 2))
     [ "$delay" -gt 30 ] && delay=30
   done
-  if ! flask db upgrade; then
-    echo "Migracja bazy nie powiodła się (baza osiągalna, błąd migracji lub startu aplikacji - szczegóły powyżej). Nie ponawiam; sprawdź log, w razie potrzeby odtwórz kopię z tools/backup.sh." >&2
-    exit 1
+  if [ "${MIGRATE_ON_START:-1}" = "0" ]; then
+    echo "MIGRATE_ON_START=0: pomijam migracje i seed - uruchom je osobnym zadaniem: flask db upgrade && flask seed." >&2
+  else
+    # Blokada po stronie bazy (app/dblock.py): przy wielu replikach migruje jedna, reszta czeka i powtarza no-op.
+    if ! python -m app.dblock -- flask db upgrade; then
+      echo "Migracja bazy nie powiodła się (baza osiągalna, błąd migracji lub startu aplikacji - szczegóły powyżej). Nie ponawiam; sprawdź log, w razie potrzeby odtwórz kopię z tools/backup.sh." >&2
+      exit 1
+    fi
+    # Seed jest idempotentny (tworzy tylko brakujące jednostki/admina/klucz demo; nie resetuje danych).
+    python -m app.dblock -- flask seed
   fi
 fi
-# Seed jest idempotentny (tworzy tylko brakujące jednostki/admina/klucz demo; nie resetuje danych).
-if flask --help | grep -q " seed"; then flask seed; fi
 # Wątkowe workery: bezczynne gniazda (np. preconnect przeglądarki) nie blokują workerów sync.
 # Cykliczny restart workerów (max-requests) ogranicza wycieki pamięci.
 # Nadpisanie: zmienna GUNICORN_CMD_ARGS (flagi CLI miałyby pierwszeństwo, więc są tylko tutaj).
 export GUNICORN_CMD_ARGS="${GUNICORN_CMD_ARGS:--k gthread -w 2 --threads 8 --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100 --worker-tmp-dir /dev/shm}"
-exec gunicorn -b 0.0.0.0:5010 --access-logfile - "app:create_app()"
+# Port wewnętrzny: PORT platformy (Cloud Run, Heroku…) ma pierwszeństwo przed APP_INTERNAL_PORT z obrazu/compose.
+exec gunicorn -b "0.0.0.0:${PORT:-${APP_INTERNAL_PORT:-5010}}" --access-logfile - "app:create_app()"

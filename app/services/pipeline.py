@@ -26,11 +26,20 @@ from app.services.storage import get_storage
 from app.services.templates import active_rule_sets
 
 FINGERPRINT_MIN = 0.6
+FILE_MISSING_MSG = ("Brak pliku źródłowego dokumentu w magazynie plików — wgraj fakturę ponownie albo odtwórz "
+                    "storage.")
+STORAGE_UNAVAILABLE_MSG = ("Magazyn plików jest niedostępny (błąd zapisu) — spróbuj ponownie za chwilę albo "
+                           "zgłoś problem administratorowi.")
 DEFAULT_VALUES = {"currency": ["PLN", "GBP", "EUR"], "payment_method": ["przelew", "gotówka", "karta"]}
 
 
 class DocumentTooLarge(ValueError):
     pass
+
+
+class StorageUnavailable(RuntimeError):
+    """Zapis pliku w magazynie nie powiódł się (pełny dysk, utracony wolumen, brak uprawnień) — API 503,
+    panel: komunikat; szczegóły w logu."""
 
 
 @dataclass
@@ -284,9 +293,8 @@ def _process(doc: Document) -> Document:
         doc.issues = [Issue("unreadable", BLOCKING, str(exc)).to_dict()]
         return doc
     except OSError:  # brak pliku w storage (utracony wolumen, zła ścieżka) — czytelny problem, nie 500 (BE-9)
-        msg = "Brak pliku źródłowego dokumentu w magazynie plików — wgraj fakturę ponownie albo odtwórz storage."
-        doc.status, doc.error = _error_status(doc), msg
-        doc.issues = [Issue("file_missing", BLOCKING, msg).to_dict()]
+        doc.status, doc.error = _error_status(doc), FILE_MISSING_MSG
+        doc.issues = [Issue("file_missing", BLOCKING, FILE_MISSING_MSG).to_dict()]
         return doc
     doc.fmt, doc.error = tree.fmt, None
     ident = identify(tree, doc, synonyms)
@@ -344,7 +352,11 @@ def ingest(data: bytes, filename: str | None, source: str = "upload", api_key_id
     if len(data) > limit:
         raise DocumentTooLarge(f"Plik przekracza limit {limit // (1024 * 1024)} MB.")
     storage = get_storage()
-    sha, created = storage.store(data)
+    try:
+        sha, created = storage.store(data)
+    except OSError as exc:  # pełny dysk / utracony wolumen w trakcie pracy — 503 albo komunikat, nie 500
+        current_app.logger.exception("Nie udało się zapisać pliku w magazynie %s", storage.base)
+        raise StorageUnavailable(STORAGE_UNAVAILABLE_MSG) from exc
     try:
         doc = Document(source=_fit(Document.source, source), filename=_fit(Document.filename, filename or "dokument"),
                        sha256=sha, status=STATUS_RECEIVED,

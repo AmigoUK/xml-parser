@@ -1,6 +1,7 @@
 """Pakiet F: nagłówki bezpieczeństwa, sesja, limit logowania, demo, izolacja kluczy API, ProxyFix."""
 import inspect
 import json
+import logging
 import re
 from datetime import timedelta
 from pathlib import Path
@@ -350,6 +351,42 @@ def _make_app(tmp_path, **extra):
            "STORAGE_DIR": str(tmp_path / "s"), "WTF_CSRF_ENABLED": False}
     cfg.update(extra)
     return create_app(cfg)
+
+
+def test_warns_once_when_forwarded_header_arrives_without_trusted_proxy(tmp_path, caplog):
+    """Proxy przed aplikacją, a TRUSTED_PROXY_COUNT=0: limit logowań per IP działałby jak globalny — ostrzeżenie w logu
+    (raz na proces), bez zmiany zachowania."""
+    app = _make_app(tmp_path)
+    client = app.test_client()
+    with caplog.at_level(logging.WARNING, logger=app.logger.name):
+        client.get("/healthz")
+        assert "TRUSTED_PROXY_COUNT" not in caplog.text
+        client.get("/healthz", headers={"X-Forwarded-For": "192.0.2.7"})
+        client.get("/healthz", headers={"X-Forwarded-For": "192.0.2.7"})
+    assert sum("X-Forwarded-For" in r.getMessage() for r in caplog.records) == 1
+
+
+def test_warns_when_behind_proxy_without_secure_session_cookie(tmp_path, caplog):
+    with caplog.at_level(logging.WARNING, logger="app"):
+        _make_app(tmp_path, TRUSTED_PROXY_COUNT=1, SESSION_COOKIE_SECURE=False)
+    assert "SESSION_COOKIE_SECURE" in caplog.text
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="app"):
+        _make_app(tmp_path, TRUSTED_PROXY_COUNT=1, SESSION_COOKIE_SECURE=True)
+        _make_app(tmp_path, TRUSTED_PROXY_COUNT=0, SESSION_COOKIE_SECURE=False)
+    assert "SESSION_COOKIE_SECURE" not in caplog.text
+
+
+def test_preferred_url_scheme_from_env(monkeypatch):
+    import importlib
+    from app import config as cfg
+    assert cfg.Config.PREFERRED_URL_SCHEME == "http"
+    monkeypatch.setenv("PREFERRED_URL_SCHEME", "https")
+    try:
+        assert importlib.reload(cfg).Config.PREFERRED_URL_SCHEME == "https"
+    finally:
+        monkeypatch.delenv("PREFERRED_URL_SCHEME")
+        importlib.reload(cfg)
 
 
 def test_proxyfix_disabled_by_default(tmp_path):
