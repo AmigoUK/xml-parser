@@ -56,7 +56,7 @@ Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples
 | ![Pomoc](app/static/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](app/static/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
 | ![O demo](app/static/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](app/static/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
 | ![Przewodnik integracji](app/static/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | ![FAQ: worki → kilogramy](app/static/screenshots/13-faq-worek.png)<br/>**Negocjacja przelicznika** `1 worek = 25 kg` — scenariusz z [FAQ](docs/pomoc/faq.md#worek-na-kg) |
-| ![Zestaw demo](app/static/screenshots/14-demo-zestaw.png)<br/>**Zestaw demo „Miesiąc faktur”** — karta z przyciskami faz i tabelą postępu (status oczekiwany a rzeczywisty) | |
+| ![Zestaw demo](app/static/screenshots/14-demo-zestaw.png)<br/>**Zestaw demo „Miesiąc faktur”** — karta z przyciskami faz i tabelą postępu (status oczekiwany a rzeczywisty) | ![Tryb demo](app/static/screenshots/01-demo.png)<br/>**Strona „O demo”** z próbkami faktur i kartą zestawu |
 
 ## API w 30 sekund
 
@@ -257,11 +257,12 @@ na instancji z prawdziwymi danymi.
 Strona „O demo” zawiera kartę **Zestaw demo**: 24 fikcyjne faktury sześciu dostawców (Alfa, Beta, Gamma, Epsilon,
 Zeta i Eta — „Eta Packaging Sp. z o.o.”, XML z angielskimi tagami) z jednego miesiąca, ułożone tak, by przejść cały
 cykl uczenia. Pułapki: brak waluty, jednostki `pcs`/`C62`/`H87`/`EA`/`wor.`/`kart.`, towary spoza kartoteki,
-niezgodność sumy pozycji, nowy alias `PCE` i duplikat bajtowy.
+niezgodność sumy pozycji, nowy alias `PCE` i duplikat bajtowy. Faktura Epsilon nr 17 nie ma klucza waluty: pierwsza
+podpowiedź to PLN, ale ten dostawca rozlicza się w GBP — operator ma wybrać GBP, a nie pierwszą podpowiedź.
 
 - **Wczytaj pierwsze (6)** — po jednej fakturze każdego dostawcy; wszystkie czekają w kolejce na operatora
   (nowy dostawca, nieznane jednostki, brak przelicznika). Rozwiąż je podpowiedziami w panelu — system uczy się szablonów.
-- **Wczytaj pozostałe (18)** — kolejne faktury; po nauce większość przechodzi automatycznie, cztery wymagają
+- **Wczytaj pozostałe (18)** — kolejne faktury; po nauce większość przechodzi automatycznie (plik 13 zostaje zatwierdzony z ostrzeżeniem o sumie, `sum_mismatch_line`), cztery wymagają
   wyjaśnienia (towar spoza kartoteki, nowy alias, brak waluty, nowa jednostka z przelicznikiem), a jedna jest duplikatem.
 - **Wczytaj wszystko (24)** — obie fazy po kolei.
 - **Tabela postępu** — dla każdego pliku: status oczekiwany (z `manifest.json`), rzeczywisty status dokumentu
@@ -271,11 +272,15 @@ niezgodność sumy pozycji, nowy alias `PCE` i duplikat bajtowy.
 Ten sam zestaw można wczytać przez API skryptem [`app/help_examples/zestaw-demo.sh`](app/help_examples/zestaw-demo.sh)
 (wymaga `curl` i `jq`; klucz w zmiennej `XP_API_KEY`):
 
+Plik w repozytorium zawiera symbol zastępczy `__API_BASE__` — podstawia go dopiero Pomoc w panelu. Najprościej skopiuj
+skrypt z tematu `/pomoc/zestaw-demo` (adres serwera jest tam już wpisany). Uruchamiając plik z repozytorium, podstaw adres:
+
 ```bash
+sed "s|__API_BASE__|https://twoj-host:18506|" app/help_examples/zestaw-demo.sh > zestaw-demo.sh
 export XP_API_KEY=TWÓJ_KLUCZ
-./app/help_examples/zestaw-demo.sh pierwsze     # faza 1 (6 faktur)
+bash zestaw-demo.sh pierwsze     # faza 1 (6 faktur)
 # … rozwiąż faktury w panelu …
-./app/help_examples/zestaw-demo.sh pozostale    # faza 2 (18 faktur); „wszystko” = obie po kolei
+bash zestaw-demo.sh pozostale    # faza 2 (18 faktur); „wszystko” = obie po kolei
 ```
 
 Opis i scenariusz krok po kroku: temat Pomocy `/pomoc/zestaw-demo` (kopia: [`docs/pomoc/zestaw-demo.md`](docs/pomoc/zestaw-demo.md)).

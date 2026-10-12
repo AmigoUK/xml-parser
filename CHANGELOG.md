@@ -10,12 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Zestaw demo „Miesiąc faktur” (`demo/dataset/`): 24 fikcyjne faktury sześciu dostawców, w tym nowy „Eta Packaging Sp. z o.o.” (XML z angielskimi tagami), z `manifest.json` (kolejność, fazy, oczekiwane statusy `on_ingest`/`after_resolve`). Pułapki: brak waluty, jednostki `pcs`/`C62`/`H87`/`EA`/`wor.`/`kart.`, towary spoza kartoteki, niezgodność sumy pozycji, nowy alias `PCE`, duplikat bajtowy.
 - Karta „Zestaw demo” na stronie „O demo”: przyciski „Wczytaj pierwsze (6)”, „Wczytaj pozostałe (18)”, „Wczytaj wszystko (24)” i tabela postępu (status oczekiwany a rzeczywisty, źródło); serwis `demo_dataset`.
+- Walidacja plików zestawu przed wczytaniem (istnienie, sha256); błędy `DatasetError` i `DatasetLoadError` z wynikiem częściowym.
 - Generator `tools/gen_demo_dataset.py` z trybem `--check` (ponowne wygenerowanie = identyczne bajty).
 - Skrypt `app/help_examples/zestaw-demo.sh` (wczytanie zestawu przez API, `XP_API_KEY`), temat Pomocy `zestaw-demo` i FAQ `zestaw-demo-api`.
 - Zrzut `14-demo-zestaw`; instancja zrzutów wczytuje pierwszą fazę zestawu.
 
 ### Changed
-- „Wyczyść dane demo” → „Resetuj zestaw demo”.
+- „Wyczyść dane demo” → „Resetuj zestaw demo” (nadal tylko administrator).
 - Test uczenia obejmuje sześciu dostawców zestawu demo.
 
 ### Fixed

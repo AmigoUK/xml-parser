@@ -4,7 +4,7 @@
 
 - `demo/dataset/` + `manifest.json`; generator deterministyczny `tools/gen_demo_dataset.py` (seed RNG, tryb `--check`); dane w 100% fikcyjne (strażnik `tests/test_no_private_data.py`).
 - Dostawcy (6): Alfa (XML własny PL), Beta (KSeF FA(3)-podobny), Gamma (UBL 2.1), Epsilon (JSON), Zeta (CSV) + nowy „Eta Packaging Sp. z o.o.” (XML z angielskimi tagami) × 4 faktury z jednego miesiąca = 24 pliki. Delta (CSV) nie wchodzi do zestawu — zostaje próbką w `demo/samples`; jej pułapka `kart.` przeniesiona do trzeciej faktury Zety.
-- Pułapki: nowy dostawca, nieznane jednostki (pcs, C62, H87, EA, wor., kart.), towar spoza kartoteki, nowy alias jednostki (PCE) w 3. fakturze, niezgodność sum (ostrzeżenie), duplikat bajtowy (ten sam plik 2×), brak waluty.
+- Pułapki: nowy dostawca, nieznane jednostki (pcs, C62, H87, EA, wor., kart.), towar spoza kartoteki, nowy alias jednostki (PCE) w 3. fakturze, niezgodność sum (ostrzeżenie), duplikat bajtowy (ten sam plik 2×), brak waluty (plik 17 Epsilon: pierwsza podpowiedź to PLN, ale dostawca rozlicza się w GBP — operator wybiera GBP, nie pierwszą podpowiedź).
 - Kontrakt manifestu: kolejność (`order`), faza (`first`/`rest`), dostawca, format oraz `expected.on_ingest` (status i problemy po wczytaniu) i `expected.after_resolve` (status po rozwiązaniu podpowiedziami; `null` dla faktur czystych); sumy sha256 plików sprawdzane przed wczytaniem.
 - Duplikat rozpoznawany po bajtach (sha256 pliku), nie po numerze faktury: 20. plik jest kopią 14.
 - Reguła R19: czwarte faktury dostawców zależą wyłącznie od nauki z pierwszej fazy (i kartoteki demo), więc faza „pozostałe” wczytana jedną partią, przed rozwiązaniem faktur 15–18, zgadza się z manifestem.
