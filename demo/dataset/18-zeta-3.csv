@@ -1,0 +1,4 @@
+NrFaktury;DataWystawienia;Waluta;SprzedawcaNIP;SprzedawcaNazwa;Kod;Nazwa;EAN;Ilosc;JM;CenaNetto;WartoscNetto;StawkaVAT;WartoscVAT;WartoscBrutto;RazemNetto;RazemVAT;RazemBrutto
+Z/403/2026;19.10.2026;PLN;9990000066;Hurtownia Zeta Sp. j.;Z-25;Cukier kryształ 25 kg;5909999000129;16;wor.;75,00;1200,00;5;60,00;1260,00;1424,00;111,52;1535,52
+Z/403/2026;19.10.2026;PLN;9990000066;Hurtownia Zeta Sp. j.;Z-40;Kubek papierowy 250 ml karton 20 szt;5909999000150;10;karton;18,00;180,00;23;41,40;221,40;1424,00;111,52;1535,52
+Z/403/2026;19.10.2026;PLN;9990000066;Hurtownia Zeta Sp. j.;Z-50;Pudełko na tort 30x30 cm;5909999000068;1;kart.;44,00;44,00;23;10,12;54,12;1424,00;111,52;1535,52

@@ -1,0 +1,3 @@
+NrFaktury;DataWystawienia;Waluta;SprzedawcaNIP;SprzedawcaNazwa;Kod;Nazwa;EAN;Ilosc;JM;CenaNetto;WartoscNetto;StawkaVAT;WartoscVAT;WartoscBrutto;RazemNetto;RazemVAT;RazemBrutto
+Z/401/2026;07.10.2026;PLN;9990000066;Hurtownia Zeta Sp. j.;Z-25;Cukier kryształ 25 kg;5909999000129;6;wor.;75,00;450,00;5;22,50;472,50;738,00;36,90;774,90
+Z/401/2026;07.10.2026;PLN;9990000066;Hurtownia Zeta Sp. j.;Z-26;Sól kamienna (worek 25kg);5909999000136;6;worek;48,00;288,00;5;14,40;302,40;738,00;36,90;774,90
