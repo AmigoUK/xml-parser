@@ -13,7 +13,7 @@ from app.services.negotiation import NegotiationError, resolve, restore
 from app.services.pipeline import FILE_MISSING_MSG, DocumentTooLarge, StorageUnavailable, ingest, load_tree, process
 from app.services.storage import get_storage
 
-from .paging import cursor_arg, first_url, like_pattern, next_url, page_by_id, search_arg
+from .paging import cursor_arg, like_pattern, page_by_id, page_context, search_arg
 
 bp = Blueprint("docs", __name__)
 
@@ -87,13 +87,6 @@ def upload():
     return render_template("upload.html")
 
 
-def _page_context(docs: list, cursor: int | None, param: str) -> dict:
-    """Wspólny kontekst stronicowania listy dokumentów i kolejki (kursor po id w parametrze `param`)."""
-    return {"docs": docs, "shown": len(docs),
-            "next_url": next_url(param, cursor) if cursor else None,
-            "first_url": first_url(param) if cursor_arg(param) else None}
-
-
 @bp.get("/kolejka")
 @login_required
 def queue():
@@ -101,7 +94,7 @@ def queue():
     docs, cursor = page_by_id(Document.query.filter_by(status=STATUS_NEEDS_REVIEW), Document.id, DOCS_LIST_LIMIT,
                               after=cursor_arg("after") or 0)
     return render_template("documents.html", title="Kolejka do wyjaśnienia", queue=True, q="",
-                           **_page_context(docs, cursor, "after"))
+                           docs=docs, **page_context(docs, cursor, "after"))
 
 
 @bp.get("/dokumenty")
@@ -118,7 +111,7 @@ def documents():
             db.or_(Document.number.ilike(pattern, escape="\\"), Supplier.name.ilike(pattern, escape="\\")))
     docs, cursor = page_by_id(query, Document.id, DOCS_LIST_LIMIT, before=cursor_arg("before"))
     return render_template("documents.html", title="Dokumenty", queue=False, labels=STATUS_LABELS, current=status,
-                           q=q, **_page_context(docs, cursor, "before"))
+                           q=q, docs=docs, **page_context(docs, cursor, "before"))
 
 
 @bp.get("/dokumenty/<int:doc_id>")

@@ -107,6 +107,34 @@ def test_next_url_preserves_filters_and_view_args(app):
         assert url.startswith("/szablony/5?") and "a=1" in url and "b=2" in url and "page=2" in url
 
 
+def test_paging_links_ignore_reserved_and_view_arg_params(auth_client, app):
+    """Parametry `_anchor`/`_external`/`_scheme`/`_method` i nazwy view_args nie trafiają do url_for (bez 500)."""
+    from app.web import crud
+    db.session.add_all([Supplier(name=f"Dostawca {i}", tax_id=f"PL99900003{i:02d}") for i in range(3)])
+    db.session.commit()
+    old_size = crud.CRUD_PAGE_SIZE
+    crud.CRUD_PAGE_SIZE = 2
+    try:
+        with captured(app) as seen:
+            r = auth_client.get("/dostawcy?_anchor=x&_external=1&_scheme=https&_method=POST&q=Dostawca")
+    finally:
+        crud.CRUD_PAGE_SIZE = old_size
+    assert r.status_code == 200
+    ctx = seen[-1]
+    assert ctx["next_url"] == "/dostawcy?q=Dostawca&page=2" and ctx["first_url"] == "/dostawcy?q=Dostawca"
+    _docs(2)
+    assert auth_client.get("/dokumenty?before=999&_anchor=x&_external=1").status_code == 200
+
+
+def test_paging_links_skip_params_colliding_with_view_args(app):
+    @app.get("/test-stronicowania/<int:tid>")
+    def _probe(tid):
+        return {"next": paging.next_url("before", 3), "first": paging.first_url("before")}
+    r = app.test_client().get("/test-stronicowania/5?tid=3&status=ok&before=9&_anchor=x&_external=1")
+    assert r.status_code == 200
+    assert r.json == {"next": "/test-stronicowania/5?status=ok&before=3", "first": "/test-stronicowania/5?status=ok"}
+
+
 # --- dokumenty i kolejka
 
 def test_documents_list_paginates_at_limit(auth_client, app, monkeypatch):
@@ -213,8 +241,11 @@ def test_history_action_labels_cover_all_audited_actions():
     found = set()
     for path in (ROOT / "app").rglob("*.py"):
         src = path.read_text(encoding="utf-8")
-        for m in re.finditer(r"(?<![\w.])audit\(\s*([^,)\n]+),", src):
-            for prefix, lit in re.findall(r'(f?)"([^"]*)"', m.group(1)):
+        for m in re.finditer(r"(?<![\w.])(?<!def )audit\(\s*([^,)\n]+),", src):
+            literals = re.findall(r'(f?)"([^"]*)"', m.group(1))
+            # akcja spoza literałów (np. audit(zmienna, …)) — test musi o tym wiedzieć, a nie jej pominąć
+            assert literals, f"{path}: audit() z nieliteralną akcją {m.group(1)!r}"
+            for prefix, lit in literals:
                 if prefix:  # f-string: jedyny wzorzec to resolve:{action} z negocjacji
                     assert lit == "resolve:{action}", f"{path}: nieznany wzorzec akcji {lit!r}"
                     found |= {f"resolve:{a}" for a in ACTIONS}

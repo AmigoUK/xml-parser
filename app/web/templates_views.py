@@ -23,7 +23,7 @@ from app.services.negotiation import CONFLICT_MSG, save_rules
 from app.services.pipeline import current_rules, load_tree, process
 from app.services.templates import active_rule_sets, locked_active_version_id, new_version
 
-from .paging import cursor_arg, first_url, next_url, page_by_id
+from .paging import cursor_arg, page_by_id, page_context
 
 bp = Blueprint("templates_views", __name__, url_prefix="/szablony")
 COMMENT_MAX = TemplateVersion.comment.type.length  # komentarz wersji obcinany do kolumny
@@ -58,9 +58,7 @@ def index():
     # jedno zapytanie wypełnia mapę tożsamości — t.active_version (session.get) nie pyta już bazy
     active = {v.id: v for v in TemplateVersion.query.filter(TemplateVersion.id.in_(active_ids))} if active_ids else {}
     rows = [{"t": t, "docs": counts.get(t.id, 0), "active": active.get(t.active_version_id)} for t in templates]
-    return render_template("templates_list.html", rows=rows, shown=len(rows),
-                           next_url=next_url("after", cursor) if cursor else None,
-                           first_url=first_url("after") if cursor_arg("after") else None)
+    return render_template("templates_list.html", rows=rows, **page_context(rows, cursor, "after"))
 
 
 @bp.get("/<int:tid>")

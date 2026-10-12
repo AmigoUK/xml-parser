@@ -5,6 +5,8 @@ zła wartość parametru (tekst, zero, liczba poza zakresem kolumny) oznacza pie
 """
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from flask import request, url_for
 
 from app.ids import parse_id
@@ -61,12 +63,18 @@ def page_by_number(query, per_page: int, page: int | None):
 
 
 def _url(**overrides) -> str:
-    args = request.args.to_dict(flat=False)
-    for key, value in overrides.items():
-        args.pop(key, None)
-        if value is not None:
-            args[key] = value
-    return url_for(request.endpoint, **(request.view_args or {}), **args)
+    """Adres bieżącego widoku z parametrami zapytania zmienionymi przez `overrides` (None = usuń).
+
+    Query string budujemy sami (urlencode), a do url_for idą tylko view_args: parametry zaczynające się od `_`
+    (zastrzeżone w url_for: _anchor, _external, _scheme, _method) i nazwy kolidujące z view_args są pomijane —
+    złe wejście nie może dać 500 ani linku absolutnego z nagłówka Host.
+    """
+    view_args = request.view_args or {}
+    pairs = [(k, v) for k, v in request.args.items(multi=True)
+             if not k.startswith("_") and k not in view_args and k not in overrides]
+    pairs += [(k, v) for k, v in overrides.items() if v is not None]
+    base = url_for(request.endpoint, **view_args)
+    return f"{base}?{urlencode(pairs)}" if pairs else base
 
 
 def next_url(param: str, value) -> str:
@@ -77,3 +85,11 @@ def next_url(param: str, value) -> str:
 def first_url(param: str) -> str:
     """Adres bieżącego widoku bez parametru `param` (pierwsza strona), z zachowaniem filtrów."""
     return _url(**{param: None})
+
+
+def page_context(rows: list, cursor: int | None, param: str) -> dict:
+    """Wspólne klucze stronicowania kursorem: `shown`, `next_url` (None na ostatniej stronie) i `first_url`
+    (None na pierwszej stronie)."""
+    return {"shown": len(rows),
+            "next_url": next_url(param, cursor) if cursor else None,
+            "first_url": first_url(param) if cursor_arg(param) else None}

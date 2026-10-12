@@ -4,7 +4,7 @@ from flask_login import login_required
 from app.extensions import db
 from app.models import AuditLog
 
-from .paging import cursor_arg, first_url, next_url, page_by_id
+from .paging import cursor_arg, page_by_id, page_context
 
 bp = Blueprint("history", __name__, url_prefix="/historia")
 HISTORY_LIMIT = 300  # rozmiar strony dziennika w panelu
@@ -54,7 +54,5 @@ def index():
     users = [u for (u,) in db.session.query(AuditLog.user).filter(AuditLog.user.isnot(None)).distinct()
              .order_by(AuditLog.user).limit(HISTORY_USERS_LIMIT)]
     return render_template(
-        "history.html", rows=rows, shown=len(rows), labels=ACTION_LABELS, actions=list(ACTION_LABELS.items()),
-        users=users, action=action, user=user,
-        next_url=next_url("before", cursor) if cursor else None,
-        first_url=first_url("before") if cursor_arg("before") else None)
+        "history.html", rows=rows, labels=ACTION_LABELS, actions=list(ACTION_LABELS.items()),
+        users=users, action=action, user=user, **page_context(rows, cursor, "before"))
