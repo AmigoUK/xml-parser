@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <InvoiceNumber>ETA/2026/10/0003</InvoiceNumber>
+  <IssueDate>2026-10-16</IssueDate>
+  <DueDate>2026-11-15</DueDate>
+  <Currency>PLN</Currency>
+  <Seller>
+    <SellerName>Eta Packaging Sp. z o.o.</SellerName>
+    <SellerVAT>PL9990000077</SellerVAT>
+    <Street>ul. Kartonowa 7</Street>
+    <City>Przykładowo</City>
+  </Seller>
+  <Buyer>
+    <BuyerName>Piekarnia Demo Sp. z o.o.</BuyerName>
+    <BuyerVAT>PL9990000099</BuyerVAT>
+  </Buyer>
+  <Lines>
+    <Line>
+      <ProductCode>E-01</ProductCode>
+      <GTIN>5909999000068</GTIN>
+      <ProductName>Pudełko na tort 30x30 cm</ProductName>
+      <Quantity>145</Quantity>
+      <Unit>pcs</Unit>
+      <UnitPrice>2.40</UnitPrice>
+      <NetAmount>348.00</NetAmount>
+      <VatRate>23</VatRate>
+    </Line>
+    <Line>
+      <ProductCode>E-03</ProductCode>
+      <GTIN>5909999000143</GTIN>
+      <ProductName>Taśma klejąca transparentna 48 mm</ProductName>
+      <Quantity>14</Quantity>
+      <Unit>pcs</Unit>
+      <UnitPrice>6.90</UnitPrice>
+      <NetAmount>96.60</NetAmount>
+      <VatRate>23</VatRate>
+    </Line>
+  </Lines>
+  <Totals>
+    <Net>444.60</Net>
+    <Vat>102.26</Vat>
+    <Gross>546.86</Gross>
+  </Totals>
+</Invoice>

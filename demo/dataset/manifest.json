@@ -1,0 +1,553 @@
+{
+  "version": 1,
+  "title": "Miesiąc faktur",
+  "generator": {
+    "tool": "tools/gen_demo_dataset.py",
+    "seed": 20261001
+  },
+  "suppliers": {
+    "alfa": {
+      "name": "Hurtownia Alfa Sp. z o.o.",
+      "tax_id": "9990000011",
+      "format": "xml"
+    },
+    "beta": {
+      "name": "Młyn Beta Sp. z o.o.",
+      "tax_id": "9990000022",
+      "format": "xml"
+    },
+    "eta": {
+      "name": "Eta Packaging Sp. z o.o.",
+      "tax_id": "9990000077",
+      "format": "xml"
+    },
+    "gamma": {
+      "name": "Gamma Aromen GmbH",
+      "tax_id": "DE999999999",
+      "format": "xml"
+    },
+    "epsilon": {
+      "name": "Epsilon Dairy Ltd",
+      "tax_id": "GB999000044",
+      "format": "json"
+    },
+    "zeta": {
+      "name": "Hurtownia Zeta Sp. j.",
+      "tax_id": "9990000066",
+      "format": "csv"
+    }
+  },
+  "files": [
+    {
+      "order": 1,
+      "filename": "01-alfa-1.xml",
+      "sha256": "2678c2410be82564f8c0be41c3d1de5dedc9df7619540ef059ff39df154cbceb",
+      "supplier": "alfa",
+      "format": "xml",
+      "phase": "first",
+      "shows": "nowy dostawca, brak waluty, jednostka „pcs”, towar po kodzie dostawcy",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "unknown_supplier",
+            "unknown_unit",
+            "unmapped_field",
+            "unmapped_product"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 2,
+      "filename": "02-beta-1.xml",
+      "sha256": "9ebd7fd2b0f5b804ef1162ef2960e89c9cdeb011baf4a597b8204f2b7c0a21be",
+      "supplier": "beta",
+      "format": "xml",
+      "phase": "first",
+      "shows": "nowy dostawca (KSeF), „worek” → kg ×25 z nazwy towaru, towar po nazwie",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "missing_conversion",
+            "unknown_supplier",
+            "unmapped_product"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 3,
+      "filename": "03-eta-1.xml",
+      "sha256": "5e8e9d66a40a7e77dddbdf0789639c1720e1835cb32c416518327b5015dd562e",
+      "supplier": "eta",
+      "format": "xml",
+      "phase": "first",
+      "shows": "nowy dostawca (XML z angielskimi tagami), jednostka „pcs”, towar po nazwie",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "unknown_supplier",
+            "unknown_unit",
+            "unmapped_product"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 4,
+      "filename": "04-gamma-1.xml",
+      "sha256": "66177b007281f4cc3360d15343e8f40ffbb90ae74d20cf27c83e5911aaa2820f",
+      "supplier": "gamma",
+      "format": "xml",
+      "phase": "first",
+      "shows": "nowy dostawca (UBL 2.1), kody jednostek „C62”/„H87”, towar po nazwie",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "unknown_supplier",
+            "unknown_unit",
+            "unmapped_product"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 5,
+      "filename": "05-epsilon-1.json",
+      "sha256": "71310d87c553287d6140bc26329634b18cc256b631dd88874c7581b26a8fdc5a",
+      "supplier": "epsilon",
+      "format": "json",
+      "phase": "first",
+      "shows": "nowy dostawca (JSON), jednostka „EA”, towary rozpoznane po GTIN",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "unknown_supplier",
+            "unknown_unit"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 6,
+      "filename": "06-zeta-1.csv",
+      "sha256": "c0690461056e963d2f63de57cfb775f1a8c93c33cf619a857d2570d9e5369c03",
+      "supplier": "zeta",
+      "format": "csv",
+      "phase": "first",
+      "shows": "nowy dostawca (CSV), „wor.” → worek (obok pełnej nazwy „worek”), 1 worek = 25 kg z nazwy towaru, towary spoza kartoteki",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "missing_conversion",
+            "unknown_supplier",
+            "unknown_unit",
+            "unmapped_product"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 7,
+      "filename": "07-alfa-2.xml",
+      "sha256": "7b34f68de2540281a2b3f665852f3198af7f8134cdbec77a665db00b1fd57854",
+      "supplier": "alfa",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "druga faktura — przechodzi automatycznie",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 8,
+      "filename": "08-beta-2.xml",
+      "sha256": "a5a77b83e6ccb1dc9faa3355d4bd6a5e6637c4ff95c41b6937a5fca5b6f1de14",
+      "supplier": "beta",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "druga faktura — przechodzi automatycznie",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 9,
+      "filename": "09-eta-2.xml",
+      "sha256": "de3d7b6996acdcd28a790ab5eead54693df37da2ccb2ba42d8e27fab5ff24a96",
+      "supplier": "eta",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "druga faktura — przechodzi automatycznie",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 10,
+      "filename": "10-gamma-2.xml",
+      "sha256": "7574f087efd6ba54f624fa99d553cfebb05c041650f1c255c8562bc222e8fa9c",
+      "supplier": "gamma",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "druga faktura — przechodzi automatycznie",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 11,
+      "filename": "11-epsilon-2.json",
+      "sha256": "09394079c45c431bc1b31f9d48be42214a3553fb3e740f40680442e03101af31",
+      "supplier": "epsilon",
+      "format": "json",
+      "phase": "rest",
+      "shows": "druga faktura — przechodzi automatycznie",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 12,
+      "filename": "12-zeta-2.csv",
+      "sha256": "4a3c8a581fcb79fc14e7afda254452e0513f2262be056bc971fb797bdd4d41a0",
+      "supplier": "zeta",
+      "format": "csv",
+      "phase": "rest",
+      "shows": "druga faktura — przechodzi automatycznie",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 13,
+      "filename": "13-alfa-3.xml",
+      "sha256": "338f34f5eaea5d988f83be9ca60dc380210435997fe5686164239df801521400",
+      "supplier": "alfa",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "niezgodność sumy w pozycji (ilość × cena ≠ netto) — ostrzeżenie, faktura zatwierdzona",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": [
+            "sum_mismatch_line"
+          ]
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 14,
+      "filename": "14-beta-3.xml",
+      "sha256": "871f1cfdfe18d728f9a776464d55f64e21b0483dc7fd91a9078082d49b5a6bb6",
+      "supplier": "beta",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "czysta faktura",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 15,
+      "filename": "15-eta-3.xml",
+      "sha256": "9f376e9481fd2d31ae962c63c8b73ee6b2876be8b02b2ea8605c016ba50e8c5c",
+      "supplier": "eta",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "towar spoza kartoteki (nowy GTIN) — „utwórz towar”",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "unmapped_product"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 16,
+      "filename": "16-gamma-3.xml",
+      "sha256": "8c499b6f4b4693781bec4f0e8454396c31ad01d358629a5fb93ab4faf78f5a9f",
+      "supplier": "gamma",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "nowy alias jednostki „PCE” zamiast „C62”",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "unknown_unit"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 17,
+      "filename": "17-epsilon-3.json",
+      "sha256": "b50e8efd8814def4e4d6aa5e5ac4a00d83967ffad17ff745669c635120ddd369",
+      "supplier": "epsilon",
+      "format": "json",
+      "phase": "rest",
+      "shows": "brak klucza „currency” — waluta do uzupełnienia",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "unmapped_field"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 18,
+      "filename": "18-zeta-3.csv",
+      "sha256": "7374fda5b96849b30ff6a0549d234f1d58026902a3c2a0353dcf906249368698",
+      "supplier": "zeta",
+      "format": "csv",
+      "phase": "rest",
+      "shows": "„kart.” → karton (obok pełnej nazwy „karton”), 1 karton = 20 szt z nazwy towaru, nowy towar",
+      "expected": {
+        "on_ingest": {
+          "status": "needs_review",
+          "blocking": [
+            "missing_conversion",
+            "unknown_unit",
+            "unmapped_product"
+          ],
+          "warnings": []
+        },
+        "after_resolve": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        }
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 19,
+      "filename": "19-alfa-4.xml",
+      "sha256": "38e59348a5bc7ec89498a2b12d350e8b2a83c3b8ebab6ee382b4a1ac4a3dc8bf",
+      "supplier": "alfa",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "czysta faktura",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 20,
+      "filename": "20-beta-3-ponownie.xml",
+      "sha256": "871f1cfdfe18d728f9a776464d55f64e21b0483dc7fd91a9078082d49b5a6bb6",
+      "supplier": "beta",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "ten sam plik co 14-beta-3.xml wysłany drugi raz — duplikat",
+      "expected": {
+        "on_ingest": {
+          "status": "duplicate",
+          "blocking": [
+            "duplicate"
+          ],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": "14-beta-3.xml"
+    },
+    {
+      "order": 21,
+      "filename": "21-eta-4.xml",
+      "sha256": "2a730a2f027db5a1352ccafc8bd8a0ee145a889b73673a783c7c238c173a45f3",
+      "supplier": "eta",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "czysta faktura",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 22,
+      "filename": "22-gamma-4.xml",
+      "sha256": "76007fd4a5f246faf5bf5701c91940b626acbb5051df216921a3886fcbfc6e9e",
+      "supplier": "gamma",
+      "format": "xml",
+      "phase": "rest",
+      "shows": "czysta faktura",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 23,
+      "filename": "23-epsilon-4.json",
+      "sha256": "b601d9ac7a92c092fdb49ef1385ae6476d9d191fff3661f392fb7bc8a4b67c7d",
+      "supplier": "epsilon",
+      "format": "json",
+      "phase": "rest",
+      "shows": "czysta faktura",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    },
+    {
+      "order": 24,
+      "filename": "24-zeta-4.csv",
+      "sha256": "3a43516e361f55dc22007127062ee920569a265537a41b4de2b302f184307218",
+      "supplier": "zeta",
+      "format": "csv",
+      "phase": "rest",
+      "shows": "czysta faktura",
+      "expected": {
+        "on_ingest": {
+          "status": "approved",
+          "blocking": [],
+          "warnings": []
+        },
+        "after_resolve": null
+      },
+      "duplicate_of": null
+    }
+  ]
+}

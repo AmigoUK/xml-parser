@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <InvoiceNumber>ETA/2026/10/0001</InvoiceNumber>
+  <IssueDate>2026-10-04</IssueDate>
+  <DueDate>2026-11-03</DueDate>
+  <Currency>PLN</Currency>
+  <Seller>
+    <SellerName>Eta Packaging Sp. z o.o.</SellerName>
+    <SellerVAT>PL9990000077</SellerVAT>
+    <Street>ul. Kartonowa 7</Street>
+    <City>Przykładowo</City>
+  </Seller>
+  <Buyer>
+    <BuyerName>Piekarnia Demo Sp. z o.o.</BuyerName>
+    <BuyerVAT>PL9990000099</BuyerVAT>
+  </Buyer>
+  <Lines>
+    <Line>
+      <ProductCode>E-01</ProductCode>
+      <GTIN>5909999000068</GTIN>
+      <ProductName>Pudełko na tort 30x30 cm</ProductName>
+      <Quantity>141</Quantity>
+      <Unit>pcs</Unit>
+      <UnitPrice>2.40</UnitPrice>
+      <NetAmount>338.40</NetAmount>
+      <VatRate>23</VatRate>
+    </Line>
+    <Line>
+      <ProductCode>E-02</ProductCode>
+      <GTIN>5909999000075</GTIN>
+      <ProductName>Podkład pod tort 28 cm</ProductName>
+      <Quantity>130</Quantity>
+      <Unit>pcs</Unit>
+      <UnitPrice>1.10</UnitPrice>
+      <NetAmount>143.00</NetAmount>
+      <VatRate>23</VatRate>
+    </Line>
+  </Lines>
+  <Totals>
+    <Net>481.40</Net>
+    <Vat>110.72</Vat>
+    <Gross>592.12</Gross>
+  </Totals>
+</Invoice>

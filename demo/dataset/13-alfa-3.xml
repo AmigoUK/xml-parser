@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document>
+    <Type>Invoice</Type>
+    <Version>1</Version>
+    <Language>PL</Language>
+    <Faktura>
+        <Naglowek>
+            <DostawcaNIP>PL9990000011</DostawcaNIP>
+            <DostawcaNazwa>Hurtownia Alfa Sp. z o.o.</DostawcaNazwa>
+            <DostawcaAdresKodPocztowy>00-950</DostawcaAdresKodPocztowy>
+            <DostawcaAdresMiejscowosc>Przykładowo</DostawcaAdresMiejscowosc>
+            <DostawcaAdresUlica>ul. Testowa 1</DostawcaAdresUlica>
+            <NabywcaNIP>PL9990000099</NabywcaNIP>
+            <NabywcaNazwa>Piekarnia Demo Sp. z o.o.</NabywcaNazwa>
+            <NabywcaAdresKodPocztowy>00-951</NabywcaAdresKodPocztowy>
+            <NabywcaAdresMiejscowosc>Przykładowo</NabywcaAdresMiejscowosc>
+            <NabywcaAdresUlica>ul. Demonstracyjna 2</NabywcaAdresUlica>
+            <FakturaNumer>FA/2026/10/103</FakturaNumer>
+            <FakturaDataWystawienia>2026-10-14</FakturaDataWystawienia>
+            <FakturaDataPlatnosci>2026-11-13</FakturaDataPlatnosci>
+            <FakturaTypPlatnosci>Przelew</FakturaTypPlatnosci>
+            <FakturaWartoscNetto>131.30</FakturaWartoscNetto>
+            <FakturaWartoscVat>6.57</FakturaWartoscVat>
+            <FakturaWartoscBrutto>137.87</FakturaWartoscBrutto>
+            <FakturaNumeryWZ>WZ-ALFA-103</FakturaNumeryWZ>
+        </Naglowek>
+        <Pozycje>
+            <Pozycja>
+                <TowarKod>A-100</TowarKod>
+                <TowarKodEan>0105909999000013</TowarKodEan>
+                <TowarKodEan128>01059099990000131527071610L26101</TowarKodEan128>
+                <TowarNazwa>Posypka czekoladowa 1 kg</TowarNazwa>
+                <TowarJm>pcs</TowarJm>
+                <Ilosc>4</Ilosc>
+                <CenaNetto>12.50</CenaNetto>
+                <WartoscNetto>50.00</WartoscNetto>
+                <StawkaVat>5%</StawkaVat>
+                <WartoscVat>2.50</WartoscVat>
+                <WartoscBrutto>52.50</WartoscBrutto>
+            </Pozycja>
+            <Pozycja>
+                <TowarKod>A-200</TowarKod>
+                <TowarKodEan>0105909999000020</TowarKodEan>
+                <TowarKodEan128>01059099990000201527071610L26102</TowarKodEan128>
+                <TowarNazwa>Mak niebieski 500 g</TowarNazwa>
+                <TowarJm>pcs</TowarJm>
+                <Ilosc>4</Ilosc>
+                <CenaNetto>4.20</CenaNetto>
+                <WartoscNetto>17.80</WartoscNetto>
+                <StawkaVat>5%</StawkaVat>
+                <WartoscVat>0.89</WartoscVat>
+                <WartoscBrutto>18.69</WartoscBrutto>
+            </Pozycja>
+            <Pozycja>
+                <TowarKod>A-300</TowarKod>
+                <TowarKodEan>0105909999000037</TowarKodEan>
+                <TowarKodEan128>01059099990000371527071610L26103</TowarKodEan128>
+                <TowarNazwa>Masa marcepanowa 5 kg</TowarNazwa>
+                <TowarJm>pcs</TowarJm>
+                <Ilosc>2</Ilosc>
+                <CenaNetto>31.75</CenaNetto>
+                <WartoscNetto>63.50</WartoscNetto>
+                <StawkaVat>5%</StawkaVat>
+                <WartoscVat>3.18</WartoscVat>
+                <WartoscBrutto>66.68</WartoscBrutto>
+            </Pozycja>
+        </Pozycje>
+    </Faktura>
+</Document>
