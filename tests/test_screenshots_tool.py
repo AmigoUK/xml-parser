@@ -73,6 +73,17 @@ def test_dataset_first_phase_offsets_document_ids(tool):
     assert paths["14-demo-zestaw"] == "/demo#zestaw"
 
 
+def test_missing_dataset_manifest_keeps_list_and_fails_server_path_with_tool_error(tool, capsys, monkeypatch, tmp_path):
+    """Brak manifestu zestawu nie psuje `--list`; ścieżka startu serwera kończy się czytelnym ToolError (kod 2)."""
+    monkeypatch.setattr(tool, "DATASET_MANIFEST", tmp_path / "nie-ma.json")
+    assert tool.main(["--list"]) == 0
+    capsys.readouterr()
+    assert tool.main(["--port", str(_free_port())]) == 2
+    assert "manifest zestawu demo" in capsys.readouterr().err
+    with pytest.raises(tool.ToolError, match="manifest zestawu demo"):
+        tool.dataset_offset()
+
+
 def test_list_without_playwright(tool, capsys):
     assert tool.main(["--list"]) == 0
     out = capsys.readouterr().out
