@@ -3,12 +3,10 @@
 ponowna walidacja celu (SSRF) przy każdej wysyłce, lease w `claim_batch`, `send_now`/`retry`, retencja i pętla
 workera. Odbiorca to lokalny `ThreadingHTTPServer` na 127.0.0.1 (WEBHOOK_ALLOW_HTTP + allowlista 127.0.0.1)."""
 import json
-import os
 import socket
 import threading
 import time
 from datetime import timedelta
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 import sqlalchemy as sa
@@ -19,143 +17,12 @@ from app.models import (
     WEBHOOK_FAILED,
     WEBHOOK_PENDING,
     WEBHOOK_SENT,
-    ApiKey,
     WebhookDelivery,
-    utcnow,
 )
 from app.services import webhook_security, webhooks
 from app.version import __version__
 from tests.conftest import mariadb_url, needs_mariadb  # noqa: F401 (fixture)
-
-SECRET = "sekret-testowy-hurtowni-alfa"
-NOW = utcnow().replace(microsecond=0)
-SHUTDOWN_POLL = 0.05
-
-
-# ---------------------------------------------------------------- odbiorca testowy
-
-class _Server(ThreadingHTTPServer):
-    daemon_threads = True
-
-    def handle_error(self, request, client_address):  # zerwane połączenia (timeout klienta) nie brudzą wyjścia
-        pass
-
-
-class _Handler(BaseHTTPRequestHandler):
-    def log_message(self, *args):
-        pass
-
-    def _record(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        body = self.rfile.read(length) if length else b""
-        self.server.requests.append({"method": self.command, "path": self.path, "headers": dict(self.headers),
-                                     "body": body})
-
-    def _reply(self, code, body=b"", headers=()):
-        self.send_response(code)
-        for name, value in headers:
-            self.send_header(name, value)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        self._record()
-        self._reply(200, b"ok")
-
-    def do_POST(self):
-        self._record()
-        mode = self.server.mode
-        try:
-            if mode == "ok":
-                self._reply(200, b"ok")
-            elif mode == "error":
-                self._reply(500, b"awaria odbiorcy")
-            elif mode == "redirect":
-                self._reply(302, b"", [("Location", "/inne")])
-            elif mode == "slow":
-                self.server.release.wait(5)
-                self._reply(200, b"za pozno")
-            elif mode == "big":
-                # zapowiada 10 MB, wysyła 2 KB i czeka — pełny odczyt zawisłby do limitu czasu
-                self.send_response(500)
-                self.send_header("Content-Length", str(10 * 1024 * 1024))
-                self.end_headers()
-                self.wfile.write(b"B" * 2048)
-                self.wfile.flush()
-                self.server.release.wait(5)
-        except OSError:
-            pass
-
-
-class Receiver:
-    def __init__(self):
-        self.server = _Server(("127.0.0.1", 0), _Handler)
-        self.server.requests = []
-        self.server.mode = "ok"
-        self.server.release = threading.Event()
-        self.port = self.server.server_address[1]
-        self.url = f"http://127.0.0.1:{self.port}/hook?zrodlo=xp"
-        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": SHUTDOWN_POLL},
-                                       daemon=True)
-        self.thread.start()
-
-    @property
-    def requests(self):
-        return self.server.requests
-
-    def set_mode(self, mode):
-        self.server.mode = mode
-
-    def close(self):
-        self.server.release.set()
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(5)
-
-
-@pytest.fixture
-def receiver(app):
-    app.config.update(WEBHOOK_ALLOW_HTTP=True, WEBHOOK_ALLOWED_HOSTS="127.0.0.1")
-    rec = Receiver()
-    try:
-        yield rec
-    finally:
-        rec.close()
-
-
-@pytest.fixture
-def no_connection(monkeypatch):
-    """Każda próba połączenia z celem kończy test błędem (cel zablokowany = zero ruchu sieciowego)."""
-    def boom(*args, **kwargs):
-        raise AssertionError(f"niedozwolone połączenie: {args!r}")
-    monkeypatch.setattr(webhooks.socket, "create_connection", boom)
-
-
-def make_key(url, *, secret=SECRET, active=True, name="Hurtownia Alfa — ERP"):
-    key = ApiKey(name=name, prefix="xp_test", key_hash=os.urandom(32).hex(), active=active, webhook_url=url,
-                 webhook_secret=secret)
-    db.session.add(key)
-    db.session.flush()
-    return key
-
-
-def make_delivery(key, *, doc_id=7, status=WEBHOOK_PENDING, next_attempt_at=None, created_at=None, attempts=0):
-    payload = {"event": EVENT_STATUS_CHANGED, "id": doc_id, "status": "approved", "previous_status": "received",
-               "updated_at": "2026-10-12T10:00:00Z", "document_url": f"https://xp.example.test/dokumenty/{doc_id}"}
-    d = WebhookDelivery(api_key_id=key.id, event=EVENT_STATUS_CHANGED, payload=payload, status=status,
-                        next_attempt_at=next_attempt_at, attempts=attempts)
-    if created_at is not None:
-        d.created_at = created_at
-    db.session.add(d)
-    db.session.commit()
-    return d
-
-
-def reload(delivery):
-    db.session.expire_all()
-    return db.session.get(WebhookDelivery, delivery.id)
-
+from tests.webhook_helpers import NOW, SECRET, make_delivery, make_key, reload
 
 # ---------------------------------------------------------------- wysyłka
 
@@ -210,6 +77,12 @@ def test_https_wraps_pinned_socket_with_sni(monkeypatch):
         def settimeout(self, value):
             pass
 
+        def do_handshake(self):
+            calls["handshake"] = True
+
+        def shutdown(self, how):
+            pass
+
         def sendall(self, data):
             raise ConnectionResetError("koniec testu")
 
@@ -217,8 +90,9 @@ def test_https_wraps_pinned_socket_with_sni(monkeypatch):
             calls["closed"] = True
 
     class FakeContext:
-        def wrap_socket(self, sock, server_hostname=None):
+        def wrap_socket(self, sock, server_hostname=None, do_handshake_on_connect=True):
             calls["sni"] = server_hostname
+            calls["deferred_handshake"] = not do_handshake_on_connect
             return sock
 
     def fake_connect(address, timeout=None):
@@ -232,8 +106,25 @@ def test_https_wraps_pinned_socket_with_sni(monkeypatch):
     result = webhooks.send_http(target, b"{}", {"Content-Type": "application/json"})
     assert calls["address"] == ("203.0.113.10", 443)
     assert calls["sni"] == "hooks.example.test"
+    # uścisk po podpięciu watchdoga do gniazda TLS (łączny limit czasu obejmuje też TLS)
+    assert calls["deferred_handshake"] and calls["handshake"]
     assert calls.get("closed")
     assert result.ok is False and result.status_code is None and "koniec testu" in result.error
+
+
+def test_trickling_response_is_cut_at_total_deadline(app, receiver, monkeypatch):
+    """Odbiorca sączy status i nagłówki po bajcie co 0,1 s: limit pojedynczego recv nigdy nie mija, ale łączny
+    limit czasu (watchdog) przerywa żądanie — worker nie utknie na jednym odbiorcy."""
+    monkeypatch.setattr(webhooks, "TIMEOUT", 0.3)
+    receiver.set_mode("trickle")
+    target = webhook_security.ResolvedTarget(receiver.url, "http", "127.0.0.1", receiver.port, "/hook", "127.0.0.1")
+    started = time.monotonic()
+    result = webhooks.send_http(target, b"{}", {"Content-Type": "application/json"})
+    elapsed = time.monotonic() - started
+    assert elapsed < 1, elapsed
+    assert result.ok is False and result.status_code is None
+    assert "limit czasu" in result.error
+    assert len(receiver.requests) == 1
 
 
 def test_delivery_uuid_stable_across_retries(app, receiver):
@@ -405,15 +296,47 @@ def test_claim_sets_lease_and_attempts(app):
     assert [d.id for d in claimed] == [due_null.id, due_past.id]
     for d, attempts in ((due_null, 1), (due_past, 3)):
         d = reload(d)
-        assert (d.attempts, d.next_attempt_at, d.status) == (attempts, NOW + timedelta(seconds=60), WEBHOOK_PENDING)
+        # dzierżawa pokrywa najgorszy czas całej partii: 50 × TIMEOUT + zapas
+        lease = timedelta(seconds=50 * webhooks.TIMEOUT + webhooks.LEASE_MARGIN)
+        assert (d.attempts, d.next_attempt_at, d.status) == (attempts, NOW + lease, WEBHOOK_PENDING)
     # wydzierżawione wiersze nie wracają przed końcem lease
     assert [d.id for d in webhooks.claim_batch(NOW + timedelta(seconds=30))] == [future.id]
     assert reload(future).attempts == 1
     assert webhooks.claim_batch(NOW + timedelta(seconds=30)) == []
-    # limit
-    for _ in range(3):
-        make_delivery(key)
-    assert len(webhooks.claim_batch(NOW + timedelta(seconds=30), limit=2)) == 2
+    # limit; dzierżawa liczona od rozmiaru partii
+    rows = [make_delivery(key) for _ in range(3)]
+    assert [d.id for d in webhooks.claim_batch(NOW + timedelta(seconds=30), limit=2)] == [r.id for r in rows[:2]]
+    assert reload(rows[0]).next_attempt_at == NOW + timedelta(seconds=30 + 2 * webhooks.TIMEOUT + 60)
+
+
+def test_apply_result_skips_row_changed_during_send(app, receiver, monkeypatch, caplog):
+    """Wynik zapisywany warunkowo: gdy w trakcie wysyłki ktoś zresetował wiersz („Ponów” w panelu) albo przejął go
+    inny worker, stary wynik nie nadpisuje nowego stanu."""
+    import logging
+    caplog.set_level(logging.WARNING, logger=app.logger.name)
+    d = make_delivery(make_key(receiver.url))
+    real_send = webhooks.send
+
+    def send_then_reset(delivery, *, now):
+        result = real_send(delivery, now=now)
+        db.session.execute(sa.update(WebhookDelivery).where(WebhookDelivery.id == delivery.id)
+                           .values(status=WEBHOOK_PENDING, attempts=0, next_attempt_at=None))
+        db.session.commit()
+        return result
+
+    monkeypatch.setattr(webhooks, "send", send_then_reset)
+    assert webhooks.deliver_pending(NOW) == 1  # żądanie wyszło
+    d = reload(d)
+    assert (d.status, d.attempts, d.next_attempt_at, d.sent_at, d.last_status_code) == \
+        (WEBHOOK_PENDING, 0, None, None, None)
+    assert any("wynik próby 1 pominięty" in r.getMessage() for r in caplog.records)
+    # bez zmiany w międzyczasie wynik jest zapisywany, a apply_result zwraca True
+    monkeypatch.setattr(webhooks, "send", real_send)
+    assert webhooks.deliver_pending(NOW) == 1
+    assert reload(d).status == WEBHOOK_SENT
+    stale = make_delivery(make_key(receiver.url, name="Klucz B"), attempts=3)
+    assert webhooks.apply_result(stale, webhooks.SendResult(True, 200, None), NOW, claimed_attempts=2) is False
+    assert reload(stale).status == WEBHOOK_PENDING
 
 
 @needs_mariadb
@@ -449,7 +372,9 @@ def test_deliver_pending_sqlite_sequential(app, receiver):
     rows = [make_delivery(key, doc_id=i) for i in range(1, 4)]
     later = make_delivery(key, doc_id=9, next_attempt_at=NOW + timedelta(hours=1))
     make_delivery(key, doc_id=10, status=WEBHOOK_SENT)
-    assert webhooks.deliver_pending(NOW, limit=2) == 2
+    progress = []
+    assert webhooks.deliver_pending(NOW, limit=2, on_progress=lambda: progress.append(1)) == 2
+    assert len(progress) == 2  # po każdej dostawie (worker odświeża wtedy heartbeat)
     assert webhooks.deliver_pending(NOW) == 1
     assert [json.loads(r["body"])["id"] for r in receiver.requests] == [1, 2, 3]
     assert all(reload(d).status == WEBHOOK_SENT for d in rows)
@@ -476,10 +401,17 @@ def test_send_now_and_retry_reset(app, receiver):
     assert not result.ok and result.status_code == 500
     failed = reload(failed)
     assert (failed.status, failed.attempts, failed.last_status_code) == (WEBHOOK_PENDING, 1, 500)
-    # wiersz w trakcie wysyłki (lease) albo czekający na termin — send_now nic nie wysyła
+    # wiersz w trakcie wysyłki (lease) albo czekający na termin — send_now nic nie wysyła i nie cofa ani nie
+    # zatwierdza niezacommitowanych zmian wywołującego
     sent_before = len(receiver.requests)
+    failed = reload(failed)
+    key.name = "Hurtownia Alfa — zmiana w toku"
     result = webhooks.send_now(failed)
     assert not result.ok and result.status_code is None
+    assert key.name == "Hurtownia Alfa — zmiana w toku"  # nie cofnięto
+    db.session.rollback()
+    db.session.expire_all()
+    assert key.name == "Hurtownia Alfa — ERP"  # i nie zatwierdzono
     assert len(receiver.requests) == sent_before and reload(failed).attempts == 1
 
 
@@ -509,15 +441,25 @@ def test_run_worker_stops_on_event_and_touches_heartbeat(app, receiver, tmp_path
     heartbeat = tmp_path / "hb" / "worker.heartbeat"
     stop = threading.Event()
     calls = []
+    mtimes = []
+    removes = []
     real = webhooks.deliver_pending
+    real_remove = db.session.remove
 
-    def counting(now, limit=50):
+    def counting(now, limit=50, on_progress=None):
         calls.append(now)
+        mtimes.append(heartbeat.stat().st_mtime_ns)  # heartbeat istnieje już przed pierwszą rundą
+        assert on_progress is not None
         if len(calls) == 2:
             raise RuntimeError("chwilowa awaria bazy")  # błąd iteracji nie zatrzymuje workera
-        return real(now, limit)
+        return real(now, limit, on_progress)
+
+    def counting_remove():
+        removes.append(1)
+        real_remove()
 
     monkeypatch.setattr(webhooks, "deliver_pending", counting)
+    monkeypatch.setattr(db.session, "remove", counting_remove)
     worker = threading.Thread(target=webhooks.run_worker, args=(app,),
                               kwargs={"interval": 0.01, "stop": stop, "heartbeat": str(heartbeat)}, daemon=True)
     try:
@@ -533,6 +475,8 @@ def test_run_worker_stops_on_event_and_touches_heartbeat(app, receiver, tmp_path
     assert not worker.is_alive()
     assert len(calls) >= 4
     assert time.time() - first_mtime < 10
+    assert mtimes == sorted(mtimes) and mtimes[-1] > mtimes[0]  # heartbeat odświeżany w kolejnych rundach
+    assert len(removes) >= len(calls)  # db.session.remove() po każdej rundzie, także po błędzie
     assert reload(d).status == WEBHOOK_SENT
     messages = [r.getMessage() for r in caplog.records]
     assert "webhooks-worker: start" in messages and "webhooks-worker: stop" in messages

@@ -4,10 +4,10 @@ from datetime import timedelta
 
 from app.extensions import db
 from app.models import WEBHOOK_FAILED, WEBHOOK_PENDING, WEBHOOK_SENT, WebhookDelivery, utcnow
-from tests.test_webhooks_delivery import make_delivery, make_key, receiver  # noqa: F401 (fixture)
+from tests.webhook_helpers import make_delivery, make_key
 
 
-def test_webhooks_worker_once_delivers_and_exits_0(app, receiver):  # noqa: F811
+def test_webhooks_worker_once_delivers_and_exits_0(app, receiver):
     key = make_key(receiver.url)
     ids = [make_delivery(key, doc_id=1).id, make_delivery(key, doc_id=2).id]
     result = app.test_cli_runner().invoke(args=["webhooks-worker", "--once"])
