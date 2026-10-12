@@ -1,15 +1,19 @@
 """Zestaw demo „Miesiąc faktur”: manifest, postęp wczytywania liczony z bazy i wczytywanie faz przez ingest().
 
 Serwis nie zna żądania Flaska — tylko pliki z `demo/dataset/` i bazę. Manifest jest jedynym źródłem prawdy
-o składzie zestawu (generuje go `tools/gen_demo_dataset.py`, do obrazu Docker trafia `demo/`)."""
+o składzie zestawu (generuje go `tools/gen_demo_dataset.py`, do obrazu Docker trafia `demo/`).
+
+Każdy dokument commituje się osobno (ingest), więc przerwane wczytywanie można bezpiecznie powtórzyć — już
+wczytane wpisy zostaną pominięte (idempotencja)."""
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.models import STATUS_LABELS, Document
-from app.services.pipeline import ingest
+from app.services.pipeline import DocumentTooLarge, StorageUnavailable, ingest
 
 DATASET_DIR = Path(__file__).resolve().parent.parent.parent / "demo" / "dataset"
 MANIFEST_NAME = "manifest.json"
@@ -19,6 +23,14 @@ PHASES: dict[str, tuple[str, ...]] = {
     "pozostale": ("rest",),
     "wszystko": ("first", "rest"),
 }
+
+
+VALID_PHASES = ("first", "rest")
+VALID_FORMATS = ("xml", "json", "csv")
+
+
+class DatasetError(ValueError):
+    """Pliki zestawu nie zgadzają się z manifestem (brak pliku, zły sha256) — nic nie zostało wczytane."""
 
 
 @dataclass(frozen=True)
@@ -71,11 +83,29 @@ class BatchResult:
     skipped: list[Entry] = field(default_factory=list)
 
 
+class DatasetLoadError(RuntimeError):
+    """Wczytywanie przerwane w trakcie (magazyn/rozmiar); `partial` = co już zacommitowano + reszta jako `skipped`."""
+
+    def __init__(self, message: str, partial: BatchResult):
+        super().__init__(message)
+        self.partial = partial
+
+
 def _expected(raw: dict | None) -> Expected | None:
     if raw is None:
         return None
     return Expected(status=raw["status"], blocking=tuple(raw.get("blocking") or ()),
                     warnings=tuple(raw.get("warnings") or ()))
+
+
+def _checked(e: Entry) -> Entry:
+    if e.on_ingest is None:
+        raise ValueError(f"{e.filename}: brak „expected.on_ingest”")
+    if e.phase not in VALID_PHASES:
+        raise ValueError(f"{e.filename}: nieznana faza „{e.phase}”")
+    if e.format not in VALID_FORMATS:
+        raise ValueError(f"{e.filename}: nieznany format „{e.format}”")
+    return e
 
 
 def load_manifest(path: Path | str | None = None) -> Manifest:
@@ -89,12 +119,14 @@ def load_manifest(path: Path | str | None = None) -> Manifest:
         raise ValueError(f"Nie można odczytać manifestu zestawu demo ({p}): {exc}") from exc
     try:
         entries = tuple(sorted((
-            Entry(order=int(f["order"]), filename=f["filename"], sha256=f["sha256"], supplier=f["supplier"],
+            _checked(Entry(order=int(f["order"]), filename=f["filename"], sha256=f["sha256"], supplier=f["supplier"],
                   format=f["format"], phase=f["phase"], shows=f.get("shows", ""),
                   on_ingest=_expected(f["expected"]["on_ingest"]),
                   after_resolve=_expected(f["expected"].get("after_resolve")),
-                  duplicate_of=f.get("duplicate_of"))
+                  duplicate_of=f.get("duplicate_of")))
             for f in raw["files"]), key=lambda e: e.order))
+        if len({e.order for e in entries}) != len(entries):
+            raise ValueError("powtórzone pole „order”")
         return Manifest(title=raw["title"], generator=raw.get("generator") or {},
                         suppliers=raw.get("suppliers") or {}, entries=entries)
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
@@ -151,14 +183,31 @@ def load_entries(entries: list[Entry], source: str = "demo") -> BatchResult:
     result = BatchResult()
     m = load_manifest()
     done = {r.entry.filename for r in progress(m) if r.doc_id is not None}
+    todo = []
     for e in sorted(entries, key=lambda x: x.order):
         if e.filename in done:
             result.skipped.append(e)
-            continue
-        data = (DATASET_DIR / e.filename).read_bytes()
-        result.loaded.append(ingest(data, e.filename, source=source))
-        done.add(e.filename)
+        else:
+            todo.append((e, _read_verified(e)))  # walidacja wszystkich plików PRZED pierwszym ingestem
+    for i, (e, data) in enumerate(todo):
+        try:
+            result.loaded.append(ingest(data, e.filename, source=source))
+        except (StorageUnavailable, DocumentTooLarge) as exc:
+            result.skipped.extend(x for x, _ in todo[i:])
+            raise DatasetLoadError(
+                f"Wczytywanie przerwane na pliku {e.filename} (wczytano {len(result.loaded)}): {exc}", result) from exc
     return result
+
+
+def _read_verified(e: Entry) -> bytes:
+    path = DATASET_DIR / Path(e.filename).name
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise DatasetError(f"Brak pliku zestawu demo: {e.filename}") from exc
+    if hashlib.sha256(data).hexdigest() != e.sha256:
+        raise DatasetError(f"Plik zestawu demo {e.filename} jest niezgodny z manifestem (sha256) — nic nie wczytano.")
+    return data
 
 
 def load_phase(phase_key: str, source: str = "demo") -> BatchResult:

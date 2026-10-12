@@ -19,6 +19,7 @@ def dataset(app, tmp_path, monkeypatch):
     d = tmp_path / "dataset"
     d.mkdir()
     base = sample_bytes("alfa-1.xml")
+    assert base.replace(b"FA/2026/10/001", b"FA/2026/10/002") != base
     files = {
         "01-alfa-1.xml": base,
         "02-alfa-2.xml": base.replace(b"FA/2026/10/001", b"FA/2026/10/002"),
@@ -120,3 +121,66 @@ def test_matches_expected_accepts_on_ingest_or_after_resolve(dataset):
     assert dd._matches(e, None) is None
     dup = dd.load_manifest().entries[2]
     assert dd._matches(dup, "approved") is False
+
+
+def test_load_entries_missing_file_raises_dataset_error(dataset):
+    from app.models import Document
+    (dataset / "02-alfa-2.xml").unlink()
+    with pytest.raises(dd.DatasetError, match="02-alfa-2.xml"):
+        dd.load_phase("wszystko")
+    assert Document.query.count() == 0
+
+
+def test_load_entries_sha_mismatch_raises_dataset_error(dataset):
+    from app.models import Document
+    (dataset / "02-alfa-2.xml").write_bytes(b"<zmienione/>")
+    with pytest.raises(dd.DatasetError, match="02-alfa-2.xml"):
+        dd.load_phase("wszystko")
+    assert Document.query.count() == 0
+
+
+def test_load_entries_partial_result_on_ingest_failure(dataset, monkeypatch):
+    from app.services.pipeline import StorageUnavailable
+    real = dd.ingest
+    calls = []
+
+    def flaky(data, filename, **kw):
+        calls.append(filename)
+        if len(calls) == 2:
+            raise StorageUnavailable("dysk")
+        return real(data, filename, **kw)
+    monkeypatch.setattr(dd, "ingest", flaky)
+    with pytest.raises(dd.DatasetLoadError) as ei:
+        dd.load_phase("wszystko")
+    err = ei.value
+    assert len(err.partial.loaded) == 1 and [e.order for e in err.partial.skipped] == [2, 3]
+    assert isinstance(err.__cause__, StorageUnavailable)
+
+
+def _write_manifest(tmp_path, mutate):
+    entry = {"order": 1, "filename": "a.xml", "sha256": "0" * 64, "supplier": "x", "format": "xml",
+             "phase": "first", "shows": "", "expected": {"on_ingest": _exp("approved"), "after_resolve": None},
+             "duplicate_of": None}
+    mutate(entry)
+    p = tmp_path / "m.json"
+    p.write_text(json.dumps({"title": "T", "files": [entry]}), encoding="utf-8")
+    return p
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda e: e["expected"].update(on_ingest=None),
+    lambda e: e.update(phase="middle"),
+    lambda e: e.update(format="pdf"),
+])
+def test_load_manifest_rejects_invalid_fields(tmp_path, mutate):
+    with pytest.raises(ValueError):
+        dd.load_manifest(_write_manifest(tmp_path, mutate))
+
+
+def test_load_manifest_rejects_duplicate_order(tmp_path):
+    p = _write_manifest(tmp_path, lambda e: None)
+    raw = json.loads(p.read_text())
+    raw["files"].append(dict(raw["files"][0], filename="b.xml"))
+    p.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="order"):
+        dd.load_manifest(p)
