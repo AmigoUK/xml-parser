@@ -1,27 +1,33 @@
 {% extends "base.html" %}
 {% block title %}{{ t.name }}{% endblock %}
 {% block content %}
+<p class="small mb-2"><a href="{{ url_for('templates_views.index') }}">← Szablony</a></p>
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="h4 m-0">{{ t.name }}</h1>
+  <div>
+    <h1 class="h4 m-0">{{ t.name }}</h1>
+    {% if t.supplier %}<div class="text-muted small">Dostawca: {{ t.supplier.name }}</div>{% endif %}
+  </div>
   <a class="btn btn-sm btn-primary" href="{{ url_for('templates_views.editor_for_template', tid=t.id) }}">Otwórz edytor</a>
 </div>
 <form method="get" class="d-flex gap-2 align-items-center mb-3 small">
-  Porównaj
-  <select name="a" class="form-select form-select-sm w-auto">{% for v in t.versions %}<option value="{{ v.id }}" {% if diff and diff.a.id == v.id %}selected{% endif %}>v{{ v.version }}</option>{% endfor %}</select>
-  z
-  <select name="b" class="form-select form-select-sm w-auto">{% for v in t.versions|reverse %}<option value="{{ v.id }}" {% if diff and diff.b.id == v.id %}selected{% endif %}>v{{ v.version }}</option>{% endfor %}</select>
+  <label for="cmp-a">Porównaj</label>
+  <select id="cmp-a" name="a" class="form-select form-select-sm w-auto">{% for v in t.versions %}<option value="{{ v.id }}" {% if diff and diff.a.id == v.id %}selected{% endif %}>v{{ v.version }}</option>{% endfor %}</select>
+  <label for="cmp-b">z</label>
+  <select id="cmp-b" name="b" class="form-select form-select-sm w-auto">{% for v in t.versions|reverse %}<option value="{{ v.id }}" {% if diff and diff.b.id == v.id %}selected{% endif %}>v{{ v.version }}</option>{% endfor %}</select>
   <button class="btn btn-sm btn-outline-secondary">Pokaż różnice</button>
 </form>
 {% if diff %}
 <pre class="bg-white border p-2 small">{% for l in diff.lines %}<span class="{{ 'text-success' if l.startswith('+') else ('text-danger' if l.startswith('-') else '') }}">{{ l }}</span>
 {% endfor %}</pre>
 {% endif %}
+<div class="table-responsive">
 <table class="table table-sm bg-white">
   <thead><tr><th>Wersja</th><th>Autor</th><th>Komentarz</th><th>Utworzono</th><th></th></tr></thead>
   <tbody>{% for v in t.versions|reverse %}
     <tr><td>v{{ v.version }}{% if v.id == t.active_version_id %} <span class="badge text-bg-success">aktywna</span>{% endif %}</td>
-      <td>{{ v.author or '—' }}</td><td>{{ v.comment or '' }}</td><td class="small">{{ v.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-      <td class="text-end">{% if v.id != t.active_version_id %}<form method="post" action="{{ url_for('templates_views.restore', tid=t.id, vid=v.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">Przywróć</button></form>{% endif %}</td></tr>
+      <td>{{ v.author or '—' }}</td><td>{{ v.comment or '' }}</td><td class="small">{{ v.created_at|dt }}</td>
+      <td class="text-end">{% if v.id != t.active_version_id %}<form method="post" action="{{ url_for('templates_views.restore', tid=t.id, vid=v.id) }}" data-confirm="Przywrócić wersję {{ v.version }}? Powstanie nowa aktywna wersja z jej regułami."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">Przywróć</button></form>{% endif %}</td></tr>
   {% endfor %}</tbody>
 </table>
+</div>
 {% endblock %}
