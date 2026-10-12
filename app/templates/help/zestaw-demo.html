@@ -19,19 +19,22 @@
 <h2 class="h5 mt-4">Krok po kroku</h2>
 <ol>
   <li><strong>„Wczytaj pierwsze (6)”.</strong> Wczytuje po jednej fakturze każdego dostawcy. Wszystkie sześć trafia do
-    <a href="{{ url_for('help.topic', slug='pierwsza-faktura') }}">Kolejki</a> ze statusem „Do wyjaśnienia”, bo to nowi dostawcy.
-    Otwórz każdą i rozwiąż problemy od góry; pierwsze podpowiedzi są tu prawie zawsze dobre.</li>
+    kolejki do wyjaśnienia ze statusem „Do wyjaśnienia”, bo to nowi dostawcy.
+    Otwórz każdą i rozwiąż problemy od góry (<a href="{{ url_for('help.topic', slug='pierwsza-faktura') }}">jak to zrobić, krok po kroku</a>);
+    pierwsze podpowiedzi są tu prawie zawsze dobre.</li>
   <li><strong>„Wczytaj pozostałe (18)”.</strong> Faktury 7–24 czytają się już same: <strong>13 zostaje zatwierdzonych</strong>
     (jedna z ostrzeżeniem o niezgodności sumy), <strong>4 trafiają do wyjaśnienia</strong> (numery 15–18: nowy towar,
     alias jednostki PCE, brak waluty, jednostka karton z przelicznikiem), a <strong>1 jest duplikatem</strong>.
     Rozwiąż cztery z nich tak samo jak w kroku 1. <strong>Przy fakturze 17 (Epsilon, brak waluty) wybierz GBP, nie
     pierwszą podpowiedź PLN</strong> — Epsilon rozlicza się w funtach, a PLN to tylko waluta domyślna systemu.
     <span class="small text-muted">Czwarte faktury dostawców (19, 21–24) nie potrzebują nauki z faktur 15–18, więc
-    przejdą też wtedy, gdy wczytasz całą fazę naraz.</span></li>
-  <li><strong>„Wczytaj wszystko”</strong> (bez wcześniejszej nauki). Wczytuje obie fazy jednym kliknięciem. Dostawcy są
+    przejdą jako zatwierdzone jeszcze przed rozwiązaniem 15–18 (przycisk zawsze wczytuje całą fazę).</span></li>
+  <li><strong>„Wczytaj wszystko”</strong> (dla świeżego zestawu albo po resecie z kroku 4 — po krokach 1–2 przycisk
+    pokazuje (0) i jest nieaktywny). Wczytuje obie fazy jednym kliknięciem. Dostawcy są
     jeszcze nieznani, więc <strong>23 z 24 trafiają do wyjaśnienia</strong> (nieznani dostawcy), a plik 20 jest duplikatem — to dobry sposób, by zobaczyć, że bez
     nauki system niczego nie zgaduje.</li>
-  <li><strong>„Resetuj zestaw demo”.</strong> Usuwa wczytane dokumenty i naukę zestawu, więc kolejne przejście daje
+  <li><strong>„Resetuj zestaw demo”.</strong> Przycisk dla administratora czyści <strong>wszystkie</strong> dokumenty, szablony, dostawców, towary i
+    historię (jak mówi okno potwierdzenia) i przywraca kartotekę towarów oraz jednostki, więc kolejne przejście daje
     identyczny przebieg.</li>
 </ol>
 
@@ -77,9 +80,10 @@
   (i opcjonalnie katalogiem z plikami; domyślnie <code>demo/dataset</code>). Po fazie „pierwsze” rozwiąż problemy w panelu,
   dopiero potem wczytaj „pozostałe”. Klucze tworzysz w zakładce „Klucze API”, a przykłady w innych językach są w
   <a href="{{ url_for('help.topic', slug='integracja') }}">przewodniku integracji</a>.</p>
-<div class="alert alert-info small"><strong>Zakres klucza.</strong> Dokumenty wczytane kluczem API leżą w zakresie duplikatów
-  tego klucza: ten sam plik wysłany przez panel albo innym kluczem nie zostanie uznany za duplikat, a postęp na karcie
-  „Zestaw demo” w panelu liczy się z dokumentów wczytanych przez panel.</div>
+<div class="alert alert-info small"><strong>Zakres klucza.</strong> Karta „Zestaw demo” w panelu liczy dokumenty wczytane
+  przez panel i przez klucze API tak samo (kolumna „Źródło” pokazuje, skąd pochodzi każdy). Zakres dotyczy tylko
+  wykrywania duplikatów: jest osobny dla każdego klucza API i dla panelu, więc plik wysłany przez API po wczytaniu
+  w panelu (i odwrotnie) <strong>nie</strong> jest duplikatem.</div>
 {% if manifest is none %}
 <p class="text-muted">Skrypt jest dostępny tylko razem z zestawem demo.</p>
 {% else %}

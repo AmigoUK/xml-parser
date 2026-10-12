@@ -10,10 +10,10 @@ Zestaw demo „Miesiąc faktur” to **24 fikcyjne faktury** z jednego miesiąca
 
 ## Krok po kroku
 
-1. **„Wczytaj pierwsze (6)”.** Wczytuje po jednej fakturze każdego dostawcy. Wszystkie sześć trafia do [Kolejki](pierwsza-faktura.md) ze statusem „Do wyjaśnienia”, bo to nowi dostawcy. Otwórz każdą i rozwiąż problemy od góry; pierwsze podpowiedzi są tu prawie zawsze dobre.
-2. **„Wczytaj pozostałe (18)”.** Faktury 7–24 czytają się już same: **13 zostaje zatwierdzonych** (jedna z ostrzeżeniem o niezgodności sumy), **4 trafiają do wyjaśnienia** (numery 15–18: nowy towar, alias jednostki PCE, brak waluty, jednostka karton z przelicznikiem), a **1 jest duplikatem**. Rozwiąż cztery z nich tak samo jak w kroku 1. **Przy fakturze 17 (Epsilon, brak waluty) wybierz GBP, nie pierwszą podpowiedź PLN** — Epsilon rozlicza się w funtach, a PLN to tylko waluta domyślna systemu. Czwarte faktury dostawców (19, 21–24) nie potrzebują nauki z faktur 15–18, więc przejdą też wtedy, gdy wczytasz całą fazę naraz.
-3. **„Wczytaj wszystko”** (bez wcześniejszej nauki). Wczytuje obie fazy jednym kliknięciem. Dostawcy są jeszcze nieznani, więc **23 z 24 trafiają do wyjaśnienia** (nieznani dostawcy), a plik 20 jest duplikatem — to dobry sposób, by zobaczyć, że bez nauki system niczego nie zgaduje.
-4. **„Resetuj zestaw demo”.** Usuwa wczytane dokumenty i naukę zestawu, więc kolejne przejście daje identyczny przebieg.
+1. **„Wczytaj pierwsze (6)”.** Wczytuje po jednej fakturze każdego dostawcy. Wszystkie sześć trafia do kolejki do wyjaśnienia ze statusem „Do wyjaśnienia”, bo to nowi dostawcy. Otwórz każdą i rozwiąż problemy od góry ([jak to zrobić, krok po kroku](pierwsza-faktura.md)); pierwsze podpowiedzi są tu prawie zawsze dobre.
+2. **„Wczytaj pozostałe (18)”.** Faktury 7–24 czytają się już same: **13 zostaje zatwierdzonych** (jedna z ostrzeżeniem o niezgodności sumy), **4 trafiają do wyjaśnienia** (numery 15–18: nowy towar, alias jednostki PCE, brak waluty, jednostka karton z przelicznikiem), a **1 jest duplikatem**. Rozwiąż cztery z nich tak samo jak w kroku 1. **Przy fakturze 17 (Epsilon, brak waluty) wybierz GBP, nie pierwszą podpowiedź PLN** — Epsilon rozlicza się w funtach, a PLN to tylko waluta domyślna systemu. Czwarte faktury dostawców (19, 21–24) nie potrzebują nauki z faktur 15–18, więc przejdą jako zatwierdzone jeszcze przed rozwiązaniem 15–18 (przycisk zawsze wczytuje całą fazę).
+3. **„Wczytaj wszystko”** (dla świeżego zestawu albo po resecie z kroku 4 — po krokach 1–2 przycisk pokazuje (0) i jest nieaktywny). Wczytuje obie fazy jednym kliknięciem. Dostawcy są jeszcze nieznani, więc **23 z 24 trafiają do wyjaśnienia** (nieznani dostawcy), a plik 20 jest duplikatem — to dobry sposób, by zobaczyć, że bez nauki system niczego nie zgaduje.
+4. **„Resetuj zestaw demo”.** Przycisk dla administratora czyści **wszystkie** dokumenty, szablony, dostawców, towary i historię (jak mówi okno potwierdzenia) i przywraca kartotekę towarów oraz jednostki, więc kolejne przejście daje identyczny przebieg.
 
 ## Wszystkie 24 faktury
 
@@ -58,7 +58,7 @@ Zestaw demo „Miesiąc faktur” to **24 fikcyjne faktury** z jednego miesiąca
 
 Zestaw możesz wczytać też z zewnątrz, skryptem poniżej (potrzebne `curl` i `jq`). Klucz API ustaw w zmiennej `XP_API_KEY`, a skrypt uruchom z fazą `pierwsze`, `pozostale` albo `wszystko` (i opcjonalnie katalogiem z plikami; domyślnie `demo/dataset`). Po fazie „pierwsze” rozwiąż problemy w panelu, dopiero potem wczytaj „pozostałe”. Klucze tworzysz w zakładce „Klucze API”, a przykłady w innych językach są w [przewodniku integracji](integracja.md).
 
-**Zakres klucza.** Dokumenty wczytane kluczem API leżą w zakresie duplikatów tego klucza: ten sam plik wysłany przez panel albo innym kluczem nie zostanie uznany za duplikat, a postęp na karcie „Zestaw demo” w panelu liczy się z dokumentów wczytanych przez panel.
+**Zakres klucza.** Karta „Zestaw demo” w panelu liczy dokumenty wczytane przez panel i przez klucze API tak samo (kolumna „Źródło” pokazuje, skąd pochodzi każdy). Zakres dotyczy tylko wykrywania duplikatów: jest osobny dla każdego klucza API i dla panelu, więc plik wysłany przez API po wczytaniu w panelu (i odwrotnie) **nie** jest duplikatem.
 
 ```
 #!/usr/bin/env bash

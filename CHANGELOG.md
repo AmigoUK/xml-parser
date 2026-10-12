@@ -12,16 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Karta „Zestaw demo” na stronie „O demo”: przyciski „Wczytaj pierwsze (6)”, „Wczytaj pozostałe (18)”, „Wczytaj wszystko (24)” i tabela postępu (status oczekiwany a rzeczywisty, źródło); serwis `demo_dataset`.
 - Walidacja plików zestawu przed wczytaniem (istnienie, sha256); błędy `DatasetError` i `DatasetLoadError` z wynikiem częściowym.
 - Generator `tools/gen_demo_dataset.py` z trybem `--check` (ponowne wygenerowanie = identyczne bajty).
+- `tools/screenshots.py --list` działa bez manifestu zestawu; czytelny błąd pojawia się dopiero przy starcie serwera zrzutów.
+- Czwarte faktury zestawu są czyste po nauce na pierwszych sześciu, więc faza „pozostałe” wczytana jedną partią zgadza się z manifestem.
 - Skrypt `app/help_examples/zestaw-demo.sh` (wczytanie zestawu przez API, `XP_API_KEY`), temat Pomocy `zestaw-demo` i FAQ `zestaw-demo-api`.
 - Zrzut `14-demo-zestaw`; instancja zrzutów wczytuje pierwszą fazę zestawu.
 
 ### Changed
 - „Wyczyść dane demo” → „Resetuj zestaw demo” (nadal tylko administrator).
 - Test uczenia obejmuje sześciu dostawców zestawu demo.
-
-### Fixed
-- `tools/screenshots.py --list` działa bez manifestu zestawu; czytelny błąd pojawia się dopiero przy starcie serwera zrzutów.
-- Czwarte faktury zestawu są czyste po nauce na pierwszych sześciu, więc faza „pozostałe” wczytana jedną partią zgadza się z manifestem.
+- Pomoc: jednostki rozmiaru w `fmt_bytes` to teraz MiB/KiB (zamiast MB/KB), także w `docs/pomoc`.
+- Pomoc: tematy `pierwsza-faktura` i `jak-to-dziala` odsyłają do nowego tematu „Zestaw demo”; podpis zrzutu kolejki uwzględnia faktury zestawu.
+- Karta zestawu i przycisk wczytywania: brak lub uszkodzony manifest daje komunikat zamiast błędu 500.
 
 ## [0.7.1] — 2026-10-12
 
