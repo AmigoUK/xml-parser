@@ -4,30 +4,9 @@ x-logging: &logging
     max-size: "10m"
     max-file: "3"
 
-services:
-  db:
-    image: mariadb:11.4.13
-    restart: unless-stopped
-    environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Ustaw MARIADB_ROOT_PASSWORD w .env}
-      MARIADB_DATABASE: ${MARIADB_DATABASE:-xmlparser}
-      MARIADB_USER: ${MARIADB_USER:-xmlparser}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Ustaw MARIADB_PASSWORD w .env}
-    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
-    volumes: [dbdata:/var/lib/mysql]
-    mem_limit: ${DB_MEM_LIMIT:-1g}
-    cpus: ${DB_CPUS:-1.0}
-    logging: *logging
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 5s
-      retries: 20
-  app:
-    build: .
-    restart: unless-stopped
-    # Tylko zmienne aplikacji (wartości z .env przez interpolację) — bez MARIADB_ROOT_PASSWORD i reszty sekretów
-    # usługi db. Nowa zmienna aplikacji = nowy wiersz tutaj; brak w .env daje bezpieczną wartość domyślną.
-    environment:
+# Zmienne wspólne dla app i worker (wartości z .env przez interpolację) — bez MARIADB_ROOT_PASSWORD i reszty sekretów
+# usługi db. Nowa zmienna aplikacji = nowy wiersz tutaj; brak w .env daje bezpieczną wartość domyślną.
+x-app-env: &app-env
       SECRET_KEY: ${SECRET_KEY:?Ustaw SECRET_KEY w .env}
       DATABASE_URL: ${DATABASE_URL:?Ustaw DATABASE_URL w .env}
       STORAGE_DIR: ${STORAGE_DIR:-/data/storage}
@@ -58,6 +37,35 @@ services:
       GUNICORN_THREADS: ${GUNICORN_THREADS:-8}
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-60}
       GUNICORN_WORKER_TMP_DIR: ${GUNICORN_WORKER_TMP_DIR:-/dev/shm}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      WEBHOOK_ALLOW_HTTP: ${WEBHOOK_ALLOW_HTTP:-0}
+      WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-}
+      WEBHOOK_RETENTION_DAYS: ${WEBHOOK_RETENTION_DAYS:-30}
+      WEBHOOK_HEARTBEAT_FILE: ${WEBHOOK_HEARTBEAT_FILE:-}
+
+services:
+  db:
+    image: mariadb:11.4.13
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Ustaw MARIADB_ROOT_PASSWORD w .env}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-xmlparser}
+      MARIADB_USER: ${MARIADB_USER:-xmlparser}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Ustaw MARIADB_PASSWORD w .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes: [dbdata:/var/lib/mysql]
+    mem_limit: ${DB_MEM_LIMIT:-1g}
+    cpus: ${DB_CPUS:-1.0}
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 20
+  app:
+    build: .
+    restart: unless-stopped
+    # Tylko zmienne aplikacji (kotwica x-app-env na górze pliku), bez sekretów usługi db.
+    environment: *app-env
     depends_on:
       db: { condition: service_healthy }
     ports:
@@ -68,6 +76,29 @@ services:
     cpus: ${APP_CPUS:-2.0}
     logging: *logging
     # sonda zdrowia: HEALTHCHECK z obrazu (Dockerfile) — /healthz na porcie aplikacji
+  # Worker webhooków: dostarcza powiadomienia z kolejki (flask webhooks-worker). Bez portów; migracje robi app.
+  # Awaryjnie, gdy worker nie działa: flask webhooks-worker --once z crona.
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["flask", "webhooks-worker"]
+    environment:
+      <<: *app-env
+      MIGRATE_ON_START: "0"
+      WEBHOOK_HEARTBEAT_FILE: /data/storage/worker-heartbeat
+    depends_on:
+      app: { condition: service_healthy }
+    volumes: [storage:/data/storage]
+    mem_limit: ${WORKER_MEM_LIMIT:-512m}
+    cpus: ${WORKER_CPUS:-1.0}
+    logging: *logging
+    # nadpisuje sondę HTTP z obrazu: heartbeat workera nie starszy niż 60 s
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test $$(( $$(date +%s) - $$(stat -c %Y \"$$WEBHOOK_HEARTBEAT_FILE\") )) -lt 60"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 volumes:
   dbdata:
   storage:

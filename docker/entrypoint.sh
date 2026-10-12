@@ -69,6 +69,11 @@ if [ -d migrations ]; then
     python -m app.dblock -- flask seed
   fi
 fi
+# Tryb polecenia (np. usługa worker: flask webhooks-worker): po sondzie bazy i migracjach (te pomija MIGRATE_ON_START=0)
+# wykonaj podane argumenty zamiast gunicorna. Bez argumentów zachowanie bez zmian.
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
 # Wątkowe workery: bezczynne gniazda (np. preconnect przeglądarki) nie blokują workerów sync.
 # Cykliczny restart workerów (max-requests) ogranicza wycieki pamięci.
 # Pojedyncze flagi: GUNICORN_WORKERS / GUNICORN_THREADS / GUNICORN_TIMEOUT; cały zestaw: GUNICORN_CMD_ARGS (zastępuje

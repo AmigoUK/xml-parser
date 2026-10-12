@@ -112,15 +112,19 @@ def test_compose_app_gets_only_app_variables():
     assert "${TRUSTED_PROXY_COUNT:-0}" in str(env["TRUSTED_PROXY_COUNT"])  # brak w .env = bezpieczna wartość
     assert any("${APP_INTERNAL_PORT:-5010}" in p for p in app["ports"])
     assert "MARIADB_ROOT_PASSWORD" in compose["services"]["db"]["environment"]
+    for name in WEBHOOK_VARS:
+        assert name in env, name
 
 
 ENTRY = ROOT / "docker" / "entrypoint.sh"
+WEBHOOK_VARS = ("PUBLIC_BASE_URL", "WEBHOOK_ALLOW_HTTP", "WEBHOOK_ALLOWED_HOSTS", "WEBHOOK_RETENTION_DAYS",
+                "WEBHOOK_HEARTBEAT_FILE")
 
 
 DB_URL = "mysql+pymysql://xp:tajne@db:3306/xp?charset=utf8mb4"
 
 
-def _run_entrypoint(tmp_path, probe="ok", upgrade="ok", writable=True, database_url=DB_URL, **extra_env):
+def _run_entrypoint(tmp_path, probe="ok", upgrade="ok", writable=True, database_url=DB_URL, args=(), **extra_env):
     """Uruchamia entrypoint z atrapami id/python/flask/gunicorn/sleep (bez roota, bez Dockera). Atrapa python:
     `-m app.dblock -- cmd…` wykonuje cmd (i loguje DBLOCK), inne wywołania to sonda bazy o zadanym wyniku."""
     bindir = tmp_path / "bin"
@@ -158,7 +162,7 @@ def _run_entrypoint(tmp_path, probe="ok", upgrade="ok", writable=True, database_
     if database_url is not None:
         env["DATABASE_URL"] = database_url
     env.update(extra_env)
-    return subprocess.run(["sh", str(ENTRY)], cwd=work, env=env, capture_output=True, text=True, timeout=60)
+    return subprocess.run(["sh", str(ENTRY), *args], cwd=work, env=env, capture_output=True, text=True, timeout=60)
 
 
 def test_entrypoint_happy_path_starts_gunicorn(tmp_path):
@@ -264,3 +268,48 @@ def test_entrypoint_worker_tmp_dir_only_when_directory_exists(tmp_path):
 def test_entrypoint_gunicorn_cmd_args_replaces_whole_set(tmp_path):
     r = _run_entrypoint(tmp_path, GUNICORN_CMD_ARGS="-w 1 --timeout 10")
     assert "ARGS=-w 1 --timeout 10" in r.stdout and "--threads" not in r.stdout
+
+
+def test_entrypoint_execs_given_command_instead_of_gunicorn(tmp_path):
+    """Tryb polecenia (usługa worker): po sondzie bazy i migracjach wykonuje podane argumenty zamiast gunicorna."""
+    r = _run_entrypoint(tmp_path, args=["echo", "CMD_RAN", "a b"])
+    assert r.returncode == 0, r.stderr
+    assert "CMD_RAN a b" in r.stdout
+    assert "GUNICORN" not in r.stdout
+    assert "FLASK_UPGRADE" in r.stderr  # sonda i migracje działają także w trybie polecenia
+
+
+def test_entrypoint_without_arguments_still_starts_gunicorn(tmp_path):
+    r = _run_entrypoint(tmp_path, args=[])
+    assert r.returncode == 0, r.stderr
+    assert "GUNICORN" in r.stdout and "0.0.0.0:5010" in r.stdout
+
+
+def test_entrypoint_command_mode_respects_migrate_on_start(tmp_path):
+    """Worker (MIGRATE_ON_START=0) nie migruje; błąd konfiguracji bazy nadal przerywa przed poleceniem."""
+    r = _run_entrypoint(tmp_path, args=["echo", "CMD_RAN"], MIGRATE_ON_START="0")
+    assert r.returncode == 0, r.stderr
+    assert "CMD_RAN" in r.stdout and "GUNICORN" not in r.stdout
+    assert "FLASK_UPGRADE" not in r.stderr and "FLASK_SEED" not in r.stderr
+    r = _run_entrypoint(tmp_path, args=["echo", "CMD_RAN"], database_url=None)
+    assert r.returncode != 0 and "CMD_RAN" not in r.stdout
+
+
+def test_compose_worker_service_shares_env_and_runs_worker():
+    import yaml
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    app, worker = compose["services"]["app"], compose["services"]["worker"]
+    assert set(app["environment"]) <= set(worker["environment"])
+    assert str(worker["environment"]["MIGRATE_ON_START"]) == "0"
+    assert worker["environment"]["WEBHOOK_HEARTBEAT_FILE"].startswith("/data/storage/")
+    assert worker["command"][:2] == ["flask", "webhooks-worker"]
+    assert worker["depends_on"]["app"]["condition"] == "service_healthy"
+    assert worker["healthcheck"]["test"] and "ports" not in worker
+    assert worker["restart"] == "unless-stopped" and worker["volumes"] == app["volumes"]
+
+
+def test_env_example_documents_webhook_variables():
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    for name in WEBHOOK_VARS:
+        assert f"{name}=" in text, name
+    assert "flask webhooks-worker --once" in text and "worker" in text
