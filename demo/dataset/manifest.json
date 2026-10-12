@@ -396,7 +396,7 @@
       "supplier": "epsilon",
       "format": "json",
       "phase": "rest",
-      "shows": "brak klucza „currency” — waluta do uzupełnienia",
+      "shows": "brak klucza waluty — pierwsza podpowiedź to PLN, ale ten dostawca rozlicza się w GBP: wybierz GBP",
       "expected": {
         "on_ingest": {
           "status": "needs_review",

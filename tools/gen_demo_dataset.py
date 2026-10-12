@@ -172,7 +172,7 @@ SPECS: list[Spec] = [
          "nowy alias jednostki „PCE” zamiast „C62”",
          ("needs_review", ["unknown_unit"], []), APPROVED, unit_overrides={"G-01": "PCE"}),
     Spec("epsilon", 3, "E-2026-0103", ["E-1", "E-2"],
-         "brak klucza „currency” — waluta do uzupełnienia",
+         "brak klucza waluty — pierwsza podpowiedź to PLN, ale ten dostawca rozlicza się w GBP: wybierz GBP",
          ("needs_review", ["unmapped_field"], []), APPROVED, no_currency=True),
     Spec("zeta", 3, "Z/403/2026", ["Z-25", "Z-40", "Z-50"],
          "„kart.” → karton (obok pełnej nazwy „karton”), 1 karton = 20 szt z nazwy towaru, nowy towar",
