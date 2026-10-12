@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8"><title>API · XML Parser</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/swagger-ui.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
-<body>
+<body class="api-docs">
+  <div class="api-docs-bar"><a href="/">← Panel</a></div>
   <div id="swagger" data-spec-url="{{ url_for('static', filename='openapi.yaml') }}"></div>
   <script src="{{ url_for('static', filename='vendor/swagger-ui-bundle.js') }}"></script>
   <script src="{{ url_for('static', filename='api_docs.js') }}"></script>

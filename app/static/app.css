@@ -24,3 +24,14 @@ body.full-screen main.editor-main { padding: 0; height: 100vh; overflow: hidden;
 .help-shot a { cursor: zoom-in; }
 .help-shot img { width: 100%; height: auto; max-height: 30rem; object-fit: cover; object-position: top; background: #fff; }
 .help-shot-full img { max-height: none; object-fit: contain; }
+/* wspólne klasy układu (zamiast statycznych style=) */
+.w-form-narrow { max-width: 32rem; }
+.w-form-key { max-width: 24rem; }
+.scroll-pane { overflow: auto; }
+.min-h-0 { min-height: 0; }
+.cell-truncate { max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* /api/docs: pasek powrotu do panelu nad Swagger UI (Swagger wymaga białego tła i zwykłego układu bloku) */
+body.api-docs { display: block; min-height: 0; background: #fff; }
+.api-docs-bar { padding: .5rem 1rem; border-bottom: 1px solid #dee2e6; background: #f6f7f9; font-size: 14px; }
+.api-docs-bar a { color: #0d6efd; text-decoration: none; }
+.api-docs-bar a:hover { text-decoration: underline; }

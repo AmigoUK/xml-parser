@@ -59,7 +59,7 @@ def reset():
     try:
         reset_demo(current_user.email)  # jedna transakcja razem z wpisem w historii (BE-15)
     except RuntimeError as exc:
-        flash(str(exc), "danger")
+        flash(str(exc), "error")
         return redirect(url_for("demo.index"))
     flash("Dane demo wyczyszczone — kartoteka towarów i jednostki przywrócone.", "success")
     return redirect(url_for("demo.index"))
