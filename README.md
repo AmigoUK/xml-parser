@@ -147,7 +147,7 @@ docker compose exec -T app flask prune-webhooks        # --days N nadpisuje rete
 Adresy niepubliczne (prywatne, loopback, link-local, CGNAT) są domyślnie blokowane (SSRF). Odbiorca w sieci
 wewnętrznej lub w tailnecie wymaga wpisu w `WEBHOOK_ALLOWED_HOSTS` (nazwy hostów i podsieci CIDR po przecinku, np.
 `erp.local,100.64.0.0/10`). `PUBLIC_BASE_URL` (np. `https://xp.example.com`) ustawia publiczny adres w polu `document_url`
-ładunku; bez niego worker wpisuje `null`.
+ładunku; bez niego w polu jest host żądania, które zmieniło status, a poza żądaniem (np. CLI) — `null`.
 
 ### HTTPS w tailnecie (tailscale serve)
 
@@ -215,7 +215,7 @@ Wartości i komentarze: [`.env.example`](.env.example); kontrakt dla platform be
 | Wyświetlanie | `DISPLAY_TZ` (domyślnie `Europe/Warsaw`) — strefa czasu w panelu; baza i API zostają w UTC |
 | Sesja i logowanie | `SESSION_COOKIE_SECURE`, `SESSION_HOURS` (domyślnie 8), `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_MAX_ATTEMPTS_PER_IP`, `LOGIN_MAX_ATTEMPTS_PER_EMAIL`, `LOGIN_EMAIL_LOCKOUT_MINUTES`, `AUDIT_RETENTION_DAYS` (domyślnie 90) |
 | Kontener | `STORAGE_DIR`, `MIGRATE_ON_START`, `MIGRATE_LOCK_TIMEOUT`, `DB_WAIT_ATTEMPTS`, `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR`, `GUNICORN_CMD_ARGS`, `APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS` |
-| Webhooki | `PUBLIC_BASE_URL` (domyślnie puste — publiczny adres panelu do `document_url`; puste = adres z żądania, w workerze `null`), `WEBHOOK_ALLOW_HTTP` (domyślnie 0 — 1 dopuszcza `http://`, tylko sieć wewnętrzna i testy), `WEBHOOK_ALLOWED_HOSTS` (domyślnie puste — wyjątki od blokady adresów niepublicznych: nazwy hostów i CIDR po przecinku), `WEBHOOK_RETENTION_DAYS` (domyślnie 30 — retencja dla `flask prune-webhooks`), `WEBHOOK_HEARTBEAT_FILE` (puste = bez heartbeatu; compose ustawia ją workerowi sam) |
+| Webhooki | `PUBLIC_BASE_URL` (domyślnie puste — publiczny adres panelu do `document_url`; puste = host żądania, które zmieniło status; poza żądaniem, np. CLI, `null`), `WEBHOOK_ALLOW_HTTP` (domyślnie 0 — 1 dopuszcza `http://`, tylko sieć wewnętrzna i testy), `WEBHOOK_ALLOWED_HOSTS` (domyślnie puste — wyjątki od blokady adresów niepublicznych: nazwy hostów i CIDR po przecinku), `WEBHOOK_RETENTION_DAYS` (domyślnie 30 — retencja dla `flask prune-webhooks`), `WEBHOOK_HEARTBEAT_FILE` (puste = bez heartbeatu; compose ustawia ją workerowi sam) |
 | Worker | `WORKER_MEM_LIMIT` (domyślnie 512m), `WORKER_CPUS` (domyślnie 1.0) — limity usługi `worker` |
 | Kopie | `BACKUP_DIR`, `BACKUP_RETENTION_DAYS` (skrypt `tools/backup.sh`) |
 | Tylko testy i narzędzia | `TEST_MARIADB_URL`, `PYTHON_DOTENV_DISABLED`, `FLASK_SKIP_DOTENV` |

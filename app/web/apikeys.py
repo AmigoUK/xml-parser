@@ -77,7 +77,7 @@ def create():
     key, plain = create_key(name)
     audit("create", "api_key", key.id, {"name": name, "prefix": key.prefix})
     db.session.commit()
-    return _render(plain)
+    return _no_store(_render(plain))
 
 
 @bp.post("/<int:key_id>/przelacz")

@@ -24,6 +24,13 @@ from app.version import __version__
 from tests.conftest import mariadb_url, needs_mariadb  # noqa: F401 (fixture)
 from tests.webhook_helpers import NOW, SECRET, make_delivery, make_key, reload
 
+
+@pytest.fixture(autouse=True)
+def frozen_apply_time(monkeypatch):
+    """Wynik próby jest zapisywany z `utcnow()` (chwila zapisu); testy z syntetycznym `NOW` zamrażają ten zegar."""
+    monkeypatch.setattr(webhooks, "utcnow", lambda: NOW)
+
+
 # ---------------------------------------------------------------- wysyłka
 
 def test_deliver_sends_signed_request_and_marks_sent(app, receiver):
@@ -45,7 +52,8 @@ def test_deliver_sends_signed_request_and_marks_sent(app, receiver):
     assert req["body"] == json.dumps(d.payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     assert json.loads(req["body"])["event"] == EVENT_STATUS_CHANGED
     d = reload(d)
-    assert (d.status, d.attempts, d.sent_at, d.next_attempt_at) == (WEBHOOK_SENT, 1, NOW, None)
+    assert (d.status, d.attempts, d.next_attempt_at) == (WEBHOOK_SENT, 1, None)
+    assert d.sent_at == NOW
     assert (d.last_status_code, d.last_error) == (200, None)
 
 
@@ -158,12 +166,13 @@ def test_delivery_uuid_stable_across_retries(app, receiver):
     assert (d.status, d.attempts) == (WEBHOOK_SENT, 4)
 
 
-def test_server_error_schedules_backoff_sequence(app, receiver):
+def test_server_error_schedules_backoff_sequence(app, receiver, monkeypatch):
     receiver.set_mode("error")
     d = make_delivery(make_key(receiver.url))
     now = NOW
     delays = []
     for attempt in range(1, 6):
+        monkeypatch.setattr(webhooks, "utcnow", lambda n=now: n)  # zegar zapisu wyniku idzie z symulowanym czasem
         assert webhooks.deliver_pending(now) == 0
         d = reload(d)
         assert (d.status, d.attempts) == (WEBHOOK_PENDING, attempt)
@@ -461,13 +470,13 @@ def test_run_worker_stops_on_event_and_touches_heartbeat(app, receiver, tmp_path
     real = webhooks.deliver_pending
     real_remove = db.session.remove
 
-    def counting(now, limit=50, on_progress=None):
+    def counting(now, limit=50, on_progress=None, stop=None):
         calls.append(now)
         mtimes.append(heartbeat.stat().st_mtime_ns)  # heartbeat istnieje już przed pierwszą rundą
         assert on_progress is not None
         if len(calls) == 2:
             raise RuntimeError("chwilowa awaria bazy")  # błąd iteracji nie zatrzymuje workera
-        return real(now, limit, on_progress)
+        return real(now, limit, on_progress, stop)
 
     def counting_remove():
         removes.append(1)
@@ -497,3 +506,50 @@ def test_run_worker_stops_on_event_and_touches_heartbeat(app, receiver, tmp_path
     assert "webhooks-worker: start" in messages and "webhooks-worker: stop" in messages
     errors = [r for r in caplog.records if r.levelname == "ERROR"]
     assert errors and "chwilowa awaria bazy" in str(errors[0].exc_info[1])
+
+
+def test_result_time_is_taken_at_apply_not_at_batch_start(app, receiver, monkeypatch):
+    """Partia zadzierżawiona o `now` w przeszłości: sent_at/next_attempt_at liczone od chwili zapisu wyniku."""
+    past = NOW - timedelta(hours=2)
+    monkeypatch.setattr(webhooks, "utcnow", lambda: NOW)
+    ok = make_delivery(make_key(receiver.url), doc_id=1)
+    assert webhooks.deliver_pending(past) == 1
+    assert reload(ok).sent_at == NOW
+    receiver.set_mode("error")
+    bad = make_delivery(make_key(receiver.url), doc_id=2, next_attempt_at=past)
+    assert webhooks.deliver_pending(past) == 0
+    assert reload(bad).next_attempt_at == NOW + timedelta(seconds=60)
+
+
+def test_deliver_pending_stops_between_deliveries(app, receiver):
+    key = make_key(receiver.url)
+    rows = [make_delivery(key, doc_id=i) for i in (1, 2)]
+    stop = threading.Event()
+    assert webhooks.deliver_pending(NOW, stop=stop, on_progress=stop.set) == 1
+    assert len(receiver.requests) == 1
+    states = [reload(d) for d in rows]
+    assert states[0].status == WEBHOOK_SENT
+    assert states[1].status == WEBHOOK_PENDING and states[1].attempts == 1  # zadzierżawiona, wróci po dzierżawie
+    assert states[1].next_attempt_at > NOW
+
+
+def test_run_worker_exits_promptly_when_stopped_mid_batch(app, receiver, monkeypatch):
+    key = make_key(receiver.url)
+    rows = [make_delivery(key, doc_id=i) for i in (1, 2, 3)]
+    stop = threading.Event()
+    real_send = webhooks.send
+
+    def slow_send(delivery, now=None):
+        result = real_send(delivery, now=now)
+        stop.set()  # SIGTERM w trakcie pierwszej dostawy
+        return result
+
+    monkeypatch.setattr(webhooks, "send", slow_send)
+    worker = threading.Thread(target=webhooks.run_worker, args=(app,), kwargs={"interval": 30, "stop": stop},
+                              daemon=True)
+    started = time.monotonic()
+    worker.start()
+    worker.join(5)
+    assert not worker.is_alive() and time.monotonic() - started < 5
+    assert len(receiver.requests) == 1
+    assert [reload(d).status for d in rows].count(WEBHOOK_PENDING) == 2

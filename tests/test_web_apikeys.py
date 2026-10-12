@@ -69,3 +69,9 @@ def test_empty_keys_state(auth_client):
     ApiKey.query.delete()
     db.session.commit()
     assert "Brak kluczy — utwórz pierwszy powyżej." in _text(auth_client.get("/klucze-api"))
+
+
+def test_create_page_with_new_key_is_not_cacheable(auth_client):
+    r = auth_client.post("/klucze-api/nowy", data={"name": "System ERP"})
+    assert r.status_code == 200
+    assert r.headers["Cache-Control"] == "no-store" and r.headers["Pragma"] == "no-cache"

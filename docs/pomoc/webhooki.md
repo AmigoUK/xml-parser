@@ -22,7 +22,9 @@ Webhook ustawia się przy kluczu API w panelu, na stronie *Klucze API*. Zmienia�
 
 1. Przy kluczu wpisz **adres webhooka** — adres Twojego serwera, który przyjmie `POST`, np. `https://erp.example.com/xp/webhook` — i zapisz.
 2. Panel wygeneruje **sekret webhooka** i pokaże go **tylko raz**. Skopiuj go od razu do konfiguracji odbiorcy (w przykładach: zmienna `XP_WEBHOOK_SECRET`). Sekret nie pojawia się później nigdzie: ani w panelu, ani w Historii, ani w API.
-3. Kliknij „Wyślij testowe zdarzenie”. Parser od razu wyśle zdarzenie `webhook.test`, a wynik (kod odpowiedzi albo błąd) zobaczysz na liście dostaw przy kluczu.
+3. Kliknij „Wyślij testowe zdarzenie”. Parser od razu wyśle zdarzenie `webhook.test`, a wynik (kod odpowiedzi albo błąd) zobaczysz na liście dostaw przy kluczu. Nieudane zdarzenie testowe zostaje na liście jako `pending`, a worker ponawia je jak każdą dostawę (po 1 min, 5 min itd.; po sześciu porażkach `failed`) — popraw odbiorcę i użyj „Ponów” albo poczekaj.
+
+Nie umieszczaj tokenów ani haseł w adresie webhooka — adres jest zapisywany w Historii zmian i widoczny dla każdego użytkownika panelu; uwierzytelnieniem jest podpis.
 
 Zgubiony lub ujawniony sekret wymienisz przyciskiem „Rotuj sekret” — nowy sekret też jest pokazywany raz, a stary przestaje działać od razu, także dla dostaw czekających na ponowienie. „Wyczyść” wyłącza webhook: usuwa adres i sekret. Pod ustawieniami jest lista 50 najnowszych dostaw z kluczem: stan, liczba prób, ostatni błąd i przycisk „Ponów”.
 

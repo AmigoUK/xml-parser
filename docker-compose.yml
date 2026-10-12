@@ -63,6 +63,7 @@ services:
       retries: 20
   app:
     build: .
+    image: xml-parser:local
     restart: unless-stopped
     # Tylko zmienne aplikacji (kotwica x-app-env na górze pliku), bez sekretów usługi db.
     environment: *app-env
@@ -79,7 +80,9 @@ services:
   # Worker webhooków: dostarcza powiadomienia z kolejki (flask webhooks-worker). Bez portów; migracje robi app.
   # Awaryjnie, gdy worker nie działa: flask webhooks-worker --once z crona.
   worker:
-    build: .
+    # ten sam obraz co app (budowany raz przez usługę app; `up -d --build` buduje go przed startem workera)
+    image: xml-parser:local
+    stop_grace_period: 30s
     restart: unless-stopped
     command: ["flask", "webhooks-worker"]
     environment:

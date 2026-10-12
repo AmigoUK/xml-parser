@@ -26,7 +26,7 @@ przekazać je sama. Wartości przykładowe i opisy: [`.env.example`](../.env.exa
 | `SESSION_HOURS` | nie (`8`) | czas życia sesji panelu w godzinach |
 | `AUDIT_RETENTION_DAYS` | nie (`90`) | retencja wpisów logowań dla `flask prune-audit` (cron) |
 | `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR` | nie (`2`, `8`, `60`, `/dev/shm`) | pojedyncze flagi gunicorna; `GUNICORN_CMD_ARGS` zastępuje cały zestaw |
-| `PUBLIC_BASE_URL` | **za proxy: tak** | publiczny adres panelu (`https://xp.example.com`) w polu `document_url` webhooków; worker działa poza żądaniem, więc bez niej `document_url` = `null` |
+| `PUBLIC_BASE_URL` | **za proxy: tak** | publiczny adres panelu (`https://xp.example.com`) w polu `document_url` webhooków; bez niej w `document_url` jest host żądania, które zmieniło status; poza żądaniem (np. CLI) — `null` |
 | `WEBHOOK_ALLOWED_HOSTS` | gdy odbiorca jest w sieci prywatnej / tailnecie | nazwy hostów i podsieci CIDR po przecinku (np. `erp.local,100.64.0.0/10`); domyślnie adresy prywatne, loopback, link-local i CGNAT są blokowane (SSRF) |
 | `WEBHOOK_ALLOW_HTTP` | `0` | `1` dopuszcza `http://` — tylko testy i sieć wewnętrzna; produkcyjnie https |
 | `WEBHOOK_RETENTION_DAYS` | nie (`30`) | retencja zakończonych dostaw dla `flask prune-webhooks` (cron) |
@@ -104,8 +104,8 @@ W `.env` aplikacji: `TRUSTED_PROXY_COUNT=1` (jedno proxy), `SESSION_COOKIE_SECUR
 - **Worker webhooków.** Drugi kontener z tego samego obrazu (`command: flask webhooks-worker`), bez portów, z tymi
   samymi zmiennymi co `app` i wolumenem storage (heartbeat), ale z `MIGRATE_ON_START=0` — migracje i seed robi `app`
   (worker startuje po `service_healthy` aplikacji; na innej platformie uruchom go po migracjach). Healthcheck
-  sprawdza wiek pliku `WEBHOOK_HEARTBEAT_FILE` (< 60 s) zamiast `/healthz`; `restart: unless-stopped`, SIGTERM łagodnie
-  kończy pętlę i wychodzi. Może być wiele workerów (dostawy są blokowane dzierżawą), ale jeden wystarcza. Bez
+  sprawdza wiek pliku `WEBHOOK_HEARTBEAT_FILE` (< 60 s) zamiast `/healthz`; `restart: unless-stopped`, SIGTERM kończy
+  pętlę po bieżącej dostawie i wychodzi (przy twardym zabiciu dzierżawione dostawy wracają po wygaśnięciu dzierżawy). Może być wiele workerów (dostawy są blokowane dzierżawą), ale jeden wystarcza. Bez
   workera dostawy zostają `pending`; awaryjnie: `docker compose run --rm -T worker flask webhooks-worker --once` z crona (`-T`, bo cron nie ma TTY; wpis musi najpierw `cd` do katalogu projektu). Usuwanie starych dostaw:
   `docker compose exec -T app flask prune-webhooks` (cron, też z `cd` do katalogu projektu; `WEBHOOK_RETENTION_DAYS`). Zrzut bazy zawiera sekrety webhooków
   (`api_keys.webhook_secret`) — kopie traktuj jak sekret.

@@ -53,7 +53,7 @@ class Config:
     # schemat adresów budowanych poza żądaniem (CLI, zadania); w żądaniu za proxy decyduje X-Forwarded-Proto
     PREFERRED_URL_SCHEME = os.environ.get("PREFERRED_URL_SCHEME", "http")
     # webhooki (v0.9.0): publiczny adres panelu do `document_url` w ładunku (np. https://xp.example.com);
-    # pusty = adres z żądania, a poza żądaniem (worker) null
+    # pusty = host żądania, które zmieniło status; poza żądaniem (np. CLI) null
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
     # adresy webhooków tylko https; 1 dopuszcza http (sieć wewnętrzna, testy)
     WEBHOOK_ALLOW_HTTP = _bool("WEBHOOK_ALLOW_HTTP", "0")

@@ -679,6 +679,8 @@ def test_webhooks_topic_documents_contract(client):
                    "docker compose ps", "GET /api/v1/webhook-deliveries", "document_id", "next_cursor"):
         assert needle in text, needle
     assert "sha256=<hex" in text
+    assert "zostaje na liście jako pending" in text and "Ponów” albo poczekaj" in text
+    assert "Nie umieszczaj tokenów ani haseł w adresie webhooka" in text
     assert "Content-Type: application/json" in text and "User-Agent: xml-parser-webhook/<wersja>" in text
     assert "powłoka — tylko --check" in text
 

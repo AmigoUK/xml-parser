@@ -302,15 +302,20 @@ def _attempt(delivery: WebhookDelivery, claimed_attempts: int, now: datetime) ->
     except Exception as e:  # błąd jednej dostawy nie zatrzymuje partii
         current_app.logger.exception("webhook %s (#%s): nieoczekiwany błąd wysyłki", delivery.uuid, delivery.id)
         result = SendResult(False, None, f"Nieoczekiwany błąd wysyłki: {type(e).__name__}: {e}")
-    apply_result(delivery, result, now, claimed_attempts=claimed_attempts)
+    # czas wyniku liczony od chwili zapisu, nie od startu partii (która może trwać minutami)
+    apply_result(delivery, result, utcnow(), claimed_attempts=claimed_attempts)
     return result
 
 
-def deliver_pending(now: datetime, limit: int = 50, on_progress=None) -> int:
+def deliver_pending(now: datetime, limit: int = 50, on_progress=None, stop: threading.Event | None = None) -> int:
     """Dzierżawi partię, wysyła i zapisuje wyniki; zwraca liczbę dostaw wysłanych pomyślnie. `on_progress()` jest
-    wołane po każdej dostawie (worker odświeża wtedy heartbeat, więc długa partia nie wywraca healthchecku)."""
+    wołane po każdej dostawie (worker odświeża wtedy heartbeat, więc długa partia nie wywraca healthchecku).
+    Gdy `stop` zostanie ustawione, pętla kończy się między dostawami; niewysłane, już zadzierżawione wiersze
+    wrócą po wygaśnięciu dzierżawy (at-least-once)."""
     sent = 0
     for delivery, attempts in _claim_batch(now, limit):
+        if stop is not None and stop.is_set():
+            break
         if _attempt(delivery, attempts, now).ok:
             sent += 1
         if on_progress is not None:
@@ -373,7 +378,7 @@ def run_worker(app, *, interval: float = 5.0, stop: threading.Event, heartbeat: 
         try:
             with app.app_context():
                 try:
-                    sent = deliver_pending(utcnow(), on_progress=lambda: _touch(heartbeat, logger))
+                    sent = deliver_pending(utcnow(), on_progress=lambda: _touch(heartbeat, logger), stop=stop)
                     if sent:
                         logger.info("webhooks-worker: wysłano %s dostaw", sent)
                 finally:

@@ -31,8 +31,12 @@
     konfiguracji odbiorcy (w przykładach: zmienna <code>XP_WEBHOOK_SECRET</code>). Sekret nie pojawia się później
     nigdzie: ani w panelu, ani w Historii, ani w API.</li>
   <li>Kliknij „Wyślij testowe zdarzenie”. Parser od razu wyśle zdarzenie <code>webhook.test</code>, a wynik (kod
-    odpowiedzi albo błąd) zobaczysz na liście dostaw przy kluczu.</li>
+    odpowiedzi albo błąd) zobaczysz na liście dostaw przy kluczu. Nieudane zdarzenie testowe zostaje na liście jako
+    <code>pending</code>, a worker ponawia je jak każdą dostawę (po 1 min, 5 min itd.; po sześciu porażkach
+    <code>failed</code>) — popraw odbiorcę i użyj „Ponów” albo poczekaj.</li>
 </ol>
+<p>Nie umieszczaj tokenów ani haseł w adresie webhooka — adres jest zapisywany w Historii zmian i widoczny dla każdego
+  użytkownika panelu; uwierzytelnieniem jest podpis.</p>
 <p>Zgubiony lub ujawniony sekret wymienisz przyciskiem „Rotuj sekret” — nowy sekret też jest pokazywany raz, a stary
   przestaje działać od razu, także dla dostaw czekających na ponowienie. „Wyczyść” wyłącza webhook: usuwa adres
   i sekret. Pod ustawieniami jest lista 50 najnowszych dostaw z kluczem: stan, liczba prób, ostatni błąd

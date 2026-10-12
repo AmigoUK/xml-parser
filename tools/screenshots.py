@@ -218,7 +218,9 @@ def seed_webhook_demo(offset: int) -> None:
     failed.last_error, failed.next_attempt_at = "HTTP 503: Service Unavailable", None
     failed.created_at = now - timedelta(hours=3)
     pending.status, pending.attempts, pending.last_status_code = WEBHOOK_PENDING, 1, None
-    pending.last_error, pending.next_attempt_at = "Przekroczono limit czasu (5 s)", now + timedelta(minutes=5)
+    # dokładny komunikat z app/services/webhooks.py (send_http, TIMEOUT = 5 s)
+    pending.last_error = "Przekroczono limit czasu odpowiedzi odbiorcy (5 s)."
+    pending.next_attempt_at = now + timedelta(minutes=5)
     pending.created_at = now - timedelta(minutes=2)
     db.session.add_all([sent, failed, pending])
     db.session.commit()
