@@ -83,6 +83,16 @@ JavaScripcie i powłoce: [docs/pomoc/integracja.md](docs/pomoc/integracja.md).
 Pełny opis endpointów, kodów odpowiedzi i limitów: [docs/pomoc/api.md](docs/pomoc/api.md),
 w panelu: `/api/docs` (OpenAPI: [`app/static/openapi.yaml`](app/static/openapi.yaml)).
 
+**Webhooki.** Zamiast odpytywać API, możesz ustawić przy kluczu API adres webhooka (panel „Klucze API”, tylko
+administrator; sekret podpisu jest pokazywany jeden raz). Przy każdej zmianie statusu dokumentu przyjętego tym kluczem
+(`approved`, `needs_review`, `duplicate`, `rejected`) aplikacja wysyła `POST` z krótkim ładunkiem
+`document.status_changed` (bez treści faktury — pełny dokument pobierasz przez `GET /api/v1/documents/{id}`) i nagłówkami
+`X-XP-Timestamp`, `X-XP-Signature: sha256=<HMAC-SHA256(sekret, znacznik + "." + treść)>` oraz `X-XP-Delivery` (UUID do
+deduplikacji — dostawa jest „co najmniej raz”). Nieudane próby są ponawiane po 1 min, 5 min, 30 min, 2 h i 12 h
+(maks. 6 prób, timeout 5 s), potem dostawa dostaje status `failed`; listę dostaw zwraca też
+`GET /api/v1/webhook-deliveries`. Dostarcza je osobna usługa `worker` (niżej). Szczegóły, weryfikacja podpisu w kilku
+językach i adresy dozwolone: [docs/pomoc/webhooki.md](docs/pomoc/webhooki.md).
+
 ## Uruchomienie (Docker)
 
 ```bash
@@ -114,6 +124,28 @@ pierwszeństwo). Limity zasobów: `APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `
 w konkretnych wersjach. **Przeniesienie na inną platformę** (reverse proxy, repliki, baza zarządzana,
 procedura migracji danych): [docs/wdrozenie.md](docs/wdrozenie.md).
 
+### Worker webhooków
+
+Webhooki wysyła osobna usługa `worker` (ten sam obraz, polecenie `flask webhooks-worker`, bez portów,
+`MIGRATE_ON_START=0` — migracje robi `app`). Startuje dopiero, gdy `app` jest zdrowy; `docker compose ps` pokazuje ją
+jako `healthy` (sonda: plik heartbeat nie starszy niż 60 s), a `docker compose logs -f worker` zaczyna się od
+`webhooks-worker: start`. **Bez działającego workera dostawy zostają w statusie `pending`.** Limity zasobów:
+`WORKER_MEM_LIMIT` (domyślnie 512m) i `WORKER_CPUS` (1.0).
+
+```bash
+docker compose ps worker                      # healthy
+docker compose logs -f worker                 # webhooks-worker: start …
+# awaryjnie (worker wyłączony) — jednorazowy przebieg, np. z crona co minutę:
+docker compose run --rm worker flask webhooks-worker --once
+# retencja: usuwa zakończone dostawy (sent/failed) starsze niż WEBHOOK_RETENTION_DAYS (domyślnie 30), np. raz na dobę
+docker compose exec app flask prune-webhooks            # --days N nadpisuje retencję
+```
+
+Adresy niepubliczne (prywatne, loopback, link-local, CGNAT) są domyślnie blokowane (SSRF). Odbiorca w sieci
+wewnętrznej lub w tailnecie wymaga wpisu w `WEBHOOK_ALLOWED_HOSTS` (nazwy hostów i podsieci CIDR po przecinku, np.
+`erp.local,100.64.0.0/10`). `PUBLIC_BASE_URL` (np. `https://xp.example.com`) ustawia publiczny adres w polu `document_url`
+ładunku; bez niego worker wpisuje `null`.
+
 ### HTTPS w tailnecie (tailscale serve)
 
 Panel i API możesz wystawić po HTTPS w obrębie swojego tailnetu. Certyfikat wystawia Tailscale — wymaga włączonych
@@ -142,6 +174,11 @@ tools/backup.sh          # dump MariaDB + archiwum storage do backups/<data>/ (r
 BACKUP_DIR=/mnt/kopie tools/backup.sh   # inny katalog/dysk kopii; archiwum storage czyta STORAGE_DIR kontenera app
 # cron (codziennie 03:15):  15 3 * * *  cd /ścieżka/do/xml-parser && tools/backup.sh >> backups/backup.log 2>&1
 ```
+
+**Uwaga: zrzut bazy zawiera sekrety webhooków** (`api_keys.webhook_secret` jest przechowywany jawnie, bo służy do
+podpisu) — traktuj katalog `backups/` jak sekret (uprawnienia, szyfrowany dysk, bez publicznego repozytorium).
+Po odtworzeniu kopii z innego środowiska rozważ rotację sekretów w panelu. Nowa migracja (tabela `webhook_deliveries`,
+rewizja `99f2fe61d963`) wykona się sama przy starcie `app` (`MIGRATE_ON_START=1`).
 
 Odtwarzanie (na działającym stacku; **nadpisuje bieżące dane**):
 
@@ -175,7 +212,9 @@ Wartości i komentarze: [`.env.example`](.env.example); kontrakt dla platform be
 | Wyświetlanie | `DISPLAY_TZ` (domyślnie `Europe/Warsaw`) — strefa czasu w panelu; baza i API zostają w UTC |
 | Sesja i logowanie | `SESSION_COOKIE_SECURE`, `SESSION_HOURS` (domyślnie 8), `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_MAX_ATTEMPTS_PER_IP`, `LOGIN_MAX_ATTEMPTS_PER_EMAIL`, `LOGIN_EMAIL_LOCKOUT_MINUTES`, `AUDIT_RETENTION_DAYS` (domyślnie 90) |
 | Kontener | `STORAGE_DIR`, `MIGRATE_ON_START`, `MIGRATE_LOCK_TIMEOUT`, `DB_WAIT_ATTEMPTS`, `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR`, `GUNICORN_CMD_ARGS`, `APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS` |
-| Kopie | `BACKUP_DIR`, `BACKUP_RETENTION_DAYS` (skrypt `tools/backup.sh`) |
+| Webhooki | `PUBLIC_BASE_URL` (domyślnie puste — publiczny adres panelu do `document_url`; puste = adres z żądania, w workerze `null`), `WEBHOOK_ALLOW_HTTP` (domyślnie 0 — 1 dopuszcza `http://`, tylko sieć wewnętrzna i testy), `WEBHOOK_ALLOWED_HOSTS` (domyślnie puste — wyjątki od blokady adresów niepublicznych: nazwy hostów i CIDR po przecinku), `WEBHOOK_RETENTION_DAYS` (domyślnie 30 — retencja dla `flask prune-webhooks`), `WEBHOOK_HEARTBEAT_FILE` (puste = bez heartbeatu; compose ustawia ją workerowi sam) |
+| Worker | `WORKER_MEM_LIMIT` (domyślnie 512m), `WORKER_CPUS` (domyślnie 1.0) — limity usługi `worker` |
+| Kopie | `BACKUP_DIR, `BACKUP_RETENTION_DAYS` (skrypt `tools/backup.sh`) |
 | Tylko testy i narzędzia | `TEST_MARIADB_URL`, `PYTHON_DOTENV_DISABLED`, `FLASK_SKIP_DOTENV` |
 
 ## Rozwój lokalny

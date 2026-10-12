@@ -26,6 +26,12 @@ przekazać je sama. Wartości przykładowe i opisy: [`.env.example`](../.env.exa
 | `SESSION_HOURS` | nie (`8`) | czas życia sesji panelu w godzinach |
 | `AUDIT_RETENTION_DAYS` | nie (`90`) | retencja wpisów logowań dla `flask prune-audit` (cron) |
 | `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR` | nie (`2`, `8`, `60`, `/dev/shm`) | pojedyncze flagi gunicorna; `GUNICORN_CMD_ARGS` zastępuje cały zestaw |
+| `PUBLIC_BASE_URL` | **za proxy: tak** | publiczny adres panelu (`https://xp.example.com`) w polu `document_url` webhooków; worker działa poza żądaniem, więc bez niej `document_url` = `null` |
+| `WEBHOOK_ALLOWED_HOSTS` | gdy odbiorca jest w sieci prywatnej / tailnecie | nazwy hostów i podsieci CIDR po przecinku (np. `erp.local,100.64.0.0/10`); domyślnie adresy prywatne, loopback, link-local i CGNAT są blokowane (SSRF) |
+| `WEBHOOK_ALLOW_HTTP` | `0` | `1` dopuszcza `http://` — tylko testy i sieć wewnętrzna; produkcyjnie https |
+| `WEBHOOK_RETENTION_DAYS` | nie (`30`) | retencja zakończonych dostaw dla `flask prune-webhooks` (cron) |
+| `WEBHOOK_HEARTBEAT_FILE` | nie (puste) | plik heartbeat workera (healthcheck); compose ustawia go sam, na innej platformie wskaż plik na wolumenie workera |
+| `WORKER_MEM_LIMIT`, `WORKER_CPUS` | nie (`512m`, `1.0`) | limity usługi `worker` w compose |
 | `DB_WAIT_ATTEMPTS`, `MAX_*`, `LOGIN_*` | nie | jak w `.env.example` |
 
 Aplikacja **wymaga własnej (sub)domeny**: wdrożenie pod podścieżką (`https://firma.pl/xml-parser/`) nie jest obsługiwane —
@@ -95,6 +101,14 @@ W `.env` aplikacji: `TRUSTED_PROXY_COUNT=1` (jedno proxy), `SESSION_COOKIE_SECUR
   `--worker-tmp-dir /dev/shm` jest dodawany tylko, gdy katalog istnieje (`GUNICORN_WORKER_TMP_DIR` zmienia ścieżkę),
   więc runtime bez `/dev/shm` startuje. `GUNICORN_CMD_ARGS` zastępuje cały zestaw flag. Pamięć ~1 GB na aplikację przy
   plikach 10 MB.
+- **Worker webhooków.** Drugi kontener z tego samego obrazu (`command: flask webhooks-worker`), bez portów, z tymi
+  samymi zmiennymi co `app` i wolumenem storage (heartbeat), ale z `MIGRATE_ON_START=0` — migracje i seed robi `app`
+  (worker startuje po `service_healthy` aplikacji; na innej platformie uruchom go po migracjach). Healthcheck
+  sprawdza wiek pliku `WEBHOOK_HEARTBEAT_FILE` (< 60 s) zamiast `/healthz`; `restart: unless-stopped`, SIGTERM łagodnie
+  kończy pętlę i wychodzi. Może być wiele workerów (dostawy są blokowane dzierżawą), ale jeden wystarcza. Bez
+  workera dostawy zostają `pending`; awaryjnie: `flask webhooks-worker --once` z crona. Usuwanie starych dostaw:
+  `flask prune-webhooks` (cron, `WEBHOOK_RETENTION_DAYS`). Zrzut bazy zawiera sekrety webhooków
+  (`api_keys.webhook_secret`) — kopie traktuj jak sekret.
 - **Hasło administratora i dziennik.** Po wdrożeniu (i po każdym wycieku `.env`) ustaw hasło poleceniem
   `flask set-admin-password` (albo „Zmień hasło” w panelu) — seed nie nadpisuje hasła istniejącego konta. Do crona:
   `flask prune-audit` (retencja wpisów logowań, `AUDIT_RETENTION_DAYS`).
@@ -126,5 +140,9 @@ przełączeniu trzeba przenieść wstecz tą samą procedurą.
 - `curl -I https://host/login` zwraca `Strict-Transport-Security`, `Permissions-Policy` i `Content-Security-Policy`
   z `script-src 'self'` (bez `'unsafe-eval'`),
 - `Baza: mysql+pymysql://…` wskazuje właściwy host (hasło nie jest wypisywane),
+- migracje: `docker compose exec app flask db current` → `99f2fe61d963 (head)` (tabela `webhook_deliveries`),
+- `docker compose ps` pokazuje `worker` jako `healthy`, a `docker compose logs worker` zawiera `webhooks-worker: start`,
+- w panelu „Klucze API” przycisk „Wyślij testowe zdarzenie” przy kluczu z adresem webhooka kończy się dostawą
+  `sent` (odbiorca w sieci prywatnej: najpierw `WEBHOOK_ALLOWED_HOSTS`); `PUBLIC_BASE_URL` ustawiony, jeśli za proxy,
 - adresy w Pomocy (`/pomoc/integracja`) mają schemat `https` i host publiczny,
 - `tools/backup.sh` w cronie z `BACKUP_DIR` na osobnym dysku; raz na kwartał próbne odtworzenie.

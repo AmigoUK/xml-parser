@@ -116,3 +116,32 @@ def test_openapi_suppliers_schema_401_and_filename_header(seeded, client):
     assert client.get("/api/v1/suppliers").status_code == 401
     assert client.get("/api/v1/documents/1").status_code == 401
     assert client.post("/api/v1/documents/1/reprocess").status_code == 401
+
+
+# --- webhooki (v0.9.0): dokumentacja operacyjna ---------------------------------------------------------------------
+WEBHOOK_ENV = ("PUBLIC_BASE_URL", "WEBHOOK_ALLOW_HTTP", "WEBHOOK_ALLOWED_HOSTS", "WEBHOOK_RETENTION_DAYS",
+               "WEBHOOK_HEARTBEAT_FILE", "WORKER_MEM_LIMIT", "WORKER_CPUS")
+
+
+def test_readme_env_table_lists_webhook_variables():
+    import re
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    rows = [line for line in readme.splitlines() if line.startswith("|")]
+    table = "\n".join(rows)
+    for name in WEBHOOK_ENV:
+        assert f"`{name}`" in table, name
+    example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    start = example.index("Webhooki (v0.9.0)")
+    block = example[start:].split("\n\n", 1)[0]
+    for name in re.findall(r"^#?\s*([A-Z][A-Z0-9_]+)=", block, flags=re.M):
+        assert f"`{name}`" in table, name
+    assert "docs/pomoc/webhooki.md" in readme
+    assert "webhooks-worker --once" in readme and "prune-webhooks" in readme
+
+
+def test_wdrozenie_mentions_worker_and_public_base_url():
+    text = (ROOT / "docs" / "wdrozenie.md").read_text(encoding="utf-8")
+    for needle in ("PUBLIC_BASE_URL", "WEBHOOK_ALLOWED_HOSTS", "WEBHOOK_ALLOW_HTTP", "worker", "99f2fe61d963",
+                   "webhooks-worker"):
+        assert needle in text, needle

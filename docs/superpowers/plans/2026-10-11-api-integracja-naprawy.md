@@ -13,7 +13,7 @@ system zewnętrzny mógł niezawodnie synchronizować dokumenty bez gubienia zmi
 
 **Podział na dwa wydania:**
 - **Etap A → v0.5.0:** synchronizacja przez odpytywanie (mały, niskie ryzyko, bez nowej infrastruktury).
-- **Etap B → v0.6.0:** webhooki (nowa tabela, worker, SSRF, UI) — większy, osobno.
+- **Etap B → v0.9.0:** webhooki (nowa tabela, worker, SSRF, UI) — większy, osobno (zrealizowany).
 
 ---
 
@@ -88,7 +88,16 @@ system zewnętrzny mógł niezawodnie synchronizować dokumenty bez gubienia zmi
 
 ---
 
-## Etap B — webhooki (v0.6.0)
+## Etap B — webhooki (v0.9.0)
+
+> **Zrealizowano jako v0.9.0** (nie v0.6.0 — numer 0.6.0 zajęły poprawki z audytu). Decyzje poniżej opisują stan
+> założony; faktycznie przyjęto: identyfikator dostawy to UUID w `X-XP-Delivery`; outbox w tabeli `webhook_deliveries`
+> (migracja `99f2fe61d963`, rekord w tej samej transakcji co zmiana statusu); klient HTTP łączy się z adresem
+> zweryfikowanym po rozwiązaniu DNS (przypięte IP, bez przekierowań, odpowiedź maks. 1 KB, timeout 5 s); dzierżawa
+> (lease) rekordu i backoff 1 min / 5 min / 30 min / 2 h / 12 h, 6 prób; osobna usługa compose `worker`
+> (`flask webhooks-worker`, `--once`, heartbeat, `MIGRATE_ON_START=0`) oraz `flask prune-webhooks`; panel „Klucze API”
+> tylko dla administratora, sekret pokazywany raz; lista dostaw także w API (`GET /api/v1/webhook-deliveries`);
+> Pomoc „Webhooki” (`docs/pomoc/webhooki.md`). Wdrożenie: [docs/wdrozenie.md](../../wdrozenie.md).
 
 ### Decyzje projektowe
 - **Zdarzenie:** `document.status_changed` przy przejściu do `approved`, `needs_review`, `duplicate`, `rejected` (zgodnie ze specyfikacją: co najmniej `approved`/`rejected`; pozostałe zwiększają użyteczność). Ładunek: `{event, id, status, previous_status, updated_at, document_url}` — **bez** pełnej faktury (klient dociąga `GET /documents/{id}`; mniejszy ładunek, brak wycieku przy błędnym URL).
@@ -119,7 +128,7 @@ system zewnętrzny mógł niezawodnie synchronizować dokumenty bez gubienia zmi
 - „Klucze API”: pole adresu webhooka (edycja), rotacja sekretu (pokazany raz), przycisk „Wyślij testowe zdarzenie”, lista ostatnich 50 dostaw z wynikiem, „Ponów” dla `failed`.
 - Formularze z CSRF, dostęp tylko admin; wpisy w „Historii”.
 
-### Zadanie B6 — Pomoc, OpenAPI, przykłady, wydanie v0.6.0
+### Zadanie B6 — Pomoc, OpenAPI, przykłady, wydanie v0.9.0
 - Pomoc „Integracja”: sekcja „Webhooki” (zdarzenia, ładunek, weryfikacja podpisu w Python/PHP/Node, deduplikacja, ponowienia, adresy dozwolone); usunąć zdanie „Webhooków nie ma”; FAQ.
 - OpenAPI: opis callbacku (`callbacks`/`webhooks` w OpenAPI 3.1 lub opis tekstowy w 3.0).
 - Test spójności rejestru kodów problemów nadal zielony; eksport `docs/pomoc/`.
