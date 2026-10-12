@@ -604,3 +604,19 @@ def test_dataset_faq_has_slug_and_links_to_topic(client):
     entry = next(f for f in FAQ if f.get("slug") == "zestaw-demo-api")
     assert entry["link"] == "zestaw-demo"
     assert 'id="zestaw-demo-api"' in client.get("/pomoc/faq").get_data(as_text=True)
+
+
+def test_dataset_topic_step_two_prose_matches_manifest(client):
+    from app.services.demo_dataset import load_manifest
+    m = load_manifest()
+    html = client.get("/pomoc/zestaw-demo").get_data(as_text=True)
+    rest = [e for e in m.by_phase("pozostale")]
+    review = [e for e in rest if e.on_ingest.status == "needs_review"]
+    dups = [e for e in rest if e.on_ingest.status == "duplicate"]
+    assert [e.order for e in review] == [15, 16, 17, 18] and len(dups) == 1
+    step2 = html.index("Wczytaj pozostałe (18)”.")
+    for e in review + dups:
+        assert e.filename in html[step2:], e.filename
+    gbp = html.index("wybierz GBP")
+    assert html.index("Wczytaj pierwsze (6)”.") < step2 < gbp
+    assert gbp < html.index("Wczytaj wszystko”</strong>")
