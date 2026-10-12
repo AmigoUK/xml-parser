@@ -13,6 +13,8 @@ from app.services.negotiation import NegotiationError, resolve, restore
 from app.services.pipeline import FILE_MISSING_MSG, DocumentTooLarge, StorageUnavailable, ingest, load_tree, process
 from app.services.storage import get_storage
 
+from .paging import cursor_arg, like_pattern, page_by_id, page_context, search_arg
+
 bp = Blueprint("docs", __name__)
 
 # limity widoku szczegółów — strona dla dużego pliku nie może mieć dziesiątek MB (EDGE-5)
@@ -21,7 +23,7 @@ TREE_ROWS_LIMIT = 3000
 LEAF_PATHS_LIMIT = 2000
 LINES_TABLE_LIMIT = 500
 RECENT_DOCS_LIMIT = 10   # pulpit: ostatnie dokumenty
-DOCS_LIST_LIMIT = 200    # lista dokumentów
+DOCS_LIST_LIMIT = 200    # rozmiar strony listy dokumentów i kolejki
 ALWAYS_REMEMBER = {"create_supplier", "use_supplier", "add_conversion", "allow_duplicate", "reject"}
 FORM_FIELDS = ("name", "tax_id", "supplier_id", "alias", "unit", "from_unit", "to_unit", "factor", "scope",
                "line_no", "product_code", "code")
@@ -88,19 +90,28 @@ def upload():
 @bp.get("/kolejka")
 @login_required
 def queue():
-    docs = Document.query.filter_by(status=STATUS_NEEDS_REVIEW).order_by(Document.id).all()
-    return render_template("documents.html", docs=docs, title="Kolejka do wyjaśnienia", queue=True)
+    # FIFO: najstarsze najpierw, kolejna strona po `?after=` (0 = od początku)
+    docs, cursor = page_by_id(Document.query.filter_by(status=STATUS_NEEDS_REVIEW), Document.id, DOCS_LIST_LIMIT,
+                              after=cursor_arg("after") or 0)
+    return render_template("documents.html", title="Kolejka do wyjaśnienia", queue=True, q="",
+                           docs=docs, **page_context(docs, cursor, "after"))
 
 
 @bp.get("/dokumenty")
 @login_required
 def documents():
-    q = Document.query.order_by(Document.id.desc())
+    query = Document.query
     status = request.args.get("status")
     if status in STATUS_LABELS:
-        q = q.filter_by(status=status)
-    return render_template("documents.html", docs=q.limit(DOCS_LIST_LIMIT).all(), title="Dokumenty", queue=False,
-                           labels=STATUS_LABELS, current=status)
+        query = query.filter_by(status=status)
+    q = search_arg()
+    if q:  # numer faktury albo nazwa dostawcy; dokument bez dostawcy też może pasować numerem
+        pattern = like_pattern(q)
+        query = query.outerjoin(Supplier, Document.supplier_id == Supplier.id).filter(
+            db.or_(Document.number.ilike(pattern, escape="\\"), Supplier.name.ilike(pattern, escape="\\")))
+    docs, cursor = page_by_id(query, Document.id, DOCS_LIST_LIMIT, before=cursor_arg("before"))
+    return render_template("documents.html", title="Dokumenty", queue=False, labels=STATUS_LABELS, current=status,
+                           q=q, docs=docs, **page_context(docs, cursor, "before"))
 
 
 @bp.get("/dokumenty/<int:doc_id>")
