@@ -58,13 +58,15 @@ Parser wysyła `POST` na Twój adres z JSON-em w ciele. Zdarzenia są dwa:
 | `updated_at` | chwila zmiany — ten sam format co w API (UTC z mikrosekundami i `Z`) |
 | `document_url` | adres dokumentu w panelu (dla człowieka); może być `null` — patrz „Eksploatacja” |
 
-Ciało jest wysyłane zwięźle — bez spacji, z kluczami w kolejności alfabetycznej. Każde żądanie ma trzy nagłówki (wartości przykładowe; czas i podpis pochodzą z wektora testowego z rozdziału 4, nie z ładunku powyżej):
+Ciało jest wysyłane zwięźle — bez spacji, z kluczami w kolejności alfabetycznej. Każde żądanie ma trzy własne nagłówki parsera (wartości przykładowe; czas i podpis pochodzą z wektora testowego z rozdziału 4, nie z ładunku powyżej):
 
 ```text
 X-XP-Timestamp: 1760000000
 X-XP-Signature: sha256=3bbaa1b01d7597a96349f290bbb59f27e7fdfe7d4918adbf949e7c3379973d46
 X-XP-Delivery: 0b6f3c1e-8d2a-4f47-9a51-2c7e5d9b1a03
 ```
+
+Poza nimi żądanie ma zwykłe nagłówki `Content-Type: application/json` i `User-Agent: xml-parser-webhook/<wersja>`.
 
 - `X-XP-Timestamp` — czas wysyłki w sekundach unixowych (tekst);
 - `X-XP-Signature` — `sha256=<hex HMAC-SHA256(sekret, "<timestamp>.<ciało>")>`;
@@ -83,7 +85,7 @@ Każde żądanie sprawdź, zanim cokolwiek przetworzysz — tylko tak masz pewno
 3. Policz HMAC-SHA256 sekretem z tekstu `<X-XP-Timestamp>.<ciało>`, zapisz szesnastkowo z przedrostkiem `sha256=` i porównaj z `X-XP-Signature` w stałym czasie. Niezgodność → `401`.
 4. Odpowiedz szybko `2xx` (limit to 5 s), a dłuższą pracę — np. pobranie faktury — wykonaj w tle.
 
-Gotowi odbiorcy poniżej robią to wszystko. Sekret czytają ze zmiennej `XP_WEBHOOK_SECRET`. Działają w dwóch trybach: serwer HTTP (Python, PHP, Node.js) oraz `--check <ts> <podpis>` — sprawdzenie podpisu ciała podanego na wejściu, bez sieci, z wynikiem `OK` (kod 0) albo powodem odrzucenia (kod 1). Opcja `--now <ts>` podstawia czas zamiast zegara systemowego. Wektor do sprawdzenia własnej implementacji — sekret `whsec_test_0123456789abcdef`, czas `1760000000`, ciało `{"event":"webhook.test","id":null}`:
+Gotowi odbiorcy poniżej robią to wszystko. Sekret czytają ze zmiennej `XP_WEBHOOK_SECRET`. Działają w dwóch trybach: serwer HTTP (Python, PHP, Node.js; powłoka — tylko `--check`) oraz `--check <ts> <podpis>` — sprawdzenie podpisu ciała podanego na wejściu, bez sieci, z wynikiem `OK` (kod 0) albo powodem odrzucenia (kod 1). Opcja `--now <ts>` podstawia czas zamiast zegara systemowego. Wektor do sprawdzenia własnej implementacji — sekret `whsec_test_0123456789abcdef`, czas `1760000000`, ciało `{"event":"webhook.test","id":null}`:
 
 ```bash
 export XP_WEBHOOK_SECRET='whsec_test_0123456789abcdef'

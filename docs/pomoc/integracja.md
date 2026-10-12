@@ -26,7 +26,6 @@ Twoja aplikacja                                 Parser faktur
   status = needs_review  → operator rozwiązuje problemy w panelu
   GET /api/v1/documents?updated_since=… ───────►  dokumenty zmienione od ostatniego przebiegu
   (cyklicznie; kolejne strony z cursor) ◄───────  {items, next_cursor}
-  status = approved      → GET /api/v1/documents/{id} → importujesz invoice
   albo, z webhookiem ustawionym przy kluczu:
   POST na Twój adres                    ◄───────  {event: document.status_changed, id, status, …}
   status = approved      → GET /api/v1/documents/{id} → importujesz invoice

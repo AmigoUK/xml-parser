@@ -642,6 +642,8 @@ def test_webhooks_topic_listed_after_integration_and_linked(client):
         assert 'href="/pomoc/webhooki' in client.get(path).get_data(as_text=True), path
     html = client.get(WEBHOOKS).get_data(as_text=True)
     assert 'href="/pomoc/integracja" rel="prev"' in html and 'href="/pomoc/faq" rel="next"' in html
+    diagram = _code_blocks(client.get(INTEGRATION).get_data(as_text=True))["text"][0]
+    assert diagram.count("GET /api/v1/documents/{id}") == 1 and "z webhookiem" in diagram
 
 
 def test_webhooks_topic_shows_examples_in_four_languages_with_request_host(client):
@@ -659,7 +661,7 @@ def test_webhooks_topic_shows_examples_in_four_languages_with_request_host(clien
     secret, ts, body, sig = SIGNATURE_VECTOR
     for needle in (secret, ts, sig, "--check", "--now", "XP_WEBHOOK_SECRET"):
         assert needle in text, needle
-    assert body.replace('"', "&#34;") in html or body.replace('"', "&quot;") in html or body in text
+    assert f"<code>{body}</code>" in html  # ciało wektora dosłownie (literał szablonu, bez escapowania cudzysłowów)
     assert "__API_BASE__" not in html and "localhost" not in html
 
 
@@ -676,7 +678,9 @@ def test_webhooks_topic_documents_contract(client):
                    "WEBHOOK_RETENTION_DAYS", "flask webhooks-worker --once", "flask prune-webhooks",
                    "docker compose ps", "GET /api/v1/webhook-deliveries", "document_id", "next_cursor"):
         assert needle in text, needle
-    assert "sha256=<hex" in text or "sha256=&lt;hex" in text
+    assert "sha256=<hex" in text
+    assert "Content-Type: application/json" in text and "User-Agent: xml-parser-webhook/<wersja>" in text
+    assert "powłoka — tylko --check" in text
 
 
 def test_webhooks_topic_screenshot_is_provisional_copy_until_regenerated():
