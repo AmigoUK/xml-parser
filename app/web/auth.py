@@ -48,6 +48,10 @@ def login():
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         ip = request.remote_addr or "?"
+        if email.startswith(PASSWORD_CHANGE_PREFIX):
+            # prefiks puli zmiany hasła jest zastrzeżony: bez zapisu próby, odpowiedź jak przy złym haśle
+            flash("Nieprawidłowy e-mail lub hasło.", "error")
+            return render_template("login.html")
         # najpierw zapis próby, potem liczenie — równoległe żądania nie ominą limitu (SEC-2)
         attempt = reserve_attempt(email, ip)
         minutes = lockout_minutes(attempt)

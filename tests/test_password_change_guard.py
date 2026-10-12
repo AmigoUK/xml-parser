@@ -65,3 +65,14 @@ def test_blocked_attempt_is_discarded(app, auth_client):
     for _ in range(3):
         assert _change(auth_client).status_code == 429
     assert _count(app, POOL) == limit  # zablokowane próby nie przedłużają blokady
+
+
+def test_login_with_reserved_prefix_does_not_touch_password_change_pool(app, auth_client):
+    for _ in range(60):
+        r = auth_client.post("/login", data={"email": POOL, "password": "zle"})
+        assert r.status_code == 200
+        assert "Nieprawidłowy e-mail lub hasło." in r.get_data(as_text=True)
+    assert _count(app, POOL) == 0
+    with app.app_context():
+        assert LoginAttempt.query.count() == 0
+    assert _change(auth_client, current="haslo123").status_code == 302
