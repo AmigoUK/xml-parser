@@ -371,7 +371,7 @@ def process(doc: Document, *, previous_status: str | None = None) -> Document:
         return doc
     previous = doc.status if previous_status is None else previous_status
     try:
-        return _emit_if_changed(touch(_process(doc)), previous)
+        _process(doc)
     except SQLAlchemyError:
         raise  # błąd bazy — transakcja do wycofania przez wywołującego
     except Exception as exc:  # noqa: BLE001 - np. zepsuta reguła szablonu; dokument nie może zginąć (BE-10)
@@ -380,7 +380,9 @@ def process(doc: Document, *, previous_status: str | None = None) -> Document:
                "sprawdź reguły szablonu albo zgłoś problem administratorowi.")
         doc.status, doc.error = _error_status(doc), msg
         doc.issues = [Issue("internal_error", BLOCKING, msg).to_dict()]
-        return _emit_if_changed(touch(doc), previous)
+    # emisja poza try: błąd outboxu nie może zamienić poprawnego wyniku w internal_error — leci do wywołującego,
+    # który wycofuje transakcję (dokument i zdarzenie razem)
+    return _emit_if_changed(touch(doc), previous)
 
 
 def _process(doc: Document) -> Document:

@@ -127,6 +127,7 @@ def test_duplicate_cascade_emits_for_demoted_document(hooked):
     db.session.commit()
     assert db.session.get(Document, b.id).status == "duplicate"
     new = deliveries()[before:]
+    assert len(new) == 2  # po jednym zdarzeniu na zmieniony dokument, bez podwójnej emisji
     by_doc = {d.document_id: d.payload for d in new}
     assert set(by_doc) == {a.id, b.id}
     assert (by_doc[b.id]["previous_status"], by_doc[b.id]["status"]) == ("approved", "duplicate")
@@ -158,6 +159,25 @@ def test_commit_with_retry_leaves_single_delivery(hooked, client, app):
     assert len(attempts) == 2
     rejected = deliveries(document_id=doc.id)[1:]
     assert len(rejected) == 1 and rejected[0].payload["status"] == "rejected"
+
+
+def test_outbox_failure_does_not_corrupt_processing_result(hooked, client, app, monkeypatch):
+    """Błąd outboxu nie jest błędem przetwarzania: wyjątek idzie do wywołującego (rollback), a wynik dokumentu
+    nie zamienia się w needs_review/internal_error."""
+    from app.services import webhook_outbox
+
+    doc = db.session.get(Document, api_ingest(client)["id"])
+    app.config["MAX_LINES"] = 0
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("outbox niedostępny")
+    monkeypatch.setattr(webhook_outbox, "build_payload", broken)
+    with pytest.raises(RuntimeError, match="outbox niedostępny"):
+        process(doc)
+    assert doc.status == "rejected"
+    assert "internal_error" not in [i["code"] for i in doc.issues]
+    db.session.rollback()
+    assert len(deliveries()) == 1
 
 
 def test_document_url_falls_back_to_request_host_then_null(app):
