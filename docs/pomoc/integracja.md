@@ -2,7 +2,7 @@
 
 # Integracja z własną aplikacją
 
-Ten przewodnik prowadzi krok po kroku przez podłączenie Twojego systemu (ERP, magazyn, sklep, skrypt) do parsera: od klucza API, przez wysyłkę faktury, odbiór wyniku i synchronizację zmian statusów, po ponowienia i gotowy kod w czterech językach. Szczegóły każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie [REST API](api.md). Adres bazowy (przykład — w panelu widzisz adres swojej instancji): `https://parser.example.com/api/v1`.
+Ten przewodnik prowadzi krok po kroku przez podłączenie Twojego systemu (ERP, magazyn, sklep, skrypt) do parsera: od klucza API, przez wysyłkę faktury, odbiór wyniku (synchronizacja zmian statusów albo webhook), po ponowienia i gotowy kod w czterech językach. Szczegóły każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie [REST API](api.md). Adres bazowy (przykład — w panelu widzisz adres swojej instancji): `https://parser.example.com/api/v1`.
 
 <a id="model"></a>
 
@@ -14,7 +14,7 @@ Przetwarzanie jest **synchroniczne**: odpowiedź na wysłanie pliku przychodzi d
 2. Zapisujesz u siebie `id` — to jedyny trwały identyfikator dokumentu w parserze.
 3. Dalej zależy od pola `status`:
    - `approved` — faktura odczytana automatycznie; pole `invoice` zawiera dokument kanoniczny, który importujesz do swojego systemu. Koniec.
-   - `needs_review` — są problemy blokujące (najczęściej pierwsza faktura nowego dostawcy). Operator rozwiązuje je w panelu (*Kolejka*), a dokument po każdej decyzji jest przetwarzany ponownie. O zmianie statusu dowiesz się z synchronizacji zmian albo odpytując dokument (rozdział 4).
+   - `needs_review` — są problemy blokujące (najczęściej pierwsza faktura nowego dostawcy). Operator rozwiązuje je w panelu (*Kolejka*), a dokument po każdej decyzji jest przetwarzany ponownie. O zmianie statusu dowiesz się z synchronizacji zmian, odpytując dokument albo z webhooka (rozdział 4).
    - `duplicate` — tę fakturę wysłano już wcześniej tym samym kluczem; użyj wyniku oryginału (rozdział 6).
    - `rejected` — pliku nie da się odczytać albo ma zbyt wiele pozycji (przyczyna jest w `issues`), albo operator odrzucił dokument w panelu.
 
@@ -26,10 +26,12 @@ Twoja aplikacja                                 Parser faktur
   status = needs_review  → operator rozwiązuje problemy w panelu
   GET /api/v1/documents?updated_since=… ───────►  dokumenty zmienione od ostatniego przebiegu
   (cyklicznie; kolejne strony z cursor) ◄───────  {items, next_cursor}
+  albo, z webhookiem ustawionym przy kluczu:
+  POST na Twój adres                    ◄───────  {event: document.status_changed, id, status, …}
   status = approved      → GET /api/v1/documents/{id} → importujesz invoice
 ```
 
-**Webhooków nie ma** (planowane w kolejnej wersji). Parser nie powiadamia Twojej aplikacji o zmianie statusu — o wyniku dowiadujesz się wyłącznie z API: synchronizacją zmian albo odpytując dokument (rozdział 4).
+**Webhook zamiast odpytywania.** Gdy przy kluczu ustawisz adres webhooka, parser sam wyśle podpisane powiadomienie o każdej zmianie statusu dokumentu wysłanego tym kluczem (sposób C w rozdziale 4, szczegóły w temacie [Webhooki](webhooki.md)). Bez webhooka o wyniku dowiadujesz się z API: synchronizacją zmian albo odpytując dokument.
 
 <a id="przygotowanie"></a>
 
@@ -67,7 +69,7 @@ Błędy mają zawsze postać `{"error": {"code": "…", "message": "…"}}`; kom
 
 ## 4. Odbiór wyniku
 
-Jeżeli wysyłka zwróciła `approved`, wynik masz od razu w odpowiedzi. Dokumenty `needs_review` zmieniają status później — po decyzjach operatora w panelu, które mogą zająć minuty albo dni. Wynik odbierasz na dwa sposoby: synchronizacją zmian (sposób B, zalecany) albo odpytując pojedynczy dokument (sposób A — gdy wynik jest potrzebny zaraz po wysyłce).
+Jeżeli wysyłka zwróciła `approved`, wynik masz od razu w odpowiedzi. Dokumenty `needs_review` zmieniają status później — po decyzjach operatora w panelu, które mogą zająć minuty albo dni. Wynik odbierasz na trzy sposoby: synchronizacją zmian (sposób B, zalecany), odpytując pojedynczy dokument (sposób A — gdy wynik jest potrzebny zaraz po wysyłce) albo z powiadomienia webhook (sposób C — parser sam daje znać o zmianie statusu).
 
 <a id="sposob-a"></a>
 
@@ -122,6 +124,14 @@ Status może się zmienić także **po** osiągnięciu statusu końcowego, jeśl
 **Lista bez `updated_since` i `cursor`** (tryb zwykły) działa jak dotąd: `since` filtruje po czasie **przyjęcia** (`created_at`, porównanie „≥”), wyniki są od najnowszych (malejąco po `id`), bez `next_cursor` i bez stronicowania. Do synchronizacji się nie nadaje: faktura przyjęta wcześniej, a zatwierdzona przez operatora później, nie spełni warunku `since`. W trybie synchronizacji `since` też działa (warunek „i”), ale nie jest potrzebne.
 
 Przed v0.5.0 lista filtrowała tylko po czasie przyjęcia (`since`), nie miała kursora, a strefa w `since` była pomijana — jeśli integrowałeś się ze starszą wersją, przejdź na `updated_since` + `cursor`.
+
+<a id="sposob-c"></a>
+
+### Sposób C — webhook: parser powiadamia Ciebie
+
+Przy kluczu API (strona *Klucze API*, rola administratora) ustawiasz adres swojego serwera. Przy każdej zmianie statusu dokumentu wysłanego tym kluczem parser wyśle na ten adres `POST` z JSON-em `{"event": "document.status_changed", "id": …, "status": …, "previous_status": …, "updated_at": …, "document_url": …}`, podpisany sekretem webhooka (nagłówki `X-XP-Timestamp`, `X-XP-Signature`, `X-XP-Delivery`). Po powiadomieniu pobierasz dokument przez `GET /api/v1/documents/{id}` i importujesz `invoice` przy `approved`. Nieudane dostawy są ponawiane, a gotowi odbiorcy w Pythonie, PHP, Node.js i powłoce sprawdzają podpis — wszystko opisuje temat [Webhooki](webhooki.md).
+
+Webhook dotyczy tylko dokumentów wysłanych tym kluczem i działa „co najmniej raz”: deduplikuj po `X-XP-Delivery`. Warto zostawić rzadką synchronizację (sposób B, np. raz na dobę) jako zabezpieczenie na wypadek dłuższej niedostępności Twojego serwera.
 
 <a id="wynik"></a>
 
@@ -805,6 +815,7 @@ esac
 - `last_sync` to `max(updated_at)` odebranych dokumentów, nie czas z zegara Twojej aplikacji; pierwszy przebieg zaczynasz od jawnej wartości (`1970-01-01T00:00:00Z` albo data wdrożenia).
 - Powtórzenia odrzucasz po `id` i `updated_at`, a import jest idempotentny.
 - Sposobu A (odpytywanie po `id`) używasz tylko wtedy, gdy wynik jest potrzebny zaraz po wysyłce.
+- Jeśli używasz webhooka (sposób C): sekret trzymasz poza kodem, odbiorca weryfikuje podpis i czas, odpowiada `2xx` w ciągu 5 s, deduplikuje po `X-XP-Delivery`, a „Wyślij testowe zdarzenie” przeszło.
 - Ponawiasz po błędach sieci i 5xx; przy `duplicate` przechodzisz na `id` oryginału.
 - Ktoś po Twojej stronie wie, że faktury nowych dostawców czekają na operatora w panelu.
 - Monitorujesz dostępność usługi przez `GET https://parser.example.com/healthz` (bez klucza).
@@ -824,4 +835,6 @@ esac
 - **Surowy `+` w czasie** (np. `updated_since=2026-10-11T08:00:00+02:00` wklejone do adresu) — w URL `+` oznacza spację, więc API zwraca `400 bad_request`; zapisz go jako `%2B` albo podawaj czas z `Z`.
 - **Liczby zmiennoprzecinkowe** zamiast dziesiętnych — błędy zaokrągleń w kwotach.
 - **Szukanie dokumentu innym kluczem** — każdy klucz widzi tylko swoje dokumenty (`404`).
-- **Odpytywanie w ciasnej pętli** — operator potrzebuje minut lub godzin; stosuj rosnącą przerwę.
+- **Odpytywanie w ciasnej pętli** — operator potrzebuje minut lub godzin; stosuj rosnącą przerwę albo ustaw webhook.
+- **Weryfikacja podpisu webhooka na przetworzonym JSON-ie** — podpis liczy się z surowych bajtów ciała; JSON sparsowany i zapisany od nowa da inny wynik i odbiorca odrzuci prawdziwe powiadomienie.
+- **Długa praca w odbiorcy webhooka** — odpowiedź po więcej niż 5 s to porażka i ponowienie; odpowiedz od razu, a dokument pobierz w tle.

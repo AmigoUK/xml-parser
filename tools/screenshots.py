@@ -134,6 +134,7 @@ PAGES = [
     Shot("13-faq-worek", f"/dokumenty/{ZETA_ID}", False),  # FAQ: „1 worek = 25 kg” w negocjacji
     # karta zestawu demo z postępem pierwszej fazy; zrzut po zalogowaniu (przyciski karty widzą tylko zalogowani)
     Shot("14-demo-zestaw", "/demo#zestaw", False),
+    Shot("15-klucze-webhook", "/klucze-api", True),
 ]
 
 

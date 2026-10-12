@@ -124,7 +124,7 @@ Błędy mają postać `{"error": {"code": "…", "message": "…"}}`.
 
 ## Powiadomienia (webhook)
 
-Aplikacja nie wysyła obecnie webhooków (planowane w kolejnej wersji). Aby dowiedzieć się o zmianie statusu (np. po rozwiązaniu problemów w panelu), synchronizuj listę `GET /api/v1/documents?updated_since=…` z kursorem (zalecane) albo odpytuj `GET /api/v1/documents/{id}` — jak robić to bezpiecznie, opisuje [Integracja z własną aplikacją](integracja.md#odbior).
+Przy kluczu API możesz ustawić adres webhooka (strona *Klucze API*, rola administratora). Parser wysyła wtedy podpisany `POST` ze zdarzeniem `document.status_changed` przy każdej zmianie statusu dokumentu wysłanego tym kluczem, a nieudane dostawy ponawia. Historię dostaw zwraca `GET https://parser.example.com/api/v1/webhook-deliveries`. Ładunek, podpis HMAC, ponowienia i gotowych odbiorców opisuje temat [Webhooki](webhooki.md). Bez webhooka zmiany odbierasz synchronizacją `GET /api/v1/documents?updated_since=…` z kursorem albo odpytując `GET /api/v1/documents/{id}` — [Integracja z własną aplikacją](integracja.md#odbior).
 
 ## Stan usługi
 

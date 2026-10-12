@@ -127,6 +127,7 @@ HELP_SHOTS = {
     "towary": ["06-kartoteka.png"],
     "statusy-i-problemy": ["04-dokument.png"],
     "api": ["11-api-docs.png"],
+    "webhooki": ["15-klucze-webhook.png"],
     "faq": ["13-faq-worek.png"],
 }
 NO_SHOTS = {"integracja"}  # zrzut tej strony jest tylko w README
@@ -354,7 +355,7 @@ def test_integration_recommends_sync_with_margin_and_keeps_history_note(client):
     assert "last_sync − 5 min" in text and "co najmniej raz" in text
     assert "Odrzucaj powtórzenia po id i updated_at" in text and "Samo id nie wystarczy" in text
     assert "Przed v0.5.0 lista filtrowała tylko po czasie przyjęcia (since)" in text
-    assert "planowane w kolejnej wersji" in text
+    assert "Sposób C — webhook" in text  # dawniej: alert „Webhooków nie ma (planowane w kolejnej wersji)”
 
 
 def test_integration_examples_sync_in_four_languages(client):
@@ -446,7 +447,6 @@ def test_integration_examples_four_languages_with_request_host(client):
     assert "FormData" in blocks["javascript"][0] and "Blob" in blocks["javascript"][0]
     assert "jq" in blocks["bash"][-1]
     assert "__API_BASE__" not in html and "localhost" not in html
-    assert "Webhooków nie ma" in html
 
 
 def test_integration_limits_follow_configuration(app, client):
@@ -624,3 +624,115 @@ def test_dataset_topic_step_two_prose_matches_manifest(client):
     gbp = html.index("wybierz GBP")
     assert html.index("Wczytaj pierwsze (6)”.") < step2 < gbp
     assert gbp < html.index("Wczytaj wszystko”</strong>")
+
+
+# --- temat „Webhooki” ---
+
+WEBHOOKS = "/pomoc/webhooki"
+SIGNATURE_VECTOR = ("whsec_test_0123456789abcdef", "1760000000", '{"event":"webhook.test","id":null}',
+                    "sha256=3bbaa1b01d7597a96349f290bbb59f27e7fdfe7d4918adbf949e7c3379973d46")
+
+
+def test_webhooks_topic_listed_after_integration_and_linked(client):
+    slugs = [t["slug"] for t in TOPICS]
+    assert slugs.index("webhooki") == slugs.index("integracja") + 1
+    topic = next(t for t in TOPICS if t["slug"] == "webhooki")
+    assert topic["title"] == "Webhooki" and topic["summary"].strip()
+    for path in ("/pomoc", "/pomoc/integracja", "/pomoc/api", "/pomoc/faq"):
+        assert 'href="/pomoc/webhooki' in client.get(path).get_data(as_text=True), path
+    html = client.get(WEBHOOKS).get_data(as_text=True)
+    assert 'href="/pomoc/integracja" rel="prev"' in html and 'href="/pomoc/faq" rel="next"' in html
+    diagram = _code_blocks(client.get(INTEGRATION).get_data(as_text=True))["text"][0]
+    assert diagram.count("GET /api/v1/documents/{id}") == 1 and "z webhookiem" in diagram
+
+
+def test_webhooks_topic_shows_examples_in_four_languages_with_request_host(client):
+    """Cztery przykłady odbiorcy (WEBHOOK_EXAMPLES) w całości, z instrukcją --check na wektorze referencyjnym,
+    a adresy API — z hostem żądania."""
+    from app.web.help import WEBHOOK_EXAMPLES
+    html = client.get(WEBHOOKS, base_url="http://faktury.example.test:18555").get_data(as_text=True)
+    blocks = _code_blocks(html)
+    for lang, _title, name in WEBHOOK_EXAMPLES:
+        code = (EXAMPLES_DIR / name).read_text(encoding="utf-8").rstrip("\n")
+        assert code in blocks.get(lang, []), name
+        assert "XP_WEBHOOK_SECRET" in code and "--check" in code, name
+    text = _text(html)
+    assert "http://faktury.example.test:18555/api/v1/webhook-deliveries" in text
+    secret, ts, body, sig = SIGNATURE_VECTOR
+    for needle in (secret, ts, sig, "--check", "--now", "XP_WEBHOOK_SECRET"):
+        assert needle in text, needle
+    assert f"<code>{body}</code>" in html  # ciało wektora dosłownie (literał szablonu, bez escapowania cudzysłowów)
+    assert "__API_BASE__" not in html and "localhost" not in html
+
+
+def test_webhooks_topic_documents_contract(client):
+    """Fakty zgodne z implementacją: nagłówki, podpis, okno czasu, zdarzenia, ładunek, harmonogram ponowień,
+    stany dostaw, zasady celu (SSRF), zmienne konfiguracji, worker i retencja."""
+    text = _text(client.get(WEBHOOKS).get_data(as_text=True))
+    for needle in ("X-XP-Timestamp", "X-XP-Signature", "X-XP-Delivery", "HMAC-SHA256", "300 s",
+                   "document.status_changed", "webhook.test",
+                   "event", "previous_status", "updated_at", "document_url",
+                   "1 min, 5 min, 30 min, 2 h i 12 h", "5 s", "pending", "sent", "failed", "Ponów",
+                   "Rotuj sekret", "Wyślij testowe zdarzenie", "Klucze API",
+                   "https", "WEBHOOK_ALLOWED_HOSTS", "WEBHOOK_ALLOW_HTTP", "PUBLIC_BASE_URL",
+                   "WEBHOOK_RETENTION_DAYS", "flask webhooks-worker --once", "flask prune-webhooks",
+                   "docker compose ps", "GET /api/v1/webhook-deliveries", "document_id", "next_cursor"):
+        assert needle in text, needle
+    assert "sha256=<hex" in text
+    assert "Content-Type: application/json" in text and "User-Agent: xml-parser-webhook/<wersja>" in text
+    assert "powłoka — tylko --check" in text
+
+
+def test_webhooks_topic_screenshot_is_provisional_copy_until_regenerated():
+    """Zrzut 15-klucze-webhook.png istnieje i jest w PAGES narzędzia zrzutów (tymczasowo kopia, później z danymi)."""
+    assert (SCREENSHOTS_DIR / "15-klucze-webhook.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert 'Shot("15-klucze-webhook", "/klucze-api", True)' in (ROOT / "tools" / "screenshots.py").read_text(
+        encoding="utf-8")
+
+
+def test_help_no_longer_says_webhooks_missing(client):
+    for path in ("/pomoc", "/pomoc/integracja", "/pomoc/api", "/pomoc/faq"):
+        text = _text(client.get(path).get_data(as_text=True))
+        for phrase in ("webhooków nie ma", "Webhooków nie ma", "nie wysyła obecnie webhooków",
+                       "planowane w kolejnej wersji"):
+            assert phrase not in text, (path, phrase)
+
+
+def test_integration_has_way_c_with_link(client):
+    import lxml.html
+    html = client.get(INTEGRATION).get_data(as_text=True)
+    doc = lxml.html.fromstring(html)
+    (way_c,) = doc.xpath('//h3[@id="sposob-c"]')
+    assert "Sposób C" in way_c.text_content() and "webhook" in way_c.text_content()
+    # Sposób C leży w rozdziale „Odbiór wyniku” (między #odbior a #wynik) i prowadzi do tematu
+    heads = [h.get("id") for h in doc.xpath("//h2[@id] | //h3[@id]")]
+    assert heads.index("odbior") < heads.index("sposob-c") < heads.index("wynik")
+    following = way_c.xpath("following-sibling::*[1]")[0]
+    assert following.xpath('.//a[@href="/pomoc/webhooki"]')
+    text = _text(html)
+    assert "X-XP-Signature" in text
+    checklist = " ".join(doc.xpath('//h2[@id="checklista"]/following-sibling::ul[1]')[0].text_content().split())
+    assert "webhook" in checklist
+    errors = " ".join(doc.xpath('//h2[@id="bledy"]/following-sibling::ul[1]')[0].text_content().split())
+    assert "webhook" in errors
+
+
+def test_faq_webhook_entries_anchored(client):
+    import lxml.html
+    by_slug = {f.get("slug"): f for f in FAQ}
+    assert by_slug["webhook-podpis"]["q"] == "Jak sprawdzić, że webhook naprawdę przyszedł z parsera?"
+    assert by_slug["webhook-brak-dostawy"]["q"] == "Ustawiłem webhook, ale nic nie przychodzi — dlaczego?"
+    assert by_slug["webhook-podpis"]["link"] == by_slug["webhook-brak-dostawy"]["link"] == "webhooki"
+    doc = lxml.html.fromstring(client.get("/pomoc/faq").get_data(as_text=True))
+
+    def body(slug):
+        (b,) = doc.xpath(f'//h2[@id="{slug}"]/following-sibling::div//div[contains(@class, "accordion-body")]')
+        return " ".join(b.text_content().split())
+
+    sig = body("webhook-podpis")
+    for needle in ("X-XP-Signature", "X-XP-Timestamp", "HMAC-SHA256", "300 s", "X-XP-Delivery", "--check"):
+        assert needle in sig, needle
+    missing = body("webhook-brak-dostawy")
+    for needle in ("panelu", "nieaktywny", "worker", "docker compose ps", "WEBHOOK_ALLOWED_HOSTS", "failed",
+                   "Ponów", "GET /api/v1/webhook-deliveries"):
+        assert needle in missing, needle

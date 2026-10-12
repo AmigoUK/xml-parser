@@ -126,10 +126,18 @@ def _example_text(name: str) -> str:
     return (EXAMPLES_DIR / name).read_text(encoding="utf-8")
 
 
-def integration_examples(api_base: str) -> list[dict]:
+def _examples(spec: list[tuple[str, str, str]], api_base: str) -> list[dict]:
     return [{"lang": lang, "title": title, "file": name,
              "code": _example_text(name).replace(API_BASE_MARK, api_base).rstrip("\n")}
-            for lang, title, name in INTEGRATION_EXAMPLES]
+            for lang, title, name in spec]
+
+
+def integration_examples(api_base: str) -> list[dict]:
+    return _examples(INTEGRATION_EXAMPLES, api_base)
+
+
+def webhook_examples(api_base: str) -> list[dict]:
+    return _examples(WEBHOOK_EXAMPLES, api_base)
 
 
 # Globalna funkcja szablonów, a nie zmienna z context processora: makro help/_shot.html jest importowane bez
@@ -191,6 +199,8 @@ def topic(slug):
     if slug == "integracja":
         extra = {"examples": integration_examples(api_base),
                  "sample_response": _example_text(SAMPLE_RESPONSE_FILE).rstrip("\n")}
+    if slug == "webhooki":
+        extra = {"examples": webhook_examples(api_base)}
     if slug == "zestaw-demo":
         extra = _dataset_context(api_base)
     return render_template(

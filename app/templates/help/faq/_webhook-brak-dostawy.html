@@ -1,0 +1,23 @@
+{# FAQ „webhook nic nie przychodzi”: lista przyczyn od najczęstszej. Renderowane w akordeonie FAQ (faq.html). #}
+<h3 class="h6 mt-3">Sprawdź po kolei</h3>
+<ol>
+  <li><strong>Dokument nie przyszedł przez ten klucz.</strong> Powiadomienia dotyczą wyłącznie dokumentów wysłanych przez
+    REST API kluczem, przy którym ustawiono webhook. Faktura wgrana w panelu albo przykład z trybu demo nie wysyła
+    zdarzeń. Do próby użyj „Wyślij testowe zdarzenie” przy kluczu albo wyślij plik tym kluczem.</li>
+  <li><strong>Klucz jest nieaktywny albo nie ma adresu webhooka.</strong> Wyłączony klucz nie wysyła zdarzeń, a dostawy
+    czekające w kolejce kończą się stanem <code>failed</code>. Sprawdź w „Klucze API”, czy klucz jest aktywny, a adres
+    zapisany.</li>
+  <li><strong>Nie działa worker.</strong> Powiadomienia wysyła osobna usługa <code>worker</code>; bez niej dostawy
+    zostają w stanie <code>pending</code>. Sprawdź <code>docker compose ps</code> — usługa <code>worker</code> powinna
+    być uruchomiona i zdrowa (<code>healthy</code>); awaryjnie wyślij kolejkę poleceniem
+    <code>flask webhooks-worker --once</code>.</li>
+  <li><strong>Adres jest zablokowany.</strong> Parser nie wysyła na adresy prywatne, lokalne ani z sieci CGNAT (np.
+    Tailscale) i wymaga <code>https</code>. Adres w sieci firmowej albo w tailnecie administrator instancji dopuszcza
+    zmienną <code>WEBHOOK_ALLOWED_HOSTS</code> (nazwy hostów i podsieci CIDR).</li>
+  <li><strong>Odbiorca odpowiada błędem.</strong> Za dostarczone uznawana jest tylko odpowiedź 2xx w ciągu 5 s;
+    przekierowanie, inny kod albo przekroczenie czasu to porażka i ponowienie. Po 6 nieudanych próbach dostawa ma stan
+    <code>failed</code> — popraw odbiorcę i kliknij „Ponów” przy dostawie.</li>
+</ol>
+<p>Ostatni kod odpowiedzi i treść błędu każdej dostawy zobaczysz na liście dostaw przy kluczu w panelu albo w API:
+  <code>GET /api/v1/webhook-deliveries?status=failed</code> (opis w temacie
+  <a href="{{ url_for('help.topic', slug='webhooki') }}#lista-dostaw">Webhooki</a>).</p>
