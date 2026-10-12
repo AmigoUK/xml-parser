@@ -81,8 +81,8 @@ def test_swagger_init_moved_to_static_file(seeded, client):
 def test_session_cookie_flags_and_lifetime(seeded, app, client):
     assert app.config["SESSION_COOKIE_HTTPONLY"] is True
     assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
-    assert app.config["REMEMBER_COOKIE_HTTPONLY"] is True
-    assert app.config["REMEMBER_COOKIE_SAMESITE"] == "Lax"
+    # „zapamiętaj mnie” nie istnieje (login_user bez remember) — martwe REMEMBER_COOKIE_* usunięte z Config
+    assert "REMEMBER_COOKIE" not in (Path(__file__).parent.parent / "app" / "config.py").read_text(encoding="utf-8")
     assert app.config["PERMANENT_SESSION_LIFETIME"] == timedelta(hours=8)
     from app.extensions import login_manager
     assert login_manager.session_protection == "strong"

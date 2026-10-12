@@ -35,12 +35,10 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = _bool("SESSION_COOKIE_SECURE", "0")
-    REMEMBER_COOKIE_HTTPONLY = True
-    REMEMBER_COOKIE_SAMESITE = "Lax"
-    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+    # strefa, w której panel pokazuje czasy (baza trzyma UTC; API zwraca UTC z „Z”); nazwa IANA
+    DISPLAY_TZ = os.environ.get("DISPLAY_TZ", "Europe/Warsaw")
     # czas życia sesji panelu (godziny) — osobno dla demo i instancji z prawdziwymi danymi
     SESSION_HOURS = int(os.environ.get("SESSION_HOURS", 8))
-    REMEMBER_COOKIE_DURATION = timedelta(hours=SESSION_HOURS)
     PERMANENT_SESSION_LIFETIME = timedelta(hours=SESSION_HOURS)
     # retencja dziennika: `flask prune-audit` usuwa wpisy login_failed/login_blocked starsze niż tyle dni
     AUDIT_RETENTION_DAYS = int(os.environ.get("AUDIT_RETENTION_DAYS", 90))

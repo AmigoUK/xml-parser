@@ -13,3 +13,5 @@ cryptography==50.0.2
 gunicorn==26.2.0
 python-dotenv==1.2.4
 regex==2026.9.29
+# strefy czasowe dla zoneinfo (DISPLAY_TZ) w obrazie slim bez systemowej bazy tzdata
+tzdata==2026.5

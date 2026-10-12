@@ -209,4 +209,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     from .web import register_web
     register_web(app)
 
+    from .web.filters import register_filters
+    register_filters(app)
+
     return app
