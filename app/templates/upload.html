@@ -3,13 +3,15 @@
 {% block content %}
 <h1 class="h4 mb-3">Wgraj fakturę</h1>
 <form method="post" enctype="multipart/form-data" class="card card-body"
-      x-data="uploadForm" @dragover.prevent="noop()" @drop.prevent="dropped($event)">
+      x-data="uploadForm" @submit="submitted()" @dragover.prevent="noop()" @drop.prevent="dropped($event)">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="border border-2 border-dashed rounded p-5 text-center mb-3 bg-light">
     <p class="mb-2">Przeciągnij tutaj plik XML, JSON lub CSV albo wybierz go z dysku.</p>
-    <input class="form-control" type="file" name="file" x-ref="f" accept=".xml,.json,.csv,.txt" @change="changed($event)">
+    <label class="form-label visually-hidden" for="file">Plik faktury</label>
+    <input class="form-control" id="file" type="file" name="file" x-ref="f" accept=".xml,.json,.csv,.txt" required @change="changed($event)">
+    <p class="small text-muted mt-2 mb-0">Maks. {{ config['MAX_DOCUMENT_BYTES']|mib }} MiB; XML, JSON lub CSV.</p>
     <p class="small text-muted mt-2" x-text="name"></p>
   </div>
-  <button class="btn btn-primary">Przetwórz</button>
+  <button class="btn btn-primary" :disabled="submitting" x-text="submitLabel()">Przetwórz</button>
 </form>
 {% endblock %}
