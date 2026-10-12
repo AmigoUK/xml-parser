@@ -71,7 +71,12 @@ def money(value) -> str:
     if value is None:
         return ""
     d = _decimal(value)
-    return escape(value) if d is None else _group(fmt_money(d))
+    if d is None:
+        return escape(value)
+    try:
+        return _group(fmt_money(d))
+    except (InvalidOperation, ValueError):  # za dużo cyfr znaczących do zaokrąglenia — pokaż surową wartość
+        return escape(value)
 
 
 def price(value) -> str:
@@ -79,7 +84,12 @@ def price(value) -> str:
     if value is None:
         return ""
     d = _decimal(value)
-    return escape(value) if d is None else _group(fmt_price(d))
+    if d is None:
+        return escape(value)
+    try:
+        return _group(fmt_price(d))
+    except (InvalidOperation, ValueError):
+        return escape(value)
 
 
 def qty(value) -> str:
@@ -89,7 +99,10 @@ def qty(value) -> str:
     d = _decimal(value)
     if d is None:
         return escape(value)
-    return _group(fmt_qty(d.quantize(Decimal("0.0001"))))
+    try:
+        return _group(fmt_qty(d.quantize(Decimal("0.0001"))))
+    except (InvalidOperation, ValueError):
+        return escape(value)
 
 
 def register_filters(app: Flask) -> None:

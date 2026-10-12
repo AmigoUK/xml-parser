@@ -117,7 +117,7 @@ def import_products():
             flash("Wybierz niepusty plik CSV.", "error")
             return render_template("products_import.html", report=None)
         if len(raw) > MAX_IMPORT_BYTES:
-            flash(f"Plik jest za duży (maks. {mib(MAX_IMPORT_BYTES)} MB).", "error")
+            flash(f"Plik jest za duży (maks. {mib(MAX_IMPORT_BYTES)} MiB).", "error")
             return render_template("products_import.html", report=None)
         report = import_products_csv(raw)
         flash(f"Dodano: {report['added']} · Zaktualizowano: {report['updated']} · Błędy: {len(report['errors'])}",

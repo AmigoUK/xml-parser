@@ -1,6 +1,7 @@
 from functools import wraps
 
 from flask import current_app, flash, g, jsonify, redirect, render_template, request, url_for
+from flask_wtf.csrf import CSRFError
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import defer
 from werkzeug.exceptions import NotFound
@@ -180,6 +181,22 @@ def _panel_error(code: int, title: str, message: str):
         return f"{title}\n{message}\n", code, {"Content-Type": "text/plain; charset=utf-8"}
 
 
+@bp.app_errorhandler(400)
+def _bad_request(exc):
+    if _is_api():
+        return exc  # zachowanie API bez zmian
+    return _panel_error(400, "Nieprawidłowe żądanie",
+                        "Nie udało się odczytać żądania. Odśwież stronę i spróbuj ponownie.")
+
+
+@bp.app_errorhandler(CSRFError)
+def _csrf_error(exc):
+    """Token formularza wygasa po godzinie (WTF_CSRF_TIME_LIMIT), krócej niż sesja — zamiast angielskiej strony 400."""
+    if _is_api():
+        return exc
+    return _panel_error(400, "Formularz wygasł lub jest nieprawidłowy", "Odśwież stronę i spróbuj ponownie.")
+
+
 @bp.app_errorhandler(403)
 def _forbidden(exc):
     if _is_api():
@@ -191,8 +208,8 @@ def _forbidden(exc):
 def too_large(exc):
     limit = current_app.config["MAX_DOCUMENT_BYTES"] // (1024 * 1024)
     if _is_api():
-        return api_error("too_large", f"Plik przekracza limit {limit} MB.", 413)
-    message = f"Plik jest za duży (maks. {limit} MB)."
+        return api_error("too_large", f"Plik przekracza limit {limit} MiB.", 413)
+    message = f"Plik jest za duży (maks. {limit} MiB)."
     if request.endpoint in ("docs.upload", "catalog.import_products"):
         flash(message, "error")
         return redirect(url_for(request.endpoint))

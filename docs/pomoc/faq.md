@@ -54,9 +54,9 @@ Czas lokalny. Panel pokazuje daty i godziny w strefie z ustawienia DISPLAY_TZ (d
 
 <a id="dluzsze-listy"></a>
 
-## Lista pokazuje tylko 200 wpisów — gdzie reszta?
+## Lista się urywa — gdzie reszta wpisów?
 
-Dłuższe listy są dzielone na strony. Dokumenty, kolejka, Historia i Szablony mają na dole przyciski „Starsze →” i „Następne →”; słowniki (Dane) mają numerowane strony i są ułożone alfabetycznie. Żeby nie przewijać, użyj wyszukiwania: pole nad listą Dokumentów oraz pole „Szukaj” w słownikach (adres z ?q=…), a w Historii filtrów „akcja” i „użytkownik”. Strona z filtrem ma własny adres, więc możesz ją dodać do zakładek.
+Długie listy (dokumenty, historia, słowniki) pokazują jedną stronę naraz. Dokumenty, kolejka, Historia i Szablony mają na dole przyciski „Starsze →” i „Następne →”; słowniki (Dane) mają numerowane strony, w stałej kolejności danego słownika. Żeby nie przewijać, użyj wyszukiwania: pole nad listą Dokumentów oraz pole „Szukaj” w słownikach (adres z ?q=…), a w Historii filtruj po akcji i użytkowniku. Strona z filtrem ma własny adres, więc możesz ją dodać do zakładek.
 
 <a id="worek-na-kg"></a>
 

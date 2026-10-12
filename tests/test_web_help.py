@@ -564,6 +564,6 @@ def test_units_topic_links_faq_entry(client):
 def test_faq_time_and_longer_lists_have_stable_anchors(client):
     faq = client.get("/pomoc/faq").get_data(as_text=True)
     for slug, q in (("czas-w-panelu", "Jaki czas pokazuje panel?"),
-                    ("dluzsze-listy", "Lista pokazuje tylko 200 wpisów — gdzie reszta?")):
+                    ("dluzsze-listy", "Lista się urywa — gdzie reszta wpisów?")):
         assert f'id="{slug}"' in faq and q in faq
     assert "DISPLAY_TZ" in faq and "Starsze →" in faq

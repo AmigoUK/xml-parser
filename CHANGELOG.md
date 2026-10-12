@@ -9,16 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Polskie strony błędów panelu (403, 404, 405, 413, 500 i przepełnienie liczby w adresie) z nawigacją i stopką; `/api/*` nadal odpowiada JSON-em.
-- Stronicowanie list: kursor („Starsze →” / „Następne →”) w Dokumentach, Kolejce, Historii i Szablonach oraz numerowane strony w słownikach (alfabetycznie).
+- Stronicowanie list: kursor („Starsze →” / „Następne →”) w Dokumentach, Kolejce, Historii i Szablonach oraz numerowane strony w słownikach (w stałej kolejności słownika).
 - Wyszukiwarka dokumentów (`?q=`) i pole wyszukiwania w słownikach (`?q=` + `?page=`).
 - Filtry Historii (akcja, użytkownik) z polskimi etykietami wszystkich akcji.
-- Komunikaty po operacjach na kluczach API (utworzenie, zmiana nazwy, wyłączenie) i po operacjach w słownikach, z nazwą wpisu.
+- Komunikaty po operacjach na kluczach API (włączenie/wyłączenie, zmiana nazwy, usunięcie, „Nie znaleziono klucza”; utworzenie pokazuje jednorazowy alert z kluczem, nie komunikat) i po operacjach w słownikach, z nazwą wpisu.
+- Odnośniki powrotu: „← Wróć do kolejki” / „← Wróć do dokumentów” w widoku dokumentu i „← Szablony” w szczegółach szablonu; potwierdzenie usunięcia szablonu z nazwą; podpowiedź „Maks. N MiB” przy wgrywaniu; e-mail zostaje w polu po nieudanym logowaniu.
+- Polska strona błędu 400 dla wygasłego tokenu formularza (CSRF) i innych nieprawidłowych żądań panelu; `/api/*` bez zmian.
 - Potwierdzenia: Odrzuć, Przywróć wersję, Wyłącz klucz, usuwanie wpisów słowników (z nazwą).
 - Stany pustych list z odnośnikami do następnego kroku.
 - `DISPLAY_TZ` (domyślnie `Europe/Warsaw`): czas lokalny w panelu, baza i REST API bez zmian (UTC); zmienna w `.env.example`, compose i README.
 - Ostrzeżenie przed opuszczeniem edytora mapowań z niezapisanymi zmianami (`beforeunload`).
 - Aktywna pozycja nawigacji (`aria-current="page"`) i atrybuty ARIA przełączników menu.
-- FAQ w Pomocy: „Jaki czas pokazuje panel?” (`#czas-w-panelu`) i „Lista pokazuje tylko 200 wpisów — gdzie reszta?” (`#dluzsze-listy`).
+- FAQ w Pomocy: „Jaki czas pokazuje panel?” (`#czas-w-panelu`) i „Lista się urywa — gdzie reszta wpisów?” (`#dluzsze-listy`).
 
 ### Changed
 - Nazwy stron zgodne z menu: „Mapowania towarów”, „Jednostki”, „Przeliczniki”, „Historia”, „Szablony”; podpisy zrzutów w Pomocy i README poprawione tak samo.
@@ -27,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zamykane komunikaty (`role="alert"`), pasek „← Panel” w `/api/docs`, blokada podwójnego wysłania formularza wgrywania, pole wyszukiwania w słownikach.
 
 ### Fixed
+- Filtry kwot, cen i ilości nie powodują już błędu 500 dla bardzo długich liczb (>28 cyfr) — pokazują wartość bez zmian.
+- „O demo” jest teraz aktywną pozycją nawigacji na stronie demo; „Wróć do Pulpitu” na stronach błędów prowadzi do Pulpitu także w trybie demo.
+- Przycisk „Przetwórz” odblokowuje się po powrocie do strony przyciskiem „Wstecz”.
+- Limity rozmiaru pliku w komunikatach w MiB (spójnie z podpowiedzią), placeholder liczb z kropką (np. 12 albo 1.125).
 - N+1 zapytań na liście szablonów.
 - Pusta nazwa klucza API była po cichu ignorowana — teraz komunikat błędu.
 - Kategoria komunikatu po błędzie resetu demo.
@@ -39,8 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Usunięto martwe ustawienia `REMEMBER_COOKIE_*`.
 - Bezpieczne budowanie adresów stronicowania (odrzucanie argumentów `_` w `url_for`, brak kolizji z `view_args`).
 
-### Znane ograniczenie
-- Gdy żądanie jest odrzucane za duże (413) zanim serwer przeczyta treść, przeglądarka może pokazać reset połączenia zamiast polskiej strony błędu.
+**Znane ograniczenie:** gdy żądanie jest odrzucane za duże (413) zanim serwer przeczyta treść, przeglądarka może pokazać reset połączenia zamiast polskiej strony błędu.
 
 ## [0.7.0] — 2026-10-12
 
