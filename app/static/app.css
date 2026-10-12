@@ -27,7 +27,8 @@ body.full-screen main.editor-main { padding: 0; height: 100vh; overflow: hidden;
 /* wspólne klasy układu (zamiast statycznych style=) */
 .w-form-narrow { max-width: 32rem; }
 .w-form-key { max-width: 24rem; }
-.scroll-pane { overflow: auto; }
+/* panel drzewa pliku źródłowego (document.html): limit wysokości + przewijanie */
+.scroll-pane { max-height: 70vh; overflow: auto; }
 .min-h-0 { min-height: 0; }
 .cell-truncate { max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* /api/docs: pasek powrotu do panelu nad Swagger UI (Swagger wymaga białego tła i zwykłego układu bloku) */

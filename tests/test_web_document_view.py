@@ -93,6 +93,9 @@ def test_reject_form_has_confirm(auth_client):
 def test_scroll_pane_replaces_inline_style(auth_client):
     html = _page(auth_client)
     assert "max-height: 70vh" not in html and "scroll-pane" in html
+    from pathlib import Path
+    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "app.css").read_text(encoding="utf-8")
+    assert re.search(r"\.scroll-pane\s*\{[^}]*max-height", css)
 
 
 def test_no_inline_js_on_document_page(auth_client):
