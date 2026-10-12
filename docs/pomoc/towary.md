@@ -43,7 +43,7 @@ Zasady importu:
 
 ## Mapowania towarów dostawcy
 
-Mapowanie łączy towar *u dostawcy* z naszym towarem. Powstaje w negocjacji (przypisanie towaru z „zapamiętaj”) albo ręcznie w *Mapowaniach towarów*. Pozycja jest dopasowywana w tej kolejności:
+Mapowanie łączy towar *u dostawcy* z naszym towarem. Powstaje w negocjacji (przypisanie towaru z „zapamiętaj”) albo ręcznie w *Dane → Mapowania towarów*. Pozycja jest dopasowywana w tej kolejności:
 
 1. po **kodzie towaru dostawcy** (mapowanie tego dostawcy);
 2. po **GTIN** z mapowań tego dostawcy;

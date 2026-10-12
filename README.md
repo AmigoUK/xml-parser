@@ -51,8 +51,8 @@ Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples
 | | |
 |---|---|
 | ![Pulpit](app/static/screenshots/02-pulpit.png)<br/>**Pulpit** — po nauczeniu na alfa-1 faktura alfa-2 zatwierdzona automatycznie | ![Kolejka](app/static/screenshots/03-kolejka.png)<br/>**Kolejka do wyjaśnienia** |
-| ![Edytor mapowań](app/static/screenshots/05-edytor-mapowan.png)<br/>**Edytor mapowań** — klik w element pliku → klik w pole, podgląd na żywo | ![Szablony](app/static/screenshots/10-szablony.png)<br/>**Szablony dostawców** z wersjami |
-| ![Kartoteka towarów](app/static/screenshots/06-kartoteka.png)<br/>**Kartoteka towarów** | ![Przeliczniki](app/static/screenshots/07-przeliczniki.png)<br/>**Przeliczniki jednostek** |
+| ![Edytor mapowań](app/static/screenshots/05-edytor-mapowan.png)<br/>**Edytor mapowań** — klik w element pliku → klik w pole, podgląd na żywo | ![Szablony](app/static/screenshots/10-szablony.png)<br/>**Szablony** z wersjami |
+| ![Kartoteka towarów](app/static/screenshots/06-kartoteka.png)<br/>**Kartoteka towarów** | ![Przeliczniki](app/static/screenshots/07-przeliczniki.png)<br/>**Przeliczniki** |
 | ![Pomoc](app/static/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](app/static/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
 | ![O demo](app/static/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](app/static/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
 | ![Przewodnik integracji](app/static/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | ![FAQ: worki → kilogramy](app/static/screenshots/13-faq-worek.png)<br/>**Negocjacja przelicznika** `1 worek = 25 kg` — scenariusz z [FAQ](docs/pomoc/faq.md#worek-na-kg) |
@@ -171,6 +171,7 @@ Wartości i komentarze: [`.env.example`](.env.example); kontrakt dla platform be
 | Demo | `DEMO_MODE` (domyślnie 0), `DEMO_API_KEY` (min. 24 znaki; wartość przykładowa odrzucana) |
 | Limity | `MAX_DOCUMENT_BYTES`, `MAX_TREE_NODES`, `MAX_LINES` |
 | Sieć | `APP_BIND`, `APP_PORT`, `APP_INTERNAL_PORT` / `PORT`, `XP_SUBNET`, `TRUSTED_PROXY_COUNT`, `PREFERRED_URL_SCHEME` |
+| Wyświetlanie | `DISPLAY_TZ` (domyślnie `Europe/Warsaw`) — strefa czasu w panelu; baza i API zostają w UTC |
 | Sesja i logowanie | `SESSION_COOKIE_SECURE`, `SESSION_HOURS` (domyślnie 8), `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_MAX_ATTEMPTS_PER_IP`, `LOGIN_MAX_ATTEMPTS_PER_EMAIL`, `LOGIN_EMAIL_LOCKOUT_MINUTES`, `AUDIT_RETENTION_DAYS` (domyślnie 90) |
 | Kontener | `STORAGE_DIR`, `MIGRATE_ON_START`, `MIGRATE_LOCK_TIMEOUT`, `DB_WAIT_ATTEMPTS`, `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR`, `GUNICORN_CMD_ARGS`, `APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS` |
 | Kopie | `BACKUP_DIR`, `BACKUP_RETENTION_DAYS` (skrypt `tools/backup.sh`) |
@@ -258,6 +259,7 @@ z prawdziwymi danymi.
 | `LOGIN_MAX_ATTEMPTS_PER_EMAIL` | `50` | Nieudane logowania na jedno konto z dowolnych IP (atak rozproszony). |
 | `LOGIN_EMAIL_LOCKOUT_MINUTES` | `5` | Okno i czas blokady dla progu per e-mail (krótsze). |
 | `SESSION_HOURS` | `8` | Czas życia sesji panelu w godzinach (demo publiczne: krócej). |
+| `DISPLAY_TZ` | `Europe/Warsaw` | Strefa czasu (nazwa IANA) dla dat i godzin w panelu; pełna strefa w podpowiedzi po najechaniu. Nie wpływa na bazę ani REST API — te zawsze podają UTC z przyrostkiem `Z`. |
 | `AUDIT_RETENTION_DAYS` | `90` | Retencja wpisów `login_failed`/`login_blocked` w „Historii” dla `flask prune-audit`. |
 
 Kompromis limitu logowania: obcy, który zna e-mail admina, ale nie hasło, blokuje 5 próbami tylko

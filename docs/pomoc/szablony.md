@@ -6,7 +6,7 @@
 
 ![Lista szablonów dostawców z aktywną wersją i liczbą dokumentów](../../app/static/screenshots/10-szablony.png)
 
-*Szablony dostawców (np. „Hurtownia Alfa Sp. z o.o. — XML”) z aktywną wersją i liczbą dokumentów; „Wersje” otwiera historię z porównaniem i przywracaniem, „Edytuj” — edytor mapowań.*
+*Szablony (np. „Hurtownia Alfa Sp. z o.o. — XML”) z aktywną wersją i liczbą dokumentów; „Wersje” otwiera historię z porównaniem i przywracaniem, „Edytuj” — edytor mapowań.*
 
 ## Wersje
 
