@@ -30,6 +30,7 @@ backups/
 
 # Raporty robocze audytu (skill AuditProject)
 .audit/
+RAPORT_AUDYTU.md
 
 # Claude Code (lokalne worktree agentów)
 .claude/
