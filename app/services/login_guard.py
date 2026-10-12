@@ -29,22 +29,21 @@ class Rule:
 
 
 def _norm_email(email: str) -> str:
-    return (email or "").strip().lower()[:255]
+    return (email or "").strip().lower()[:LoginAttempt.email.type.length]
 
 
 def _norm_ip(ip: str | None) -> str:
-    return (ip or "?")[:64]
+    return (ip or "?")[:LoginAttempt.ip.type.length]
 
 
 def _rules(email: str, ip: str) -> list[Rule]:
-    cfg = current_app.config
-    window = timedelta(minutes=int(cfg.get("LOGIN_LOCKOUT_MINUTES", 15)))
-    email_window = timedelta(minutes=int(cfg.get("LOGIN_EMAIL_LOCKOUT_MINUTES", 5)))
+    cfg = current_app.config  # wartości domyślne wyłącznie w Config (jedno źródło)
+    window = timedelta(minutes=int(cfg["LOGIN_LOCKOUT_MINUTES"]))
+    email_window = timedelta(minutes=int(cfg["LOGIN_EMAIL_LOCKOUT_MINUTES"]))
     return [
-        Rule(int(cfg.get("LOGIN_MAX_ATTEMPTS", 5)), window,
-             (LoginAttempt.email == email, LoginAttempt.ip == ip)),
-        Rule(int(cfg.get("LOGIN_MAX_ATTEMPTS_PER_IP", 20)), window, (LoginAttempt.ip == ip,)),
-        Rule(int(cfg.get("LOGIN_MAX_ATTEMPTS_PER_EMAIL", 50)), email_window, (LoginAttempt.email == email,)),
+        Rule(int(cfg["LOGIN_MAX_ATTEMPTS"]), window, (LoginAttempt.email == email, LoginAttempt.ip == ip)),
+        Rule(int(cfg["LOGIN_MAX_ATTEMPTS_PER_IP"]), window, (LoginAttempt.ip == ip,)),
+        Rule(int(cfg["LOGIN_MAX_ATTEMPTS_PER_EMAIL"]), email_window, (LoginAttempt.email == email,)),
     ]
 
 

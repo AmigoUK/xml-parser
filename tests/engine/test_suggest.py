@@ -3,9 +3,19 @@ from pathlib import Path
 
 import pytest
 
-from app.engine.suggest import (conversion_guess, draft_rules, field_candidates, learned_pairs,
-                                load_synonyms, norm_tax_id, product_candidates, suffix_match,
-                                supplier_candidates, tax_ids_match, unit_candidates)
+from app.engine.suggest import (
+    conversion_guess,
+    draft_rules,
+    field_candidates,
+    learned_pairs,
+    load_synonyms,
+    norm_tax_id,
+    product_candidates,
+    suffix_match,
+    supplier_candidates,
+    tax_ids_match,
+    unit_candidates,
+)
 from app.engine.template import apply_template
 from app.engine.validate import validate_invoice
 from app.ingest import read_document

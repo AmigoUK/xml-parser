@@ -1,9 +1,10 @@
 """Ogólny CRUD dla prostych tabel słownikowych (lista + formularz + edycja + usuwanie)."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Callable
+from typing import Any
 
 from flask import flash, redirect, render_template, request, url_for
 from flask_login import login_required

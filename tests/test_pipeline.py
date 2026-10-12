@@ -86,6 +86,7 @@ def test_known_supplier_template_is_used(seeded):
 
 def test_oversize_document_rejected(seeded):
     import pytest
+
     from app.services.pipeline import DocumentTooLarge
     seeded.config["MAX_DOCUMENT_BYTES"] = 100
     with pytest.raises(DocumentTooLarge):

@@ -43,7 +43,7 @@ def test_help_pages_public_with_title_and_footer(client, path):
     assert FOOTER in html
     slug = path.rsplit("/", 1)[-1]
     title = next((t["title"] for t in TOPICS if t["slug"] == slug), "Pomoc")
-    assert f"<h1 class=\"h3" in html and title in html
+    assert "<h1 class=\"h3" in html and title in html
     assert "<script>" not in html and "onclick=" not in html  # CSP: bez inline JS
 
 
@@ -270,8 +270,8 @@ def test_transform_help_covers_registry(client):
 @pytest.mark.parametrize("name", sorted(TRANSFORM_HELP))
 def test_transform_examples_are_true(name):
     h = TRANSFORM_HELP[name]
-    tree = read_document("<Faktura><Sprzedawca><Ulica>Polna 1</Ulica><Miasto>Opole</Miasto></Sprzedawca></Faktura>"
-                         .encode())
+    tree = read_document(b"<Faktura><Sprzedawca><Ulica>Polna 1</Ulica><Miasto>Opole</Miasto></Sprzedawca></Faktura>"
+)
     step = json.loads(h["step"])
     assert apply_chain(h["input"], [step], TransformContext(tree)) == h["output"]
 
@@ -412,6 +412,7 @@ def test_openapi_matches_documents_api(seeded, client):
     import io
 
     import yaml
+
     from tests.conftest import sample_bytes
     spec = yaml.safe_load((ROOT / "app" / "static" / "openapi.yaml").read_text(encoding="utf-8"))
     schemas = spec["components"]["schemas"]

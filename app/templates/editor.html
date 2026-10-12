@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Edytor mapowań{% endblock %}
 {% block content %}
-<div x-data='editor({{ config|tojson }})' class="d-flex flex-column h-100">
+{# konfiguracja edytora jako blok danych JSON (nie skrypt wykonywalny — CSP go nie dotyczy); tojson ucieka < > & ' #}
+<script type="application/json" id="editor-config">{{ config|tojson }}</script>
+<div x-data="editor" class="d-flex flex-column h-100">
   <div class="d-flex align-items-center gap-2 p-2 border-bottom bg-white">
     <a class="btn btn-sm btn-link" :href="cfg.backUrl">← Wróć</a>
     <strong class="me-auto">{{ title }}</strong>
     <input class="form-control form-control-sm w-auto" x-model="comment" placeholder="Komentarz do wersji">
     <button class="btn btn-sm btn-outline-secondary" @click="runPreview()">Podgląd</button>
     <button class="btn btn-sm btn-primary" @click="save()" :disabled="saving">Zapisz nową wersję</button>
-    {% if 'help' in nav_blueprints %}<a class="btn btn-sm btn-link" href="{{ url_for('help.topic', slug='edytor-mapowan') }}" target="_blank" rel="noopener">? Pomoc</a>{% endif %}
+    <a class="btn btn-sm btn-link" href="{{ url_for('help.topic', slug='edytor-mapowan') }}" target="_blank" rel="noopener">? Pomoc</a>
   </div>
   <div class="row g-0 flex-grow-1" style="min-height:0">
     <div class="col-3 border-end overflow-auto p-2 bg-white">
       <div class="small text-muted mb-1">1. Kliknij element w pliku</div>
       <template x-for="(r, idx) in cfg.rows" :key="idx">
-        <div class="tree-row" :style="`padding-left:${r.depth*12}px; cursor:pointer`"
-             :class="{'bg-primary-subtle': selected === r.path, 'fw-semibold': cfg.groups.includes(r.path)}"
-             @click="selected = r.path" :title="r.path">
+        <div class="tree-row" :style="rowStyle(r)" :class="rowClass(r)" @click="select(r)" :title="r.path">
           <span x-text="r.name"></span><template x-if="r.value"><span>: <span class="val" x-text="r.value"></span></span></template>
         </div>
       </template>
@@ -25,30 +25,29 @@
       <div class="small text-muted mb-1">2. Kliknij „←” przy polu, aby przypisać zaznaczony element</div>
       <div class="card card-body p-2 mb-2">
         <div class="small fw-semibold">Element z pozycjami faktury</div>
-        <div class="d-flex gap-2 align-items-center"><code class="small" x-text="rules.line_path || '— brak —'"></code>
-          <button class="btn btn-sm btn-outline-primary ms-auto" @click="setLinePath()" :disabled="!selected || !cfg.groups.includes(selected)">← ustaw</button></div>
+        <div class="d-flex gap-2 align-items-center"><code class="small" x-text="linePathLabel()"></code>
+          <button class="btn btn-sm btn-outline-primary ms-auto" @click="setLinePath()" :disabled="!canSetLinePath()">← ustaw</button></div>
       </div>
       <p class="text-danger small" x-show="error" x-text="error"></p>
-      <template x-for="section in ['header', 'lines']" :key="section">
+      <template x-for="s in sections" :key="s.key">
         <div>
-          <h2 class="h6 mt-3" x-text="section === 'header' ? 'Nagłówek' : 'Pozycje (ścieżki względne)'"></h2>
-          <template x-for="f in cfg[section]" :key="f.key">
+          <h2 class="h6 mt-3" x-text="s.label"></h2>
+          <template x-for="f in s.fields" :key="f.key">
             <div class="border rounded p-2 mb-2 bg-white">
               <div class="d-flex align-items-center gap-2">
-                <span class="small fw-semibold" x-text="f.label + (f.required ? ' *' : '')"></span>
-                <button class="btn btn-sm btn-outline-primary ms-auto py-0" @click="assign(section, f.key)" :disabled="!selected">←</button>
-                <button class="btn btn-sm btn-outline-secondary py-0" @click="clear(section, f.key)">×</button>
+                <span class="small fw-semibold" x-text="fieldLabel(f)"></span>
+                <button class="btn btn-sm btn-outline-primary ms-auto py-0" @click="assign(s.key, f.key)" :disabled="!selected">←</button>
+                <button class="btn btn-sm btn-outline-secondary py-0" @click="clear(s.key, f.key)">×</button>
               </div>
-              <code class="small d-block" x-text="ruleOf(section, f.key)?.path || ruleOf(section, f.key)?.constant || ''"></code>
+              <code class="small d-block" x-text="ruleSource(s.key, f.key)"></code>
               <input class="form-control form-control-sm mt-1" placeholder='transformacje JSON, np. ["strip_percent"]'
-                     :value="JSON.stringify(ruleOf(section, f.key)?.transforms || [])"
-                     @change="setTransforms(section, f.key, $event.target.value)" x-show="ruleOf(section, f.key)">
+                     :value="transformsText(s.key, f.key)" @change="onTransformsChange(s.key, f.key, $event)" x-show="hasRule(s.key, f.key)">
               <input class="form-control form-control-sm mt-1" placeholder="wartość domyślna (gdy brak w pliku)"
-                     :value="defaultOf(section, f.key)" @change="setDefault(section, f.key, $event.target.value)">
+                     :value="defaultOf(s.key, f.key)" @change="onDefaultChange(s.key, f.key, $event)">
               <div class="mt-1 d-flex flex-wrap gap-1">
-                <template x-for="c in (cfg.candidates[f.key] || [])">
-                  <button class="btn btn-sm btn-light border py-0 small" @click="applyCandidate(section, f.key, c)"
-                          :title="c.reason" x-text="`${c.path.split('/').slice(-2).join('/')} · ${Math.round(c.confidence*100)}%`"></button>
+                <template x-for="c in candidatesFor(f.key)">
+                  <button class="btn btn-sm btn-light border py-0 small" @click="applyCandidate(s.key, f.key, c)"
+                          :title="c.reason" x-text="candidateLabel(c)"></button>
                 </template>
               </div>
             </div>
@@ -60,13 +59,13 @@
       <div class="small text-muted mb-1">3. Podgląd wyniku</div>
       <template x-if="preview">
         <div>
-          <div class="small mb-2" x-text="preview.issues.length ? `Problemy: ${preview.issues.length}` : 'Brak problemów ✓'"></div>
-          <template x-for="i in preview.issues"><div class="small border-start border-3 ps-2 mb-1" :class="i.severity === 'blocking' ? 'border-danger' : 'border-warning'" x-text="i.message"></div></template>
-          <pre class="small bg-white border p-2" x-text="JSON.stringify(preview.invoice, null, 1)"></pre>
+          <div class="small mb-2" x-text="previewSummary()"></div>
+          <template x-for="i in preview.issues"><div class="small border-start border-3 ps-2 mb-1" :class="issueClass(i)" x-text="i.message"></div></template>
+          <pre class="small bg-white border p-2" x-text="previewJson()"></pre>
         </div>
       </template>
       <div class="small text-muted mt-3"><strong>Dostępne transformacje:</strong>
-        <ul class="ps-3"><template x-for="[k, v] in Object.entries(cfg.transforms)"><li><code x-text="k"></code> — <span x-text="v"></span></li></template></ul></div>
+        <ul class="ps-3"><template x-for="t in transformList" :key="t.name"><li><code x-text="t.name"></code> — <span x-text="t.label"></span></li></template></ul></div>
     </div>
   </div>
 </div>

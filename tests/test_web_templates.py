@@ -88,7 +88,11 @@ def test_views_require_login(client):
 def test_editor_config_json_is_escaped(auth_client):
     d = make_doc_with_template()
     html = auth_client.get(f"/szablony/dokument/{d.id}/edytor").get_data(as_text=True)
-    assert "x-data='editor(" in html and "</script>" not in html.split("x-data='editor(")[1].split(")'")[0]
+    # konfiguracja w bloku danych JSON (nie w atrybucie x-data): tojson ucieka „<”, więc „</script>” z wartości
+    # dokumentu nie wybije się z bloku; komponent Alpine (build CSP) czyta blok po id
+    assert 'x-data="editor"' in html
+    block = html.split('<script type="application/json" id="editor-config">', 1)[1].split("</script>", 1)[0]
+    assert '"docId"' in block and "<" not in block and ">" not in block
 
 
 def test_save_rejects_bad_transform_args(auth_client):

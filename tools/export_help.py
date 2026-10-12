@@ -18,7 +18,9 @@ import lxml.html
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = ROOT / "docs" / "pomoc"
-BASE_URL = "http://localhost:18506"
+# Neutralny adres przykładowy: w panelu Pomoc pokazuje adres żądania (request.host_url), ale wygenerowany Markdown
+# czyta każdy — nie może twierdzić, że instancja działa pod lokalnym portem (HELP_EXPORT zmienia też frazę w Pomocy).
+BASE_URL = "https://parser.example.com"
 # Pliki spod /static/ (np. zrzuty ekranu, openapi.yaml) to app/static/ w repozytorium — w Markdown ścieżka względna
 # z docs/pomoc/, którą GitHub renderuje (obrazki) i otwiera (odnośniki). Stała dla każdego katalogu wyjściowego.
 STATIC_URL = "/static/"
@@ -33,6 +35,7 @@ DEFAULT_CONFIG = {
     "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
     "WTF_CSRF_ENABLED": False,
     "DEMO_MODE": False,
+    "HELP_EXPORT": True,  # fraza „Adres bazowy (przykład…)” zamiast „tej instancji”
     "MAX_DOCUMENT_BYTES": 10 * 1024 * 1024,
     "MAX_TREE_NODES": 200_000,
     "MAX_LINES": 5_000,

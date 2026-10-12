@@ -4,23 +4,44 @@ from __future__ import annotations
 import copy
 from decimal import Decimal
 
+from sqlalchemy.exc import DataError, IntegrityError
+
 from app.engine.canonical import FIELD_LABELS, LINE_KEYS
 from app.engine.keys import alias_key, mapping_key
 from app.engine.lookups import norm_alias, norm_product_name
 from app.engine.suggest import FIELDS_BY_KEY, norm_tax_id, tax_ids_match
+from app.engine.transforms import validate_rules
 from app.engine.tree import relative_path
 from app.engine.values import normalize_gtin, parse_factor
-from sqlalchemy.exc import DataError, IntegrityError
-
 from app.extensions import db
 from app.ids import parse_id
 from app.ingest import ReaderError
-from app.models import (STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
-                        STATUS_REJECTED, Document, Product, ProductMapping, Supplier, Template, Unit,
-                        UnitAlias, UnitConversion)
+from app.models import (
+    STATUS_APPROVED,
+    STATUS_DUPLICATE,
+    STATUS_NEEDS_REVIEW,
+    STATUS_RECEIVED,
+    STATUS_REJECTED,
+    Document,
+    Product,
+    ProductMapping,
+    Supplier,
+    Template,
+    Unit,
+    UnitAlias,
+    UnitConversion,
+)
 from app.services.audit import audit
-from app.services.pipeline import (FILE_MISSING_MSG, best_template_for, current_rules, load_tree,
-                                   next_product_code, process, same_scope, touch)
+from app.services.pipeline import (
+    FILE_MISSING_MSG,
+    best_template_for,
+    current_rules,
+    load_tree,
+    next_product_code,
+    process,
+    same_scope,
+    touch,
+)
 from app.services.templates import create_template, new_version
 
 NEED_SUPPLIER = "Najpierw rozpoznaj dostawcę — to pierwszy problem na liście."
@@ -61,7 +82,11 @@ def ensure_template(doc: Document, rules: dict, user: str | None) -> Template:
 
 
 def save_rules(doc: Document, rules: dict, user: str | None, comment: str):
-    """Zapisuje reguły: nowa wersja szablonu; bez szablonu — szablon (gdy dostawca znany) albo reguły robocze."""
+    """Zapisuje reguły: nowa wersja szablonu; bez szablonu — szablon (gdy dostawca znany) albo reguły robocze.
+    Kontrakt reguł sprawdza ta sama walidacja co w edytorze (biała lista transformacji, argumenty, limity regex)."""
+    problem = validate_rules(rules)
+    if problem:
+        raise NegotiationError(problem)
     if doc.template_id:
         return new_version(db.session.get(Template, doc.template_id), rules, user, comment)
     if doc.supplier_id:
@@ -127,12 +152,12 @@ def a_create_supplier(doc, data, remember, user):
     name = (data.get("name") or "").strip()
     if not name:
         raise NegotiationError("Podaj nazwę dostawcy.")
-    tax_id = norm_tax_id(data.get("tax_id"))[:64] or None
+    tax_id = norm_tax_id(data.get("tax_id"))[:Supplier.tax_id.type.length] or None
     existing = find_supplier_by_tax_id(tax_id)
     if existing:  # ten sam NIP — podpinamy istniejącego zamiast tworzyć duplikat (BE-11/EDGE-9)
         _attach_supplier(doc, existing, user)
         return
-    s = Supplier(name=name[:255], tax_id=tax_id)
+    s = Supplier(name=name[:Supplier.name.type.length], tax_id=tax_id)
     db.session.add(s)
     db.session.flush()
     _attach_supplier(doc, s, user)
@@ -145,7 +170,7 @@ def a_use_supplier(doc, data, remember, user):
     s = db.session.get(Supplier, supplier_id)
     if not s:
         raise NegotiationError("Nie znaleziono dostawcy.")
-    inv_tax = norm_tax_id(((doc.result or {}).get("supplier") or {}).get("tax_id"))[:64]
+    inv_tax = norm_tax_id(((doc.result or {}).get("supplier") or {}).get("tax_id"))[:Supplier.tax_id.type.length]
     if not s.tax_id and inv_tax and not find_supplier_by_tax_id(inv_tax, exclude_id=s.id):
         s.tax_id = inv_tax
     _attach_supplier(doc, s, user)
@@ -321,7 +346,7 @@ def _points_to(other: Document, doc: Document) -> bool:
 
 def a_reject(doc, data, remember, user):
     doc.status = STATUS_REJECTED
-    doc.rejected_by = (user or "operator")[:255]
+    doc.rejected_by = (user or "operator")[:Document.rejected_by.type.length]
     touch(doc)  # odrzucenie nie przechodzi przez process() — updated_at odświeżamy jawnie
     db.session.flush()
     # duplikaty odrzuconego dokumentu nie mogą wskazywać na odrzucony — przelicz je (EDGE-24)

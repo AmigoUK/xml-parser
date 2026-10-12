@@ -1,3 +1,5 @@
+"""Liczby, daty, GTIN, waluty i stawki VAT: parsowanie wartości z plików (separatory tysięcy i dziesiętne, dopiski,
+nawiasy, zapis wykładniczy) oraz formatowanie wartości kanonicznych."""
 import re
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -207,10 +209,12 @@ def _no_negative_zero(d: Decimal) -> Decimal:
 
 
 def fmt_money(d: Decimal) -> str:
+    """Kwota jako tekst z 2 miejscami po kropce (ROUND_HALF_UP), bez „-0”."""
     return str(_no_negative_zero(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)))
 
 
 def fmt_price(d: Decimal) -> str:
+    """Cena jako tekst: do 4 miejsc po kropce bez zbędnych zer, ale co najmniej 2."""
     q = _no_negative_zero(d.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP).normalize())
     s = format(q, "f")
     whole, _, frac = s.partition(".")
@@ -218,11 +222,13 @@ def fmt_price(d: Decimal) -> str:
 
 
 def fmt_qty(d: Decimal) -> str:
+    """Ilość albo współczynnik jako tekst bez zbędnych zer i bez notacji wykładniczej."""
     s = format(_no_negative_zero(d.normalize()), "f")
     return s
 
 
 def parse_date(raw: str) -> str:
+    """Data w jednym z obsługiwanych formatów (ISO, dd.mm.rrrr, dd/mm/rrrr, rrrrmmdd…) → ISO 8601; błąd → ValueError."""
     s = (raw or "").strip()
     if re.match(r"^\d{4}-\d{2}-\d{2}T", s):
         s = s[:10]
@@ -235,6 +241,8 @@ def parse_date(raw: str) -> str:
 
 
 def normalize_gtin(raw: str) -> str:
+    """GTIN bez białych znaków, sprawdzony (długość, cyfra kontrolna), uzupełniony zerami do 14 cyfr;
+    błąd → ValueError."""
     s = re.sub(r"\s", "", raw or "")
     if not is_valid_gtin(s):
         raise ValueError(f"Niepoprawny GTIN/EAN (cyfra kontrolna lub długość): {raw!r}")
@@ -265,6 +273,7 @@ CURRENCY_ALIASES = {"ZŁ": "PLN", "ZL": "PLN", "ZŁOTY": "PLN", "ZLOTY": "PLN", 
 
 
 def normalize_currency(raw) -> str:
+    """Kod waluty ISO 4217 (aliasy: zł, €, $, euro…); nieznana → ValueError."""
     s = " ".join(str(raw).split()).upper()
     s = CURRENCY_ALIASES.get(s, s)
     if s not in ISO_4217:

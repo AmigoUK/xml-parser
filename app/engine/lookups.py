@@ -1,3 +1,5 @@
+"""Słowniki potrzebne silnikowi (jednostki, aliasy, przeliczniki, mapowania towarów) jako protokół `Lookups`;
+implementacja pamięciowa do testów, bazodanowa w app/services/lookups_db.py."""
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -6,6 +8,7 @@ from typing import Protocol
 
 
 class Lookups(Protocol):
+    """Protokół słowników: aliasy jednostek, jednostki bazowe, przeliczniki i mapowania towarów dostawcy."""
     def unit_for_alias(self, alias: str, supplier_id: int | None) -> str | None: ...
     def is_base_unit(self, code: str) -> bool: ...
     def conversion(self, supplier_id: int | None, product_code: str | None,
@@ -17,6 +20,7 @@ class Lookups(Protocol):
 
 
 def norm_alias(alias: str) -> str:
+    """Alias jednostki w postaci porównywalnej (bez spacji na brzegach, małe litery)."""
     return (alias or "").strip().lower()
 
 
@@ -32,6 +36,7 @@ def norm_product_name(name: str | None) -> str | None:
 
 @dataclass
 class MemoryLookups:
+    """Słowniki w pamięci (testy, narzędzia) — te same reguły wyszukiwania co w implementacji bazodanowej."""
     units: dict[str, bool] = field(default_factory=lambda: {"szt": True, "kg": True, "l": True, "m": True})
     aliases: dict[tuple[str, int | None], str] = field(default_factory=dict)
     conversions: dict[tuple[int | None, str | None, str], tuple[str, Decimal]] = field(default_factory=dict)

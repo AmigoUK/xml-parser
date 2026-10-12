@@ -118,11 +118,13 @@ def file_app(tmp_path):
 
 def _other_operator_saves(tid, rules):
     from sqlalchemy.orm import Session
+
     from app.models import TemplateVersion
     with Session(db.engine) as s2:
         t = s2.get(Template, tid)
         last = max(v.version for v in t.versions)
-        v = TemplateVersion(template_id=tid, version=last + 1, rules=dict(rules), author="operator-A", comment="praca A")
+        v = TemplateVersion(template_id=tid, version=last + 1, rules=dict(rules), author="operator-A",
+                            comment="praca A")
         s2.add(v)
         s2.flush()
         t.active_version_id = v.id
@@ -162,8 +164,9 @@ def test_editor_conflict_detected_inside_commit(file_app, monkeypatch):
 
 
 def test_editor_conflict_rechecked_on_retry(file_app, monkeypatch):
-    import app.web.templates_views as tv
     from sqlalchemy.exc import IntegrityError
+
+    import app.web.templates_views as tv
     doc_id, tid, base, rules = _race_setup(file_app)
     orig = tv.commit_with_retry
     calls = {"n": 0}
@@ -229,8 +232,8 @@ def test_lookup_finds_mapping_with_same_key(seeded, stored, line):
 
 @pytest.mark.parametrize("stored,line", [("AB  1", "AB 1"), ("ABC", "abc")])
 def test_remember_updates_existing_mapping_instead_of_conflict(seeded, stored, line, monkeypatch):
-    from app.models import ProductMapping
     import app.services.negotiation as neg
+    from app.models import ProductMapping
     monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
     s = _mapping_setup(stored_code=stored)
     d = _doc_with_line(s, code=line)
@@ -240,9 +243,9 @@ def test_remember_updates_existing_mapping_instead_of_conflict(seeded, stored, l
 
 
 def test_name_mapping_matches_by_key(seeded, monkeypatch):
+    import app.services.negotiation as neg
     from app.models import ProductMapping
     from app.services.lookups_db import DbLookups
-    import app.services.negotiation as neg
     monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
     s = _mapping_setup(stored_name="ser żółty  gouda")
     assert DbLookups().product_for(s.id, None, None, "Ser Zołty Gouda") == "TOW-A"
@@ -252,9 +255,9 @@ def test_name_mapping_matches_by_key(seeded, monkeypatch):
 
 
 def test_gtin_mapping_matches_padded(seeded, monkeypatch):
+    import app.services.negotiation as neg
     from app.models import ProductMapping
     from app.services.lookups_db import DbLookups
-    import app.services.negotiation as neg
     monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
     s = _mapping_setup(stored_gtin="05901234123457")
     assert DbLookups().product_for(s.id, None, "5901234123457") == "TOW-A"
@@ -263,11 +266,11 @@ def test_gtin_mapping_matches_padded(seeded, monkeypatch):
     assert ProductMapping.query.count() == 1
 
 
-# ------------------------------------------------------------------ FR-9: alias jednostki po kluczu niezależnym od kolacji
+# ---------------------------------------------------- FR-9: alias jednostki po kluczu niezależnym od kolacji
 def test_alias_lookup_and_remember_use_alias_key(seeded, monkeypatch):
+    import app.services.negotiation as neg
     from app.models import Supplier, UnitAlias
     from app.services.lookups_db import DbLookups
-    import app.services.negotiation as neg
     monkeypatch.setattr(neg, "process", lambda doc, *a, **k: None)
     s = Supplier(name="Fikcyjny FR9", tax_id="PL2222222222")
     db.session.add(s)
@@ -284,6 +287,7 @@ def test_alias_lookup_and_remember_use_alias_key(seeded, monkeypatch):
 
 def test_global_alias_duplicate_rejected_by_db(seeded):
     from sqlalchemy.exc import IntegrityError
+
     from app.models import UnitAlias
     szt = Unit.query.filter_by(code="szt").one()
     db.session.add(UnitAlias(alias="Sztuka-X", unit_id=szt.id, supplier_id=None))

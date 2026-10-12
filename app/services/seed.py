@@ -3,8 +3,21 @@ from flask import current_app
 
 from app.engine.keys import alias_key
 from app.extensions import db
-from app.models import (ApiKey, AuditLog, Document, Product, ProductMapping, Supplier, Template,
-                        TemplateVersion, Unit, UnitAlias, UnitConversion, User)
+from app.models import (
+    ApiKey,
+    AuditLog,
+    Document,
+    Product,
+    ProductMapping,
+    Supplier,
+    Template,
+    TemplateVersion,
+    Unit,
+    UnitAlias,
+    UnitConversion,
+    User,
+)
+from app.services.accounts import PLACEHOLDER_PASSWORDS, password_problem  # noqa: F401 (PLACEHOLDER_PASSWORDS — zgodność)
 from app.services.apikeys import create_key, hash_key
 from app.services.audit import audit
 from app.services.storage import get_storage
@@ -14,8 +27,10 @@ BASE_UNITS = [
     ("karton", "karton", False), ("worek", "worek", False), ("opak", "opakowanie", False),
 ]
 GLOBAL_ALIASES = [("szt.", "szt"), ("sztuk", "szt"), ("kilogram", "kg"), ("litr", "l")]
-PLACEHOLDER_PASSWORDS = {"zmien-mnie", "change-me", "admin", "password"}
 DEMO_KEY_NAME = "Klucz demo"
+# klucz demo z publicznego .env.example (albo zbyt krótki) nie może stać się pełnoprawnym kluczem API
+DEMO_KEY_PLACEHOLDERS = {"xp_demo_klucz_do_testow"}
+DEMO_KEY_MIN_LENGTH = 24
 DEMO_PRODUCTS = [
     ("TOW-0001", "Posypka czekoladowa 1 kg", "5909999000013", "szt"),
     ("TOW-0002", "Mak niebieski 500 g", "5909999000020", "szt"),
@@ -44,7 +59,7 @@ def seed_base(commit: bool = True) -> None:
     cfg = current_app.config
     admin_email = (cfg.get("ADMIN_EMAIL") or "").strip().lower()
     pw = cfg.get("ADMIN_PASSWORD") or ""
-    weak = pw.lower() in PLACEHOLDER_PASSWORDS or len(pw) < 10
+    weak = password_problem(pw) is not None
     if pw and weak and not cfg.get("TESTING"):
         click.echo("OSTRZEŻENIE: ADMIN_PASSWORD jest hasłem przykładowym lub krótszym niż 10 znaków. "
                    "Konto administratora NIE zostało utworzone. Ustaw własne hasło w .env.", err=True)
@@ -52,7 +67,13 @@ def seed_base(commit: bool = True) -> None:
         u = User(email=admin_email, role="admin")
         u.set_password(pw)
         db.session.add(u)
-    demo_key = cfg.get("DEMO_API_KEY")
+    demo_key = cfg.get("DEMO_API_KEY") or ""
+    weak_key = demo_key in DEMO_KEY_PLACEHOLDERS or len(demo_key) < DEMO_KEY_MIN_LENGTH
+    if cfg.get("DEMO_MODE") and demo_key and weak_key and not cfg.get("TESTING"):
+        click.echo(f"OSTRZEŻENIE: DEMO_API_KEY jest wartością przykładową lub krótszą niż {DEMO_KEY_MIN_LENGTH} znaków "
+                   "— klucz demo NIE został utworzony. Wygeneruj: "
+                   "python -c \"import secrets;print('xp_'+secrets.token_urlsafe(24))\"", err=True)
+        demo_key = ""
     demo_on = bool(cfg.get("DEMO_MODE") and demo_key)
     current_hash = hash_key(demo_key) if demo_on else None
     for k in ApiKey.query.filter_by(name=DEMO_KEY_NAME).all():

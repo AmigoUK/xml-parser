@@ -59,17 +59,18 @@ Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples
 ## API w 30 sekund
 
 ```bash
+BASE=http://localhost:${APP_PORT:-18506}   # adres Twojej instancji (port APP_PORT z .env)
 # wyślij fakturę (klucz API tworzysz w panelu: „Klucze API”)
-curl -H "X-API-Key: TWÓJ_KLUCZ" -F file=@demo/samples/alfa-1.xml http://localhost:18506/api/v1/documents
+curl -H "X-API-Key: TWÓJ_KLUCZ" -F file=@demo/samples/alfa-1.xml $BASE/api/v1/documents
 # → 201 {"id": 1, "status": "needs_review", "issues": [...]}
 
-curl -H "X-API-Key: TWÓJ_KLUCZ" http://localhost:18506/api/v1/documents/1
-curl -H "X-API-Key: TWÓJ_KLUCZ" "http://localhost:18506/api/v1/documents?status=approved"
-curl -X POST -H "X-API-Key: TWÓJ_KLUCZ" http://localhost:18506/api/v1/documents/1/reprocess
+curl -H "X-API-Key: TWÓJ_KLUCZ" $BASE/api/v1/documents/1
+curl -H "X-API-Key: TWÓJ_KLUCZ" "$BASE/api/v1/documents?status=approved"
+curl -X POST -H "X-API-Key: TWÓJ_KLUCZ" $BASE/api/v1/documents/1/reprocess
 
 # synchronizacja: dokumenty zmienione od podanej chwili (także zatwierdzone później przez operatora),
 # rosnąco po (updated_at, id); kolejna strona: te same parametry + cursor=<next_cursor>, aż next_cursor = null
-curl -H "X-API-Key: TWÓJ_KLUCZ" "http://localhost:18506/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500"
+curl -H "X-API-Key: TWÓJ_KLUCZ" "$BASE/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500"
 # → 200 {"items": [{"id": 1, "status": "approved", "updated_at": "2026-10-11T06:04:38.412811Z", ...}], "next_cursor": null}
 ```
 
@@ -92,6 +93,11 @@ Domyślnie port jest publikowany **tylko na 127.0.0.1** (`APP_BIND`). Docker omi
 wystawia aplikację na całą sieć. Aby udostępnić panel przez Tailscale, ustaw w `.env`
 `APP_BIND=<IP interfejsu tailscale0>` (`tailscale ip -4`) i zrestartuj stack — albo wystaw panel po HTTPS
 przez `tailscale serve` (niżej).
+
+**Obsługiwana baza: MariaDB ≥ 11.4** (MySQL i starsze MariaDB nie są wspierane — migracje i kopie zapasowe zakładają
+składnię 11.x, kolumny JSON jako `LONGTEXT CHECK(json_valid)`). **Aplikacja wymaga własnej (sub)domeny** — wdrożenie pod
+podścieżką (`https://firma.pl/xml-parser/`) nie jest obsługiwane (adresy w Pomocy, przykładach integracji i Swagger UI
+są liczone od korzenia hosta).
 
 `SECRET_KEY`, `DATABASE_URL`, `MARIADB_PASSWORD` i `MARIADB_ROOT_PASSWORD` są wymagane (compose przerwie start
 bez nich). Usługa `app` dostaje z `.env` **tylko zmienne aplikacji** wymienione w `docker-compose.yml`
@@ -149,18 +155,50 @@ Okresowo sprawdź kopię, odtwarzając ją na osobnym środowisku. Pełna proced
 [docs/wdrozenie.md](docs/wdrozenie.md).
 
 Serwer: gunicorn z workerami wątkowymi (`-k gthread -w 2 --threads 8 --timeout 60`), dzięki czemu
-bezczynne połączenia przeglądarki nie blokują aplikacji. Ustawienia można nadpisać zmienną
-`GUNICORN_CMD_ARGS` (np. w `.env`: `GUNICORN_CMD_ARGS=-k gthread -w 4 --threads 16 --timeout 90`);
-gdy zmienna jest ustawiona, zastępuje całe powyższe domyślne zestawienie flag.
+bezczynne połączenia przeglądarki nie blokują aplikacji. Pojedyncze ustawienia zmieniasz zmiennymi
+`GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT` (i `GUNICORN_WORKER_TMP_DIR`, domyślnie `/dev/shm` — pomijany,
+gdy katalog nie istnieje); `GUNICORN_CMD_ARGS` (np. `-k gthread -w 4 --threads 16 --timeout 90`) zastępuje cały zestaw flag.
+
+## Zmienne środowiskowe
+
+Wartości i komentarze: [`.env.example`](.env.example); kontrakt dla platform bez `.env`: [docs/wdrozenie.md](docs/wdrozenie.md).
+
+| Grupa | Zmienne |
+|---|---|
+| Wymagane | `SECRET_KEY` (min. 32 losowe znaki; placeholder = odmowa startu), `DATABASE_URL` (MariaDB; entrypoint odrzuca SQLite), `MARIADB_ROOT_PASSWORD`, `MARIADB_PASSWORD` (+ `MARIADB_DATABASE`, `MARIADB_USER` — usługa `db`) |
+| Pierwszy start | `ADMIN_EMAIL`, `ADMIN_PASSWORD` (min. 10 znaków, nie przykładowe; później `flask set-admin-password`) |
+| Demo | `DEMO_MODE` (domyślnie 0), `DEMO_API_KEY` (min. 24 znaki; wartość przykładowa odrzucana) |
+| Limity | `MAX_DOCUMENT_BYTES`, `MAX_TREE_NODES`, `MAX_LINES` |
+| Sieć | `APP_BIND`, `APP_PORT`, `APP_INTERNAL_PORT` / `PORT`, `XP_SUBNET`, `TRUSTED_PROXY_COUNT`, `PREFERRED_URL_SCHEME` |
+| Sesja i logowanie | `SESSION_COOKIE_SECURE`, `SESSION_HOURS` (domyślnie 8), `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`, `LOGIN_MAX_ATTEMPTS_PER_IP`, `LOGIN_MAX_ATTEMPTS_PER_EMAIL`, `LOGIN_EMAIL_LOCKOUT_MINUTES`, `AUDIT_RETENTION_DAYS` (domyślnie 90) |
+| Kontener | `STORAGE_DIR`, `MIGRATE_ON_START`, `MIGRATE_LOCK_TIMEOUT`, `DB_WAIT_ATTEMPTS`, `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR`, `GUNICORN_CMD_ARGS`, `APP_MEM_LIMIT`, `APP_CPUS`, `DB_MEM_LIMIT`, `DB_CPUS` |
+| Kopie | `BACKUP_DIR`, `BACKUP_RETENTION_DAYS` (skrypt `tools/backup.sh`) |
+| Tylko testy i narzędzia | `TEST_MARIADB_URL`, `PYTHON_DOTENV_DISABLED`, `FLASK_SKIP_DOTENV` |
 
 ## Rozwój lokalny
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
-ln -sf ../../tools/pre-commit .git/hooks/pre-commit
-pytest
+ln -sf ../../tools/pre-commit .git/hooks/pre-commit   # lint (ruff) + strażnik danych prywatnych przed commitem
+ruff check .                                          # konfiguracja w pyproject.toml (E, F, W, B, I, UP; 120 znaków)
+pytest -rs                                            # -rs pokazuje testy pominięte (np. bez MariaDB)
+pytest --cov=app --cov-report=term-missing:skip-covered   # pokrycie; CI wymaga ≥ 90 %
 ```
+
+Testy na prawdziwej MariaDB (migracje, kolacja `products.code`, blokada migracji, sonda bazy, plan zapytania
+synchronizacji) są lokalnie **pomijane**, dopóki nie ustawisz `TEST_MARIADB_URL` na pustą bazę testową — nazwa bazy
+musi zawierać człon `test` (testy kasują wszystkie tabele). Ta sama tymczasowa baza co w CI:
+
+```bash
+docker run -d --name xp-mariadb-test -e MARIADB_ROOT_PASSWORD=ci-root -e MARIADB_DATABASE=xp_test \
+  -p 127.0.0.1:3307:3306 mariadb:11.4.13 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+TEST_MARIADB_URL="mysql+pymysql://root:ci-root@127.0.0.1:3307/xp_test?charset=utf8mb4" pytest -rs
+docker rm -f xp-mariadb-test
+```
+
+Wendorowane biblioteki frontendu (Bootstrap, Alpine.js w buildzie CSP, Swagger UI) mają manifest z wersjami i sumami
+SHA-256 w [`app/static/vendor/VERSIONS.md`](app/static/vendor/VERSIONS.md) — test pilnuje zgodności sum z plikami.
 
 ### Generowanie zrzutów ekranu
 
@@ -218,6 +256,8 @@ z prawdziwymi danymi.
 | `LOGIN_MAX_ATTEMPTS_PER_IP` | `20` | Nieudane logowania z jednego IP na dowolne konta (rozpylanie haseł). |
 | `LOGIN_MAX_ATTEMPTS_PER_EMAIL` | `50` | Nieudane logowania na jedno konto z dowolnych IP (atak rozproszony). |
 | `LOGIN_EMAIL_LOCKOUT_MINUTES` | `5` | Okno i czas blokady dla progu per e-mail (krótsze). |
+| `SESSION_HOURS` | `8` | Czas życia sesji panelu w godzinach (demo publiczne: krócej). |
+| `AUDIT_RETENTION_DAYS` | `90` | Retencja wpisów `login_failed`/`login_blocked` w „Historii” dla `flask prune-audit`. |
 
 Kompromis limitu logowania: obcy, który zna e-mail admina, ale nie hasło, blokuje 5 próbami tylko
 siebie (parę e-mail + jego IP) — admin z innego adresu loguje się normalnie. Blokada całego konta
@@ -227,11 +267,21 @@ hasła, więc równoległe żądania nie omijają limitu. Uwaga: jeśli wszyscy 
 adresu (NAT Dockera, proxy bez `TRUSTED_PROXY_COUNT`), progi per IP działają jak globalne — dlatego za proxy
 `TRUSTED_PROXY_COUNT` jest obowiązkowy (patrz [docs/wdrozenie.md](docs/wdrozenie.md)).
 
-Pozostałe zabezpieczenia: nagłówki `Content-Security-Policy` (bez skryptów inline; `'unsafe-eval'`
-jest wymagany przez standardowy build Alpine.js), `X-Frame-Options: DENY`, `X-Content-Type-Options`,
+Pozostałe zabezpieczenia: nagłówki `Content-Security-Policy` (`script-src 'self'` — bez skryptów inline i bez
+`'unsafe-eval'`; Alpine.js w buildzie CSP), `Strict-Transport-Security` przy HTTPS, `Permissions-Policy`,
+`X-Frame-Options: DENY`, `X-Content-Type-Options`,
 `Referrer-Policy`; ciasteczka `HttpOnly` + `SameSite=Lax`, sesja wygasa po 8 h; wylogowanie
 (i zmiana hasła) unieważnia wszystkie wcześniej wydane ciasteczka sesji użytkownika.
-Nieudane i zablokowane logowania trafiają do „Historii” (`login_failed`, `login_blocked`).
+Nieudane i zablokowane logowania trafiają do „Historii” (`login_failed` — każda próba do progu blokady,
+`login_blocked` — jeden wpis na adres IP i okno blokady, żeby odrzucane żądania nie zapełniały bazy). Retencja:
+`docker compose exec app flask prune-audit` usuwa wpisy logowań starsze niż `AUDIT_RETENTION_DAYS` (`--days N`,
+`--all-actions` dla całego dziennika) — np. z crona raz dziennie obok `tools/backup.sh`.
+
+**Hasło administratora.** Seed tworzy konto tylko przy pierwszym starcie — późniejsza zmiana `ADMIN_PASSWORD` w `.env`
+nie zmienia hasła. Rotacja: w panelu „Zmień hasło” (obok adresu e-mail; wymaga obecnego hasła) albo
+`docker compose exec app flask set-admin-password` (pyta o hasło; `--from-env` bierze nowe `ADMIN_PASSWORD`,
+`--password-stdin` czyta z wejścia, `--email` dla innego konta). Obie drogi unieważniają wszystkie wydane ciasteczka sesji
+tego konta. Hasło: min. 10 znaków, nie przykładowe.
 Klucz API widzi tylko swoje dokumenty i dostawców z tych dokumentów; podpowiedzi z kartoteki
 (towary, inni dostawcy, szablony) nie są zwracane przez API.
 

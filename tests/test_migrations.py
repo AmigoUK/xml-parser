@@ -52,7 +52,8 @@ def _ok(r):
 
 
 def _dup_issue(ref):
-    return {"code": "duplicate", "severity": "blocking", "message": f"Ta faktura była już przetworzona (dokument #{ref}).",
+    return {"code": "duplicate", "severity": "blocking",
+            "message": f"Ta faktura była już przetworzona (dokument #{ref}).",
             "field": None, "line_no": None, "source_path": None, "source_value": str(ref), "suggestions": []}
 
 
@@ -151,7 +152,8 @@ def _partial_mariadb_like_state(db_path):
     c.execute("ALTER TABLE unit_aliases ADD COLUMN alias_key VARCHAR(64)")
     c.execute("ALTER TABLE unit_conversions ADD COLUMN supplier_scope INTEGER DEFAULT '0' NOT NULL")
     c.execute("ALTER TABLE unit_conversions ADD COLUMN product_scope INTEGER DEFAULT '0' NOT NULL")
-    c.execute("CREATE UNIQUE INDEX uq_conversion_scope ON unit_conversions (supplier_scope, product_scope, from_unit_id)")
+    c.execute("CREATE UNIQUE INDEX uq_conversion_scope ON unit_conversions "
+              "(supplier_scope, product_scope, from_unit_id)")
     c.execute("ALTER TABLE product_mappings ADD COLUMN match_key VARCHAR(64)")
     c.execute("ALTER TABLE documents ADD COLUMN dedupe_hash VARCHAR(64)")
     c.commit()

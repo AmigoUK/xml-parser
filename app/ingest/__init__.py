@@ -49,6 +49,12 @@ _UTF_MSG = "Kodowanie UTF-16/UTF-32 nie jest obsługiwane — zapisz plik jako U
 
 # \t \n \r oraz separatory GS1/EDI (GS 0x1d, RS 0x1e) występują w tekstowych plikach faktur (EDGE-12)
 _TEXT_CONTROLS = frozenset((0x09, 0x0a, 0x0d, 0x1d, 0x1e))
+# heurystyka pliku binarnego: próbka na bajty zerowe (UTF-16/32 bez BOM: zera na co drugim bajcie), próbka na znaki
+# sterujące i progi, powyżej których plik nie jest tekstem
+BINARY_SAMPLE_BYTES = 1024
+CONTROL_SAMPLE_BYTES = 4096
+UTF16_ZERO_RATIO = 0.3
+CONTROL_CHAR_RATIO = 0.02
 
 
 def _check_not_binary(data: bytes) -> None:
@@ -56,16 +62,16 @@ def _check_not_binary(data: bytes) -> None:
         raise ReaderError(_UTF_MSG)
     if data.startswith(_BINARY_SIGNATURES):
         raise ReaderError(_BINARY_MSG)
-    sample = data[:1024]
+    sample = data[:BINARY_SAMPLE_BYTES]
     if b"\x00" in sample:
         # tekst UTF-16/32 bez BOM: zera na co drugim (lub co czwartym) bajcie
         even, odd = sample[0::2], sample[1::2]
-        if max(even.count(0) / len(even), odd.count(0) / len(odd) if odd else 0) >= 0.3:
+        if max(even.count(0) / len(even), odd.count(0) / len(odd) if odd else 0) >= UTF16_ZERO_RATIO:
             raise ReaderError(_UTF_MSG)
         raise ReaderError(_BINARY_MSG)
-    head = data[:4096]
+    head = data[:CONTROL_SAMPLE_BYTES]
     ctrl = sum(1 for b in head if b < 0x20 and b not in _TEXT_CONTROLS) + head.count(b"\x7f")
-    if ctrl / len(head) > 0.02:
+    if ctrl / len(head) > CONTROL_CHAR_RATIO:
         raise ReaderError(_BINARY_MSG)
 
 

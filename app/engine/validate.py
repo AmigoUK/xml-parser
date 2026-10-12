@@ -1,3 +1,5 @@
+"""Walidacja arytmetyki dokumentu kanonicznego: ilość × cena, netto + VAT, sumy pozycji a sumy faktury
+(tolerancja 0,01)."""
 from decimal import ROUND_HALF_UP, Decimal
 
 from .issues import BLOCKING, WARNING, Issue
@@ -23,6 +25,8 @@ def _r(d: Decimal) -> Decimal:
 
 
 def validate_invoice(invoice: dict) -> list[Issue]:
+    """Problemy sum: niezgodności w pozycjach (ostrzeżenia) i w sumach faktury (blokujące); wartości
+    nieliczbowe są pomijane."""
     issues: list[Issue] = []
     lines = invoice.get("lines") or []
     for ln in lines:

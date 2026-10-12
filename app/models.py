@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
 from flask_login import UserMixin
@@ -28,7 +28,7 @@ STATUS_LABELS = {
 
 
 def utcnow():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 # MariaDB/MySQL: mikrosekundy (keyset po updated_at); SQLite i tak je przechowuje

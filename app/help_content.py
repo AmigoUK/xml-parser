@@ -1,7 +1,8 @@
 """Treść sekcji „Pomoc”: spis tematów, rejestr kodów problemów, opisy statusów i transformacji.
 
 Rejestr ``ISSUE_HELP`` musi obejmować dokładnie te kody problemów, które emituje kod źródłowy
-(konstruktor ``Issue`` z kodem jako literałem w ``app/`` oraz funkcja ``_issue`` w migracjach) — pilnuje tego ``tests/test_web_help.py``.
+(konstruktor ``Issue`` z kodem jako literałem w ``app/`` oraz funkcja ``_issue`` w migracjach) — pilnuje tego
+``tests/test_web_help.py``.
 """
 from __future__ import annotations
 
@@ -260,15 +261,21 @@ FAQ: list[dict] = [
           "CSV): {max_tree_nodes}. Limity ustawia administrator w konfiguracji.", "link": "statusy-i-problemy"},
     {"q": "Jakie formaty są obsługiwane?",
      "a": "XML (dowolny, w tym KSeF i UBL), JSON i CSV, w kodowaniu UTF-8 (CSV także w Windows-1250). Format "
-          "rozpoznawany jest po treści pliku, nie po rozszerzeniu. PDF i inne pliki binarne oraz UTF-16/UTF-32 są odrzucane.",
+          "rozpoznawany jest po treści pliku, nie po rozszerzeniu. PDF i inne pliki binarne oraz UTF-16/UTF-32 "
+          "są odrzucane.",
      "link": "jak-to-dziala"},
     {"q": "Czy wgranie XML jest bezpieczne?",
      "a": "Tak: pliki z deklaracją DOCTYPE/ENTITY są odrzucane, encje nie są rozwijane, parser nie sięga do "
           "sieci, a liczba węzłów i głębokość zagnieżdżenia są ograniczone.", "link": "jak-to-dziala"},
     {"q": "Dlaczego zostałem wylogowany?",
-     "a": "Sesja wygasa po {session_hours} h bez aktywności. „Wyloguj” unieważnia wszystkie sesje tego konta — także na innych "
-          "urządzeniach. Sesja nie jest powiązana z adresem IP ani przeglądarką, więc sama zmiana sieci (np. przejście "
-          "z Wi-Fi na LTE) nie wylogowuje; adres IP liczy się natomiast w limicie nieudanych prób logowania.", "link": None},
+     "a": "Sesja wygasa po {session_hours} h bez aktywności. „Wyloguj” unieważnia wszystkie sesje tego konta — także "
+          "na innych urządzeniach. Sesja nie jest powiązana z adresem IP ani przeglądarką, więc sama zmiana sieci "
+          "(np. przejście z Wi-Fi na LTE) nie wylogowuje; adres IP liczy się natomiast w limicie nieudanych prób "
+          "logowania.", "link": None},
+    {"q": "Jak zmienić hasło?",
+     "a": "Po zalogowaniu wybierz „Zmień hasło” obok adresu e-mail w górnym pasku: podaj obecne hasło i dwa razy nowe "
+          "(co najmniej 10 znaków, nie przykładowe). Pozostałe sesje tego konta zostaną wylogowane. Administrator "
+          "instancji może też ustawić hasło poleceniem flask set-admin-password (np. po wycieku).", "link": None},
     {"q": "Ile mam prób logowania?",
      "a": "Po {login_max} nieudanych próbach w ciągu {login_minutes} min dla pary (e-mail, adres IP) ta para "
           "jest blokowana na {login_minutes} min. Dodatkowo obowiązują limity {login_per_ip} prób z jednego IP "

@@ -10,7 +10,6 @@
         <li class="nav-item"><a class="nav-link" href="{{ url_for('docs.upload') }}">Wgraj fakturę</a></li>
         <li class="nav-item"><a class="nav-link" href="{{ url_for('docs.queue') }}">Kolejka</a></li>
         <li class="nav-item"><a class="nav-link" href="{{ url_for('docs.documents') }}">Dokumenty</a></li>
-        {% if 'catalog' in nav_blueprints %}
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Dane</a>
           <ul class="dropdown-menu">
@@ -23,18 +22,17 @@
             <li><a class="dropdown-item" href="{{ url_for('catalog.list_conversions') }}">Przeliczniki</a></li>
           </ul>
         </li>
-        {% endif %}
-        {% if 'templates_views' in nav_blueprints %}<li class="nav-item"><a class="nav-link" href="{{ url_for('templates_views.index') }}">Szablony</a></li>{% endif %}
-        {% if 'apikeys' in nav_blueprints %}<li class="nav-item"><a class="nav-link" href="{{ url_for('apikeys.index') }}">Klucze API</a></li>{% endif %}
-        {% if 'history' in nav_blueprints %}<li class="nav-item"><a class="nav-link" href="{{ url_for('history.index') }}">Historia</a></li>{% endif %}
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('templates_views.index') }}">Szablony</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('apikeys.index') }}">Klucze API</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('history.index') }}">Historia</a></li>
         {% endif %}
         <li class="nav-item"><a class="nav-link" href="{{ url_for('api_docs') }}">API</a></li>
-        {% if 'help' in nav_blueprints %}<li class="nav-item"><a class="nav-link" href="{{ url_for('help.index') }}">Pomoc</a></li>{% endif %}
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('help.index') }}">Pomoc</a></li>
       </ul>
       {% if current_user.is_authenticated %}
       <form method="post" action="{{ url_for('auth.logout') }}" class="d-flex">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <span class="navbar-text me-2 small">{{ current_user.email }}</span>
+        <span class="navbar-text me-2 small">{{ current_user.email }} · <a class="link-light" href="{{ url_for('auth.change_password') }}">Zmień hasło</a></span>
         <button class="btn btn-sm btn-outline-light">Wyloguj</button>
       </form>
       {% else %}

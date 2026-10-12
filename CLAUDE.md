@@ -6,7 +6,7 @@ Uczący się parser faktur strukturalnych (XML w tym KSeF/UBL, JSON, CSV) do jed
 - Flask 3.1.3, Flask-SQLAlchemy 3.1.1, SQLAlchemy 2.0.54, Flask-Migrate 4.1.0 (Alembic), Flask-Login 0.6.3, Flask-WTF 1.3.0 (CSRF)
 - lxml 6.1.3, rapidfuzz 3.14.6, PyYAML 6.0.3, regex 2026.9.29 (timeouty przeciw ReDoS), python-dotenv 1.2.4
 - MariaDB 11.4 (prod, PyMySQL 1.2.3, utf8mb4_unicode_ci); SQLite w testach
-- gunicorn 26.2.0 (gthread), Docker Compose; frontend: Jinja2 + vendorowane Bootstrap 5 / HTMX / Alpine.js (bez CDN)
+- gunicorn 26.2.0 (gthread), Docker Compose; frontend: Jinja2 + vendorowane Bootstrap 5 / Alpine.js w buildzie CSP (bez CDN, bez 'unsafe-eval'; manifest `app/static/vendor/VERSIONS.md`)
 - Testy: pytest (`.venv/bin/python -m pytest -q`)
 
 # Naming & Coding Conventions

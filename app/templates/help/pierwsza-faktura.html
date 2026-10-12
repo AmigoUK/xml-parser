@@ -60,5 +60,5 @@
 <p>Pozostałe pozycje zostały dopasowane po GTIN z kartoteki. Dokument dostaje status „Zatwierdzona”.
   Teraz wczytaj <code>alfa-2.xml</code>: dostawca jest rozpoznawany po NIP, szablon po odcisku struktury,
   a alias i mapowanie z pierwszej faktury działają — faktura zostaje <strong>zatwierdzona automatycznie</strong>, bez pytań.</p>
-{% if DEMO_MODE and 'demo' in nav_blueprints %}<p><a href="{{ url_for('demo.index') }}">Przejdź do próbek demo →</a></p>{% endif %}
+{% if DEMO_MODE %}<p><a href="{{ url_for('demo.index') }}">Przejdź do próbek demo →</a></p>{% endif %}
 {% endblock %}

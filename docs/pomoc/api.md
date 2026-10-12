@@ -2,7 +2,7 @@
 
 # REST API
 
-REST API v1 pozwala innym systemom wysyłać faktury i odbierać wynik w formacie kanonicznym (JSON). Pełna specyfikacja: dokumentacja interaktywna (Swagger) (`/api/docs`) i plik [openapi.yaml](../../app/static/openapi.yaml). Adres bazowy tej instancji: `http://localhost:18506/api/v1`.
+REST API v1 pozwala innym systemom wysyłać faktury i odbierać wynik w formacie kanonicznym (JSON). Pełna specyfikacja: dokumentacja interaktywna (Swagger) (`/api/docs`) i plik [openapi.yaml](../../app/static/openapi.yaml). Adres bazowy (przykład — w panelu widzisz adres swojej instancji): `https://parser.example.com/api/v1`.
 
 ![Swagger UI z listą endpointów REST API v1](../../app/static/screenshots/11-api-docs.png)
 
@@ -26,7 +26,7 @@ Jako formularz multipart (pole `file`):
 ```bash
 curl -H "X-API-Key: TWÓJ_KLUCZ" \
   -F file=@faktura.xml \
-  http://localhost:18506/api/v1/documents
+  https://parser.example.com/api/v1/documents
 ```
 
 Albo jako surowe body (nazwę pliku podaj w nagłówku `X-Filename`; format rozpoznawany jest po treści):
@@ -35,7 +35,7 @@ Albo jako surowe body (nazwę pliku podaj w nagłówku `X-Filename`; format rozp
 curl -H "X-API-Key: TWÓJ_KLUCZ" \
   -H "Content-Type: application/xml" -H "X-Filename: faktura.xml" \
   --data-binary @faktura.xml \
-  http://localhost:18506/api/v1/documents
+  https://parser.example.com/api/v1/documents
 ```
 
 Odpowiedź `201` zawiera dokument: `id`, `status`, `status_label`, `format`, `filename`, `number`, `issue_date`, `doc_type`, `supplier`, `template_version`, `created_at`, `updated_at`, `issues_count`, `invoice` (wynik kanoniczny) i `issues` (problemy). Status `approved` oznacza fakturę odczytaną automatycznie, `needs_review` — czekającą na operatora w panelu.
@@ -48,10 +48,10 @@ Lista ma dwa tryby. **Synchronizacja** — zalecana do odbioru zmian statusów, 
 
 ```bash
 curl -H "X-API-Key: TWÓJ_KLUCZ" \
-  "http://localhost:18506/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500"
+  "https://parser.example.com/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500"
 # kolejna strona: te same parametry i cursor z pola next_cursor poprzedniej odpowiedzi
 curl -H "X-API-Key: TWÓJ_KLUCZ" \
-  "http://localhost:18506/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500&cursor=MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw"
+  "https://parser.example.com/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500&cursor=MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw"
 ```
 
 - `updated_since` (ISO 8601) — dokumenty zmienione (`updated_at`) w tej chwili lub później, rosnąco po `updated_at`, a przy równym czasie po `id`.
@@ -63,7 +63,7 @@ curl -H "X-API-Key: TWÓJ_KLUCZ" \
 
 ```bash
 curl -H "X-API-Key: TWÓJ_KLUCZ" \
-  "http://localhost:18506/api/v1/documents?status=approved&since=2026-10-01T00:00:00Z&limit=50"
+  "https://parser.example.com/api/v1/documents?status=approved&since=2026-10-01T00:00:00Z&limit=50"
 ```
 
 Filtry wspólne obu trybów (opcjonalne, łączone warunkiem „i”): `status` (jeden ze statusów: `received`, `approved`, `needs_review`, `duplicate`, `rejected`), `since` (ISO 8601 — dokumenty **przyjęte** od tej chwili, po `created_at`; nie widzi późniejszych zmian statusu), `limit` (liczba wyników na żądanie: domyślnie 100, maks. 500). Czas ze strefą (`+02:00`, `Z`) jest przeliczany na UTC, czas bez strefy oznacza UTC, a sama data — północ UTC; znak `+` w adresie zapisz jako `%2B`. Pusty `status=` albo `since=` oznacza brak parametru, ale pusty `limit=`, `updated_since=` albo `cursor=` daje `400` — pomiń taki parametr albo podaj wartość. Wyniki są w polu `items`, bez `invoice` i `issues`.
@@ -72,14 +72,14 @@ Filtry wspólne obu trybów (opcjonalne, łączone warunkiem „i”): `status` 
 
 ```bash
 curl -H "X-API-Key: TWÓJ_KLUCZ" \
-  http://localhost:18506/api/v1/documents/42
+  https://parser.example.com/api/v1/documents/42
 ```
 
 ## Ponowne przetworzenie — `POST /api/v1/documents/{id}/reprocess`
 
 ```bash
 curl -X POST -H "X-API-Key: TWÓJ_KLUCZ" \
-  http://localhost:18506/api/v1/documents/42/reprocess
+  https://parser.example.com/api/v1/documents/42/reprocess
 ```
 
 Przetwarza dokument aktywną wersją szablonu (np. po rozwiązaniu problemów przez operatora albo po problemie `reprocess_required`). Dokument **odrzucony ręcznie** przez operatora zwraca `409`:
@@ -94,7 +94,7 @@ Odrzucenie cofa tylko „Przywróć” w panelu. Odrzucenia automatyczne (plik n
 
 ```bash
 curl -H "X-API-Key: TWÓJ_KLUCZ" \
-  http://localhost:18506/api/v1/suppliers
+  https://parser.example.com/api/v1/suppliers
 ```
 
 ## Kody odpowiedzi
@@ -128,4 +128,4 @@ Aplikacja nie wysyła obecnie webhooków (planowane w kolejnej wersji). Aby dowi
 
 ## Stan usługi
 
-`GET http://localhost:18506/healthz` (bez klucza) zwraca wersję aplikacji i stan połączenia z bazą; przy awarii bazy — 503.
+`GET https://parser.example.com/healthz` (bez klucza) zwraca wersję aplikacji i stan połączenia z bazą; przy awarii bazy — 503.

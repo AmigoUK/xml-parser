@@ -18,3 +18,20 @@ document.addEventListener("input", function (event) {
     row.hidden = needle !== "" && row.textContent.toLowerCase().indexOf(needle) === -1;
   });
 });
+
+// Formularz „Wgraj fakturę”: nazwa wybranego albo upuszczonego pliku. Komponent Alpine.js w buildzie CSP — metody
+// zamiast wyrażeń w atrybutach (przypisanie do $refs.f.files i `?.` nie są w nim dozwolone).
+document.addEventListener("alpine:init", function () {
+  Alpine.data("uploadForm", function () {
+    return {
+      name: "",
+      noop() {},
+      dropped(event) {
+        this.$refs.f.files = event.dataTransfer.files;
+        this.name = this.fileName(this.$refs.f.files);
+      },
+      changed(event) { this.name = this.fileName(event.target.files); },
+      fileName(files) { return files && files.length ? files[0].name : ""; },
+    };
+  });
+});

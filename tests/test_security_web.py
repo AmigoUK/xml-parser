@@ -40,7 +40,8 @@ def test_security_headers_on_public_endpoints(seeded, client, url):
     _assert_security_headers(client.get(url))
 
 
-INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>", re.I)
+# blok danych JSON (<script type="application/json">) nie jest skryptem wykonywalnym
+INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)(?![^>]*type=\"application/json\")[^>]*>", re.I)
 INLINE_HANDLER = re.compile(r"<[^>]+\son[a-z]+\s*=", re.I)
 
 
@@ -379,6 +380,7 @@ def test_warns_when_behind_proxy_without_secure_session_cookie(tmp_path, caplog)
 
 def test_preferred_url_scheme_from_env(monkeypatch):
     import importlib
+
     from app import config as cfg
     assert cfg.Config.PREFERRED_URL_SCHEME == "http"
     monkeypatch.setenv("PREFERRED_URL_SCHEME", "https")

@@ -3,7 +3,7 @@
 <p>Ten przewodnik prowadzi krok po kroku przez podłączenie Twojego systemu (ERP, magazyn, sklep, skrypt) do parsera:
   od klucza API, przez wysyłkę faktury, odbiór wyniku i synchronizację zmian statusów, po ponowienia i gotowy kod
   w czterech językach. Szczegóły każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie
-  <a href="{{ url_for('help.topic', slug='api') }}">REST API</a>. Adres bazowy tej instancji:
+  <a href="{{ url_for('help.topic', slug='api') }}">REST API</a>. {% if config.HELP_EXPORT %}Adres bazowy (przykład — w panelu widzisz adres swojej instancji):{% else %}Adres bazowy tej instancji:{% endif %}
   <code>{{ api_base }}/api/v1</code>.</p>
 
 <h2 class="h5 mt-4" id="model">1. Jak wygląda integracja</h2>

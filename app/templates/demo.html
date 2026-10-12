@@ -20,8 +20,8 @@
       <li class="list-group-item"><strong>Wynik</strong> — znormalizowany JSON dostępny przez REST API dla innych systemów.</li>
     </ol>
 
-    {% if 'help' in nav_blueprints %}<p class="small">Szczegółowy opis każdego kroku, statusów i kodów problemów: <a href="{{ url_for('help.index') }}">Pomoc</a>
-      (np. <a href="{{ url_for('help.topic', slug='pierwsza-faktura') }}">pierwsza faktura dostawcy</a>).</p>{% endif %}
+    <p class="small">Szczegółowy opis każdego kroku, statusów i kodów problemów: <a href="{{ url_for('help.index') }}">Pomoc</a>
+      (np. <a href="{{ url_for('help.topic', slug='pierwsza-faktura') }}">pierwsza faktura dostawcy</a>).</p>
 
     <h2 class="h5 mt-4">Scenariusz demo (5 minut)</h2>
     <ol class="small">

@@ -38,8 +38,12 @@ class Config:
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SAMESITE = "Lax"
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
-    REMEMBER_COOKIE_DURATION = timedelta(hours=8)
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+    # czas życia sesji panelu (godziny) — osobno dla demo i instancji z prawdziwymi danymi
+    SESSION_HOURS = int(os.environ.get("SESSION_HOURS", 8))
+    REMEMBER_COOKIE_DURATION = timedelta(hours=SESSION_HOURS)
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=SESSION_HOURS)
+    # retencja dziennika: `flask prune-audit` usuwa wpisy login_failed/login_blocked starsze niż tyle dni
+    AUDIT_RETENTION_DAYS = int(os.environ.get("AUDIT_RETENTION_DAYS", 90))
     # limit prób logowania (SEC-2): główny per (e-mail, IP); per IP i per sam e-mail z wyższymi progami
     LOGIN_MAX_ATTEMPTS = int(os.environ.get("LOGIN_MAX_ATTEMPTS", 5))
     LOGIN_LOCKOUT_MINUTES = int(os.environ.get("LOGIN_LOCKOUT_MINUTES", 15))

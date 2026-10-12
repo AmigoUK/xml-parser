@@ -121,8 +121,8 @@ def test_repeated_missing_conversion_aggregated(seeded, client):
 
 
 def test_detail_page_renders_limited_issue_cards(auth_client):
-    from app.models import Document
     from app.extensions import db
+    from app.models import Document
     js = _post(auth_client, _ksef(3)).get_json()
     doc = db.session.get(Document, js["id"])
     issue = {"code": "unmapped_product", "severity": "blocking", "message": "Pozycja X: brak towaru",
@@ -171,7 +171,8 @@ def test_ubl_one_line_with_two_document_references():
 
 
 def test_json_one_product_with_two_payments():
-    js = b'{"number":"X1","payments":[{"d":"2026-01-01","a":1},{"d":"2026-02-01","a":1}],"products":[{"sku":"A","qty":1}]}'
+    js = (b'{"number":"X1","payments":[{"d":"2026-01-01","a":1},{"d":"2026-02-01","a":1}],'
+          b'"products":[{"sku":"A","qty":1}]}')
     assert read_document(js).detect_line_group() == "root/products"
 
 

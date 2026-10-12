@@ -5,8 +5,19 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import (ApiKey, AuditLog, Document, Product, ProductMapping, Supplier, Template, TemplateVersion,
-                        Unit, UnitAlias, UnitConversion)
+from app.models import (
+    ApiKey,
+    AuditLog,
+    Document,
+    Product,
+    ProductMapping,
+    Supplier,
+    Template,
+    TemplateVersion,
+    Unit,
+    UnitAlias,
+    UnitConversion,
+)
 from app.services import pipeline
 from app.services.negotiation import NegotiationError, resolve
 from app.services.pipeline import ingest, process

@@ -139,6 +139,7 @@ def test_serve_mode_starts_isolated_instance(tool, tmp_path):
     """Prawdziwy podproces --serve (świeża SQLite w tmp, seed i nauka na próbkach): /healthz z wersją aplikacji,
     /demo dostępne; serwer zatrzymany po PID. Najwolniejszy test tego modułu (kilkanaście sekund)."""
     import urllib.request
+
     from app.version import __version__
     with tool.running_server(sys.executable, _free_port(), tmp_path, "haslo-testowe-123") as base:
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(base + "/healthz", timeout=10) as r:
@@ -147,3 +148,17 @@ def test_serve_mode_starts_isolated_instance(tool, tmp_path):
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(base + "/demo", timeout=10) as r:
             assert r.status == 200
     assert (tmp_path / "serwer.log").read_text(encoding="utf-8").count(tool.READY) == 1
+
+
+def test_refuses_app_port_from_environment_and_env_file(tool, capsys, monkeypatch, tmp_path):
+    """Strażnik „nie fotografuj żywego demo” zna port z APP_PORT (środowisko i .env), nie tylko domyślny 18506."""
+    monkeypatch.setenv("APP_PORT", "18599")
+    assert tool.main(["--port", "18599"]) == 2
+    assert "18599" in capsys.readouterr().err
+    env_file = tmp_path / ".env"
+    env_file.write_text("SECRET_KEY=x\nAPP_PORT=18777\n", encoding="utf-8")
+    assert tool.live_demo_ports(env_file) == {18506, 18599, 18777}
+    monkeypatch.delenv("APP_PORT")
+    env_file.write_text("APP_PORT=nie-liczba\n", encoding="utf-8")
+    assert tool.live_demo_ports(env_file) == {18506}
+    assert tool.live_demo_ports(tmp_path / "nie-ma") == {18506}

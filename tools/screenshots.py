@@ -55,7 +55,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = ROOT / "app" / "static" / "screenshots"
 HOST = "127.0.0.1"
 DEFAULT_PORT = 18517
-LIVE_DEMO_PORT = 18506  # żywe demo — zrzuty tylko z odizolowanej instancji
+LIVE_DEMO_PORT = 18506  # domyślny port żywego demo (APP_PORT w compose) — zrzuty tylko z odizolowanej instancji
 ADMIN_EMAIL = "admin@example.com"
 DEMO_API_KEY = "xp_demo_zrzuty_0000000000"  # fikcyjny i stały — widać go na zrzucie strony „O demo”
 VIEWPORT = {"width": 1400, "height": 900}
@@ -120,6 +120,7 @@ def serve(port: int, workdir: Path) -> None:
     from app.extensions import db
     from app.services.pipeline import ingest
     from app.services.seed import seed_base, seed_demo
+
     # narzędzie deweloperskie: ta sama pętla „operatora” (pierwsza podpowiedź + zapamiętaj) co w testach uczenia
     from tests.test_learning import resolve_with_top_suggestions
 
@@ -156,6 +157,24 @@ def server_env(password: str) -> dict[str, str]:
         "DEMO_API_KEY": DEMO_API_KEY,
     })
     return env
+
+
+def live_demo_ports(env_file: Path = ROOT / ".env") -> set[int]:
+    """Porty, na których może działać żywe demo: domyślny 18506 oraz APP_PORT ze środowiska i z lokalnego .env
+    (czytana jest tylko ta jedna zmienna — bez wczytywania całego pliku do środowiska)."""
+    ports = {LIVE_DEMO_PORT}
+    candidates = [os.environ.get("APP_PORT")]
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "APP_PORT":
+                candidates.append(value.split("#", 1)[0].strip().strip("'\""))
+    except OSError:
+        pass
+    for raw in candidates:
+        if raw and raw.isdigit():
+            ports.add(int(raw))
+    return ports
 
 
 def port_free(port: int) -> bool:
@@ -347,8 +366,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         shots = select_shots(args.only)
-        if args.port == LIVE_DEMO_PORT:
-            raise ToolError(f"Port {LIVE_DEMO_PORT} to żywe demo — zrzuty wyłącznie z odizolowanej instancji "
+        if args.port in live_demo_ports():
+            raise ToolError(f"Port {args.port} to żywe demo (APP_PORT) — zrzuty wyłącznie z odizolowanej instancji "
                             "(wybierz inny --port).")
         if not port_free(args.port):
             raise ToolError(f"Port {args.port} na {HOST} jest zajęty — wybierz wolny (--port).")

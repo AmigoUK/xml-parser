@@ -8,3 +8,27 @@ authors = [{ name = "Tomasz 'Amigo' Lewandowski", email = "dev@attv.uk" }]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["migrations/versions", "docs", ".venv"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, B: bugbear, I: kolejność importów, UP: składnia Pythona 3.12
+select = ["E", "F", "W", "B", "I", "UP"]
+ignore = ["B905"]  # zip() bez strict= — krótkie, zrównoleglone listy o znanej długości
+
+[tool.ruff.lint.per-file-ignores]
+# fixture'y pytest importowane do modułu testowego są „nieużywane” i „przesłaniane” przez parametry testów
+"tests/**" = ["F401", "F811"]
+# conftest ustawia zmienne środowiska przed importem aplikacji (celowo przed importami)
+"tests/conftest.py" = ["E402"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = false
+
+[tool.coverage.report]
+skip_covered = true
+show_missing = true

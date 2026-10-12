@@ -1,7 +1,8 @@
+import sqlalchemy as sa
 from sqlalchemy import func
 
 from app.extensions import db
-from app.models import Template, TemplateVersion
+from app.models import Document, Template, TemplateVersion
 
 
 def new_version(template: Template, rules: dict, author: str | None, comment: str | None) -> TemplateVersion:
@@ -38,3 +39,19 @@ def active_rule_sets() -> list[dict]:
         if v:
             out.append(v.rules)
     return out
+
+
+def locked_active_version_id(doc: Document) -> int | None:
+    """Aktywna wersja szablonu dokumentu odczytana z bazy pod blokadą wiersza do końca transakcji (FR-5) —
+    kontrola wersji bazowej edytora (409 przy zapisie innego operatora w międzyczasie)."""
+    if not doc.template_id:
+        return None
+    stmt = sa.select(Template.active_version_id).where(Template.id == doc.template_id)
+    if db.session.get_bind().dialect.name == "sqlite":
+        # SQLite nie zna FOR UPDATE: zapis no-op bierze blokadę zapisu bazy do końca transakcji
+        db.session.execute(sa.update(Template).where(Template.id == doc.template_id)
+                           .values(active_version_id=Template.active_version_id)
+                           .execution_options(synchronize_session=False))
+    else:
+        stmt = stmt.with_for_update()  # odczyt blokujący widzi najnowszą zatwierdzoną wartość (InnoDB)
+    return db.session.execute(stmt).scalar()

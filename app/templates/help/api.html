@@ -3,7 +3,7 @@
 {% block help_content %}
 <p>REST API v1 pozwala innym systemom wysyłać faktury i odbierać wynik w formacie kanonicznym (JSON). Pełna specyfikacja:
   <a href="{{ url_for('api_docs') }}">dokumentacja interaktywna (Swagger)</a> i plik
-  <a href="{{ url_for('static', filename='openapi.yaml') }}">openapi.yaml</a>. Adres bazowy tej instancji:
+  <a href="{{ url_for('static', filename='openapi.yaml') }}">openapi.yaml</a>. {% if config.HELP_EXPORT %}Adres bazowy (przykład — w panelu widzisz adres swojej instancji):{% else %}Adres bazowy tej instancji:{% endif %}
   <code>{{ api_base }}/api/v1</code>.</p>
 {{ shot("11-api-docs.png", "Dokumentacja interaktywna (/api/docs, Swagger UI): endpointy REST API v1 z opisem parametrów "
         "i odpowiedzi; przycisk „Authorize” pozwala wpisać klucz API wysyłany w nagłówku X-API-Key.",

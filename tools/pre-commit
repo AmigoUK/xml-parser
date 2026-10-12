@@ -7,4 +7,10 @@ if ! "$PY" -c "import pytest, flask, flask_migrate" 2>/dev/null; then
   echo "pre-commit: brak środowiska. Utwórz .venv: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt" >&2
   exit 1
 fi
+# lint (ruff z pyproject.toml) — gdy ruff nie jest zainstalowany, tylko ostrzeżenie
+if "$PY" -m ruff --version >/dev/null 2>&1; then
+  "$PY" -m ruff check . || exit 1
+else
+  echo "pre-commit: brak ruff (pip install -r requirements-dev.txt) — pomijam lint" >&2
+fi
 exec "$PY" -m pytest tests/test_no_private_data.py -q -p no:cacheprovider

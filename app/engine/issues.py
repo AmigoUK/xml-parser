@@ -1,3 +1,4 @@
+"""Problemy wykryte przy przetwarzaniu dokumentu (`Issue`) i ich agregacja per pozycja."""
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field  # atrybut Issue.field przesłoniłby dataclasses.field
 
@@ -7,6 +8,8 @@ WARNING = "warning"
 
 @dataclass
 class Issue:
+    """Problem dokumentu: kod, waga (blocking/warning), komunikat po polsku, pole, numer pozycji, źródło
+    i podpowiedzi rozwiązania."""
     code: str
     severity: str
     message: str
@@ -23,6 +26,7 @@ class Issue:
 
 
 def has_blocking(issues) -> bool:
+    """Czy wśród problemów (obiektów Issue albo ich słowników) jest choć jeden blokujący."""
     for i in issues:
         sev = i.severity if isinstance(i, Issue) else i.get("severity")
         if sev == BLOCKING:

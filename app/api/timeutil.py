@@ -3,7 +3,7 @@
 W bazie czas jest naiwnym UTC (`app.models.utcnow`). W API czas ze strefą jest przeliczany na UTC, czas bez strefy
 oznacza UTC, a odpowiedzi zawsze niosą jawne UTC (`…Z`). Czysty moduł pomocniczy — bez modeli i bez bazy.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 DATE_TIME_SEPARATORS = "Tt "  # po dacie YYYY-MM-DD (albo YYYYMMDD): T (także t) albo spacja, a za nim czas
 
@@ -12,7 +12,7 @@ def _to_naive_utc(dt: datetime) -> datetime:
     # Naiwnego czasu nie przeliczamy: astimezone() uznałoby go za czas lokalny serwera, a naiwny znaczy tu UTC.
     if dt.tzinfo is None:
         return dt
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.astimezone(UTC).replace(tzinfo=None)
 
 
 def parse_api_datetime(text: str) -> datetime:

@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections import Counter
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Iterable, Iterator
 
 LINE_HINTS = ("pozycja", "fawiersz", "invoiceline", "row", "item", "items", "line", "lines", "wiersz")
 # pola, bez których grupa nie jest uznawana za pozycję na podstawie samych synonimów
@@ -45,17 +44,18 @@ def _has_ancestor_in(path: str, group: set[str]) -> bool:
 
 @dataclass(eq=False)
 class Node:
+    """Węzeł drzewa źródłowego: nazwa, tekst, atrybuty, dzieci i rodzic (ścieżka liczona z łańcucha rodziców)."""
     name: str
     text: str | None = None
     attrs: dict[str, str] = field(default_factory=dict)
-    children: list["Node"] = field(default_factory=list)
-    parent: "Node | None" = field(default=None, repr=False)
+    children: list[Node] = field(default_factory=list)
+    parent: Node | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         for child in self.children:
             child.parent = self
 
-    def add(self, child: "Node") -> "Node":
+    def add(self, child: Node) -> Node:
         child.parent = self
         self.children.append(child)
         return child
@@ -70,17 +70,21 @@ class Node:
 
 
 def relative_path(path: str, base: str) -> str | None:
+    """Ścieżka względna wobec `base` (gdy `path` leży pod `base`) albo None."""
     prefix = base + "/"
     return path[len(prefix):] if path.startswith(prefix) else None
 
 
 def jaccard(a: set, b: set) -> float:
+    """Podobieństwo Jaccarda dwóch zbiorów ścieżek (0–1; dwa puste zbiory → 0)."""
     if not a and not b:
         return 0.0
     return len(a & b) / len(a | b)
 
 
 class SourceTree:
+    """Drzewo pliku (XML/JSON/CSV) z operacjami na ścieżkach: wartości, liście, grupy, wykrywanie pozycji,
+    odcisk struktury."""
     def __init__(self, root: Node, fmt: str):
         self.root = root
         self.fmt = fmt

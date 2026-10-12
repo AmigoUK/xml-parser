@@ -15,7 +15,8 @@ svc=""
 for a in "$@"; do case "$a" in db|app) svc="$a"; break;; esac; done
 if [ "$svc" = db ]; then
   case "${FAKE_DB:-ok}" in
-    ok) printf -- '-- MariaDB dump\nCREATE TABLE `documents` (id int);\nINSERT INTO documents VALUES (1);\n-- Dump completed on 2026-10-10\n';;
+    ok) printf -- '-- MariaDB dump\nCREATE TABLE `documents` (id int);\nINSERT INTO documents VALUES (1);\n';
+        printf -- '-- Dump completed on 2026-10-10\n';;
     fail) printf -- '-- MariaDB dump\n'; echo "mariadb-dump: Got error: 1049: Unknown database" >&2; exit 2;;
     empty) exit 0;;
     truncated) printf -- '-- MariaDB dump\nCREATE TABLE `documents` (id int);\n';;
@@ -123,7 +124,7 @@ def _run_entrypoint(tmp_path, probe="ok", upgrade="ok", writable=True, database_
     """Uruchamia entrypoint z atrapami id/python/flask/gunicorn/sleep (bez roota, bez Dockera). Atrapa python:
     `-m app.dblock -- cmd…` wykonuje cmd (i loguje DBLOCK), inne wywołania to sonda bazy o zadanym wyniku."""
     bindir = tmp_path / "bin"
-    bindir.mkdir()
+    bindir.mkdir(exist_ok=True)  # test może uruchomić entrypoint kilka razy w jednym katalogu
     probe_body = {
         "ok": "exit 0",
         "down": "echo \"OperationalError: (2003, Can't connect to MySQL server)\" >&2; exit 3",
@@ -136,7 +137,7 @@ def _run_entrypoint(tmp_path, probe="ok", upgrade="ok", writable=True, database_
                    f"exec \"$@\"; fi\n{probe_body}\n"),
         "flask": ("#!/bin/sh\n[ \"$1\" = seed ] && echo FLASK_SEED >&2 && exit 0\n[ \"$1\" = db ] || exit 0\n"
                   f"echo FLASK_UPGRADE >&2\n{upgrade_body}\n"),
-        "gunicorn": "#!/bin/sh\necho GUNICORN \"$@\"\n",
+        "gunicorn": "#!/bin/sh\necho GUNICORN \"$@\" ARGS=\"$GUNICORN_CMD_ARGS\"\n",
         "sleep": "#!/bin/sh\nexit 0\n",
     }
     for name, body in fakes.items():
@@ -144,14 +145,15 @@ def _run_entrypoint(tmp_path, probe="ok", upgrade="ok", writable=True, database_
         p.write_text(body)
         p.chmod(0o755)
     work = tmp_path / "work"
-    (work / "migrations").mkdir(parents=True)
+    (work / "migrations").mkdir(parents=True, exist_ok=True)
     storage = tmp_path / "storage"
     if writable:
-        storage.mkdir()
+        storage.mkdir(exist_ok=True)
     else:
         storage.write_text("to nie katalog")
     env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", DB_WAIT_ATTEMPTS="3", STORAGE_DIR=str(storage))
-    for name in ("DATABASE_URL", "APP_INTERNAL_PORT", "PORT", "MIGRATE_ON_START"):
+    for name in ("DATABASE_URL", "APP_INTERNAL_PORT", "PORT", "MIGRATE_ON_START", "GUNICORN_CMD_ARGS",
+                 "GUNICORN_WORKERS", "GUNICORN_THREADS", "GUNICORN_TIMEOUT", "GUNICORN_WORKER_TMP_DIR"):
         env.pop(name, None)
     if database_url is not None:
         env["DATABASE_URL"] = database_url
@@ -235,3 +237,30 @@ def test_entrypoint_migration_error_not_retried(tmp_path):
     assert r.stderr.count("FLASK_UPGRADE") == 1
     assert "Baza niegotowa" not in r.stderr
     assert "Migracja" in r.stderr
+
+
+def test_entrypoint_gunicorn_flags_as_separate_variables(tmp_path):
+    """Pojedynczą flagę nadpisuje osobna zmienna (GUNICORN_WORKERS/THREADS/TIMEOUT) — bez przepisywania całego
+    zestawu."""
+    r = _run_entrypoint(tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "-k gthread -w 2 --threads 8 --timeout 60" in r.stdout and "--max-requests 1000" in r.stdout
+    r = _run_entrypoint(tmp_path, GUNICORN_WORKERS="4", GUNICORN_THREADS="16", GUNICORN_TIMEOUT="90")
+    assert "-w 4 --threads 16 --timeout 90" in r.stdout and "--max-requests 1000" in r.stdout
+
+
+def test_entrypoint_worker_tmp_dir_only_when_directory_exists(tmp_path):
+    """--worker-tmp-dir /dev/shm tylko, gdy katalog istnieje (runtime bez /dev/shm nie może wywrócić startu)."""
+    r = _run_entrypoint(tmp_path)
+    assert "--worker-tmp-dir /dev/shm" in r.stdout
+    r = _run_entrypoint(tmp_path, GUNICORN_WORKER_TMP_DIR=str(tmp_path / "nie-ma"))
+    assert r.returncode == 0 and "--worker-tmp-dir" not in r.stdout
+    shm = tmp_path / "shm"
+    shm.mkdir()
+    r = _run_entrypoint(tmp_path, GUNICORN_WORKER_TMP_DIR=str(shm))
+    assert f"--worker-tmp-dir {shm}" in r.stdout
+
+
+def test_entrypoint_gunicorn_cmd_args_replaces_whole_set(tmp_path):
+    r = _run_entrypoint(tmp_path, GUNICORN_CMD_ARGS="-w 1 --timeout 10")
+    assert "ARGS=-w 1 --timeout 10" in r.stdout and "--threads" not in r.stdout

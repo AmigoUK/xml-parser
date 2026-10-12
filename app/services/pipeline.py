@@ -9,18 +9,43 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.engine.canonical import LINE_KEYS, get_path
 from app.engine.issues import BLOCKING, Issue, aggregate_line_issues, has_blocking
-from app.engine.suggest import (FIELDS_BY_KEY, conversion_guess, decimal_sep_candidates, draft_rules, field_candidates, learned_pairs,
-                                load_synonyms, product_candidates, suffix_match, supplier_candidates,
-                                tax_ids_match, unit_candidates)
+from app.engine.keys import dedupe_scope, document_key
+from app.engine.suggest import (
+    FIELDS_BY_KEY,
+    ProductIndex,
+    conversion_guess,
+    decimal_sep_candidates,
+    draft_rules,
+    field_candidates,
+    learned_pairs,
+    load_synonyms,
+    product_candidates,
+    suffix_match,
+    supplier_candidates,
+    tax_ids_match,
+    unit_candidates,
+)
 from app.engine.template import apply_template
 from app.engine.tree import SourceTree, jaccard
 from app.engine.validate import validate_invoice
 from app.extensions import db
+from app.formatting import mib
 from app.ingest import ReaderError, read_document
-from app.engine.keys import dedupe_scope, document_key
-from app.models import (LIVE_STATUSES, STATUS_APPROVED, STATUS_DUPLICATE, STATUS_NEEDS_REVIEW, STATUS_RECEIVED,
-                        STATUS_REJECTED, Document, Product, Supplier, Template, utcnow)
+from app.models import (
+    LIVE_STATUSES,
+    STATUS_APPROVED,
+    STATUS_DUPLICATE,
+    STATUS_NEEDS_REVIEW,
+    STATUS_RECEIVED,
+    STATUS_REJECTED,
+    Document,
+    Product,
+    Supplier,
+    Template,
+    utcnow,
+)
 from app.services.audit import audit
+from app.services.dbutil import fit_column as _fit
 from app.services.lookups_db import DbLookups
 from app.services.storage import get_storage
 from app.services.templates import active_rule_sets
@@ -31,6 +56,16 @@ FILE_MISSING_MSG = ("Brak pliku źródłowego dokumentu w magazynie plików — 
 STORAGE_UNAVAILABLE_MSG = ("Magazyn plików jest niedostępny (błąd zapisu) — spróbuj ponownie za chwilę albo "
                            "zgłoś problem administratorowi.")
 DEFAULT_VALUES = {"currency": ["PLN", "GBP", "EUR"], "payment_method": ["przelew", "gotówka", "karta"]}
+# pewność podpowiedzi systemowych (0–1) i limit liczby proponowanych elementów z pozycjami
+CONF_CREATE_SUPPLIER = 0.9
+CONF_CLONE_TEMPLATE = 0.8
+CONF_LINE_PATH = 0.5
+CONF_DEFAULT_VALUE = 0.5
+CONF_CREATE_PRODUCT = 0.3
+LINE_PATH_SUGGESTIONS = 15
+# podpowiedzi rozmyte towarów (porównanie nazwy z całą kartoteką) tylko dla pierwszych N problemów
+# `unmapped_product` dokumentu — faktura z tysiącami nieznanych pozycji nie zajmie workera na minuty (SEC-1)
+MAX_FUZZY_PRODUCT_LINES = 200
 
 
 class DocumentTooLarge(ValueError):
@@ -189,62 +224,114 @@ def _resolve_duplicate(doc: Document, invoice: dict):
     return _claim_key(doc, doc.dedupe_hash)
 
 
+@dataclass
+class _Enrich:
+    """Stan wzbogacania problemów dokumentu podpowiedziami (liczone raz: wyuczone pary, indeks kartoteki,
+    wolny indeks towaru)."""
+    tree: SourceTree
+    rules: dict
+    inv: dict
+    synonyms: dict
+    ident: Identification
+    lookups: DbLookups
+    learned: dict
+    index: ProductIndex | None = None
+    fuzzy_left: int = MAX_FUZZY_PRODUCT_LINES
+    new_code: str | None = None
+
+    @property
+    def line_path(self):
+        return self.rules.get("line_path")
+
+    def line(self, issue: Issue) -> dict:
+        return self.inv["lines"][issue.line_no - 1]
+
+
+def _suggest_supplier(ctx: _Enrich, issue: Issue) -> None:
+    name = get_path(ctx.inv, "supplier.name")
+    tax = get_path(ctx.inv, "supplier.tax_id") or ctx.ident.extracted_tax_id
+    sug = []
+    if name or tax:
+        sug.append({"kind": "create_supplier", "name": name or tax, "tax_id": tax, "confidence": CONF_CREATE_SUPPLIER,
+                    "reason": "dane odczytane z faktury"})
+    sug += supplier_candidates(name, tax, ctx.lookups.suppliers_brief())
+    if ctx.ident.clone_candidate:
+        sug.append({"kind": "clone_template", "template_id": ctx.ident.clone_candidate.id,
+                    "name": ctx.ident.clone_candidate.name, "confidence": CONF_CLONE_TEMPLATE,
+                    "reason": "zgodna struktura pliku — reguły zostaną skopiowane"})
+    issue.suggestions = sug
+
+
+def _suggest_field(ctx: _Enrich, issue: Issue) -> None:
+    if not issue.field:
+        return
+    if issue.field == "line_path":
+        issue.suggestions = [{"kind": "line_path", "path": p, "confidence": CONF_LINE_PATH,
+                              "reason": "element z elementami podrzędnymi"}
+                             for p in ctx.tree.group_paths()[:LINE_PATH_SUGGESTIONS]]
+    elif issue.field in FIELDS_BY_KEY:
+        cands = [c.to_dict() for c in field_candidates(ctx.tree, issue.field, ctx.line_path, ctx.synonyms, ctx.learned)]
+        issue.suggestions = cands + [{"kind": "default", "value": v, "confidence": CONF_DEFAULT_VALUE,
+                                      "reason": "typowa wartość"} for v in DEFAULT_VALUES.get(issue.field, [])]
+
+
+def _suggest_decimal_sep(ctx: _Enrich, issue: Issue) -> None:
+    if not issue.field:
+        return
+    rule = (ctx.rules.get("lines" if issue.field in LINE_KEYS else "header") or {}).get(issue.field)
+    issue.suggestions = decimal_sep_candidates(rule, issue.source_path, issue.source_value)
+
+
+def _suggest_unit(ctx: _Enrich, issue: Issue) -> None:
+    issue.suggestions = unit_candidates(issue.source_value or "", ctx.lookups.unit_codes(), ctx.synonyms)
+
+
+def _suggest_product(ctx: _Enrich, issue: Issue) -> None:
+    if not issue.line_no:
+        return
+    line = ctx.line(issue)
+    if ctx.index is None:
+        ctx.index = ProductIndex(ctx.lookups.products_brief())
+    ctx.new_code = ctx.new_code or next_product_code()  # wolny indeks liczony raz, nie dla każdej pozycji (EDGE-5)
+    issue.suggestions = product_candidates(line, ctx.index.products, index=ctx.index, fuzzy=ctx.fuzzy_left > 0) + [{
+        "kind": "create_product", "code": ctx.new_code, "name": line.get("name"),
+        "unit": line.get("unit"), "confidence": CONF_CREATE_PRODUCT, "reason": "nowy towar w kartotece"}]
+    ctx.fuzzy_left -= 1
+
+
+def _suggest_conversion(ctx: _Enrich, issue: Issue) -> None:
+    if not issue.line_no:
+        return
+    issue.suggestions = [conversion_guess(ctx.line(issue).get("name"), issue.source_value or "")]
+
+
+# kod problemu → funkcja dopisująca podpowiedzi; kody bez wpisu (duplicate, sum_mismatch…) nie mają podpowiedzi
+_ENRICHERS = {
+    "unknown_supplier": _suggest_supplier,
+    "unmapped_field": _suggest_field, "transform_error": _suggest_field, "invalid_value": _suggest_field,
+    "ambiguous_number": _suggest_decimal_sep,
+    "unknown_unit": _suggest_unit,
+    "unmapped_product": _suggest_product,
+    "missing_conversion": _suggest_conversion,
+}
+
+
 def _enrich(issues: list[Issue], tree: SourceTree, rules: dict, inv: dict, synonyms: dict,
             ident: Identification, lookups: DbLookups) -> None:
-    learned = learned_pairs(active_rule_sets())
-    line_path = rules.get("line_path")
-    products = None
-    new_code = None  # wolny indeks liczony raz, nie dla każdej pozycji (EDGE-5)
+    """Dopisuje podpowiedzi rozwiązań do problemów dokumentu (kolejność problemów bez zmian)."""
+    # budżet czytany tutaj (nie jako domyślna wartość pola dataclass), żeby zmiana stałej działała w czasie pracy
+    ctx = _Enrich(tree, rules, inv, synonyms, ident, lookups, learned=learned_pairs(active_rule_sets()),
+                  fuzzy_left=MAX_FUZZY_PRODUCT_LINES)
     for issue in issues:
-        code = issue.code
-        if code == "unknown_supplier":
-            name, tax = get_path(inv, "supplier.name"), get_path(inv, "supplier.tax_id") or ident.extracted_tax_id
-            sug = []
-            if name or tax:
-                sug.append({"kind": "create_supplier", "name": name or tax, "tax_id": tax, "confidence": 0.9,
-                            "reason": "dane odczytane z faktury"})
-            sug += supplier_candidates(name, tax, lookups.suppliers_brief())
-            if ident.clone_candidate:
-                sug.append({"kind": "clone_template", "template_id": ident.clone_candidate.id,
-                            "name": ident.clone_candidate.name, "confidence": 0.8,
-                            "reason": "zgodna struktura pliku — reguły zostaną skopiowane"})
-            issue.suggestions = sug
-        elif code in ("unmapped_field", "transform_error", "invalid_value") and issue.field:
-            if issue.field == "line_path":
-                issue.suggestions = [{"kind": "line_path", "path": p, "confidence": 0.5,
-                                      "reason": "element z elementami podrzędnymi"} for p in tree.group_paths()[:15]]
-            elif issue.field in FIELDS_BY_KEY:
-                cands = [c.to_dict() for c in field_candidates(tree, issue.field, line_path, synonyms, learned)]
-                issue.suggestions = cands + [{"kind": "default", "value": v, "confidence": 0.5,
-                                              "reason": "typowa wartość"} for v in DEFAULT_VALUES.get(issue.field, [])]
-        elif code == "ambiguous_number" and issue.field:
-            rule = (rules.get("lines" if issue.field in LINE_KEYS else "header") or {}).get(issue.field)
-            issue.suggestions = decimal_sep_candidates(rule, issue.source_path, issue.source_value)
-        elif code == "unknown_unit":
-            issue.suggestions = unit_candidates(issue.source_value or "", lookups.unit_codes(), synonyms)
-        elif code == "unmapped_product" and issue.line_no:
-            line = inv["lines"][issue.line_no - 1]
-            products = products if products is not None else lookups.products_brief()
-            new_code = new_code or next_product_code()
-            issue.suggestions = product_candidates(line, products) + [{
-                "kind": "create_product", "code": new_code, "name": line.get("name"),
-                "unit": line.get("unit"), "confidence": 0.3, "reason": "nowy towar w kartotece"}]
-        elif code == "missing_conversion" and issue.line_no:
-            line = inv["lines"][issue.line_no - 1]
-            issue.suggestions = [conversion_guess(line.get("name"), issue.source_value or "")]
-
-
-def _fit(column, value):
-    """Obcina wartość do długości kolumny (MariaDB w trybie strict odrzuca dłuższe)."""
-    if value is None:
-        return None
-    return str(value)[:column.type.length]
+        enrich = _ENRICHERS.get(issue.code)
+        if enrich:
+            enrich(ctx, issue)
 
 
 def _too_many_lines(tree: SourceTree, rules: dict | None) -> str | None:
     """Limit liczby pozycji (SEC-1) — komunikat odrzucenia albo None."""
     line_path = (rules or {}).get("line_path")
-    limit = int(current_app.config.get("MAX_LINES", 5000))
+    limit = int(current_app.config["MAX_LINES"])
     if not line_path:
         return None
     count = len(tree.nodes_at(line_path))
@@ -350,7 +437,7 @@ def _process(doc: Document) -> Document:
 def ingest(data: bytes, filename: str | None, source: str = "upload", api_key_id: int | None = None) -> Document:
     limit = current_app.config["MAX_DOCUMENT_BYTES"]
     if len(data) > limit:
-        raise DocumentTooLarge(f"Plik przekracza limit {limit // (1024 * 1024)} MB.")
+        raise DocumentTooLarge(f"Plik przekracza limit {mib(limit)} MB.")
     storage = get_storage()
     try:
         sha, created = storage.store(data)

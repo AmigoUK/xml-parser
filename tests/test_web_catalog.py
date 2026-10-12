@@ -37,7 +37,8 @@ def test_product_validation_and_import(auth_client):
     r = auth_client.post("/towary/nowy", data={"code": "X-1", "name": "Zły GTIN", "gtin": "123", "unit_id": ""},
                          follow_redirects=True)
     assert "Niepoprawny GTIN" in r.get_data(as_text=True)
-    csv_data = "indeks;nazwa;gtin;jednostka\nTOW-0001;Posypka (zmiana);5909999000013;szt\nNOWY-1;Cukier puder;;kg\nZLY;Zły;111;szt\n"
+    csv_data = ("indeks;nazwa;gtin;jednostka\nTOW-0001;Posypka (zmiana);5909999000013;szt\nNOWY-1;Cukier puder;;kg\n"
+                "ZLY;Zły;111;szt\n")
     r = auth_client.post("/towary/import", data={"file": (io.BytesIO(csv_data.encode()), "t.csv")},
                          content_type="multipart/form-data", follow_redirects=True)
     html = r.get_data(as_text=True)
@@ -100,7 +101,9 @@ def test_global_alias_duplicate_rejected(auth_client):
 
 def test_mapping_gtin_normalised_and_validated(auth_client):
     from app.models import ProductMapping
-    s = Supplier(name="Map"); db.session.add(s); db.session.commit()
+    s = Supplier(name="Map")
+    db.session.add(s)
+    db.session.commit()
     p = Product.query.first()
     r = auth_client.post("/mapowania-towarow/nowy", data={"supplier_id": s.id, "supplier_code": "",
                                                           "supplier_gtin": "5909999000013", "product_id": p.id})
@@ -114,7 +117,9 @@ def test_mapping_gtin_normalised_and_validated(auth_client):
 
 def test_delete_supplier_with_mapping_blocked(auth_client):
     from app.models import ProductMapping
-    s = Supplier(name="Powiązany"); db.session.add(s); db.session.flush()
+    s = Supplier(name="Powiązany")
+    db.session.add(s)
+    db.session.flush()
     db.session.add(ProductMapping(supplier_id=s.id, supplier_code="A", product_id=Product.query.first().id))
     db.session.commit()
     r = auth_client.post(f"/dostawcy/{s.id}/usun", follow_redirects=True)
@@ -137,7 +142,7 @@ def test_import_bad_inputs_never_500(auth_client):
     assert r.status_code == 200 and "niepusty" in r.get_data(as_text=True)
     r = post(b"indeks;nazwa\n" + b"A;" + b"x" * (2 * 1024 * 1024))
     assert r.status_code == 200 and "za duży" in r.get_data(as_text=True)
-    r = post("indeks;nazwa;jednostka\nU1;Nazwa;xyz\n".encode())
+    r = post(b"indeks;nazwa;jednostka\nU1;Nazwa;xyz\n")
     assert "nieznana jednostka" in r.get_data(as_text=True)
 
 

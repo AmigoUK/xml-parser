@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}Parser faktur{% endblock %} · XML Parser</title>
+  <meta name="description" content="Uczący się parser faktur strukturalnych (XML, KSeF, UBL, JSON, CSV) z szablonami dostawców, panelem operatora i REST API.">
+  <meta property="og:title" content="{{ self.title() }} · XML Parser faktur">
+  <meta property="og:type" content="website">
+  <meta property="og:description" content="Uczący się parser faktur strukturalnych (XML, KSeF, UBL, JSON, CSV) z szablonami dostawców, panelem operatora i REST API.">
+  <meta property="og:image" content="{{ url_for('static', filename='og-image.png', _external=True) }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
@@ -20,9 +26,8 @@
   </main>
   {% if not full_screen %}{% include "_footer.html" %}{% endif %}
   <script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
-  <script src="{{ url_for('static', filename='vendor/htmx.min.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
-  <script defer src="{{ url_for('static', filename='vendor/alpine.min.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='vendor/alpine-csp.min.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

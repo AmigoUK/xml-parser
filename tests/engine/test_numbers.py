@@ -10,7 +10,6 @@ from app.engine.transforms import TransformError, apply_chain
 from app.engine.values import AmbiguousNumberError, fmt_money, fmt_price, fmt_qty, to_decimal
 from app.ingest import read_document
 
-
 # --- EDGE-1: notacja wykładnicza -------------------------------------------------------------
 
 @pytest.mark.parametrize("raw,expected", [

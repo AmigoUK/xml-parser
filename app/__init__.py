@@ -1,7 +1,8 @@
 import hmac
+import sys
 
 import click
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, redirect, request, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import PLACEHOLDER_SECRET_KEYS, Config
@@ -9,11 +10,11 @@ from .extensions import csrf, db, login_manager, migrate
 from .ids import BoundedIntConverter, parse_id
 from .version import __version__
 
-# Alpine.js (standardowy build) wylicza wyrażenia z atrybutów przez konstruktor Function, stąd 'unsafe-eval'
-# w script-src; inline <script> i atrybuty on* są niedozwolone. Style inline (atrybuty style, :style Alpine,
-# Swagger UI) wymagają 'unsafe-inline' w style-src.
+# Skrypty tylko z własnego hosta: inline <script> i atrybuty on* są niedozwolone, a Alpine.js działa w buildzie CSP
+# (@alpinejs/csp — wyrażenia z atrybutów parsuje sam, bez konstruktora Function), więc 'unsafe-eval' nie jest
+# potrzebne. Style inline (atrybuty style, :style Alpine, Swagger UI) wymagają 'unsafe-inline' w style-src.
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; "
     "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 )
@@ -22,7 +23,11 @@ SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
+# HSTS tylko dla żądań po HTTPS (za proxy: X-Forwarded-Proto przez ProxyFix) — po zwykłym HTTP przeglądarka go
+# ignoruje, a host deweloperski nie powinien go dostać
+HSTS = "max-age=31536000; includeSubDomains"
 
 
 def create_app(config_overrides: dict | None = None) -> Flask:
@@ -79,14 +84,20 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             "APP_VERSION": __version__,
             "REPO_URL": app.config["REPO_URL"],
             "DEMO_MODE": app.config["DEMO_MODE"],
-            "nav_blueprints": set(app.blueprints),
         }
 
     @app.after_request
     def security_headers(response):
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        if request.is_secure:
+            response.headers.setdefault("Strict-Transport-Security", HSTS)
         return response
+
+    @app.get("/favicon.ico")
+    def favicon():
+        # starsze klienty i narzędzia proszą o /favicon.ico mimo <link rel="icon"> — bez 404 w logu
+        return redirect(url_for("static", filename="favicon.svg"), code=301)
 
     @app.get("/healthz")
     def healthz():
@@ -98,6 +109,8 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         return jsonify(status="ok", version=__version__, db="ok")
 
     from . import models  # noqa: F401  (rejestracja modeli dla Alembic)
+    from .services.accounts import password_problem, set_admin_password
+    from .services.audit import prune_audit
     from .services.seed import reset_demo, seed_base, seed_demo
 
     @login_manager.user_loader
@@ -133,6 +146,46 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         if missing:
             raise SystemExit(1)
 
+    @app.cli.command("set-admin-password")
+    @click.option("--email", default=None, help="Konto (domyślnie ADMIN_EMAIL).")
+    @click.option("--password-stdin", is_flag=True,
+                  help="Hasło z pierwszej linii stdin (skrypty, `docker compose exec -T`).")
+    @click.option("--from-env", is_flag=True, help="Hasło z ADMIN_PASSWORD (po zmianie w .env).")
+    def set_admin_password_cmd(email, password_stdin, from_env):
+        """Ustawia hasło administratora (tworzy konto, gdy go nie ma); unieważnia wszystkie sesje tego konta."""
+        email = (email or app.config.get("ADMIN_EMAIL") or "").strip().lower()
+        if not email:
+            click.echo("Brak adresu e-mail konta — podaj --email albo ustaw ADMIN_EMAIL.", err=True)
+            raise SystemExit(2)
+        if from_env:
+            password = app.config.get("ADMIN_PASSWORD") or ""
+        elif password_stdin:
+            password = sys.stdin.readline().rstrip("\r\n")
+        else:
+            password = click.prompt("Nowe hasło", hide_input=True, confirmation_prompt=True)
+        problem = password_problem(password)
+        if problem:
+            click.echo(problem, err=True)
+            raise SystemExit(1)
+        user, created = set_admin_password(email, password, actor="cli")
+        db.session.commit()
+        click.echo(f"{'Utworzono konto' if created else 'Zmieniono hasło konta'} {user.email}; wszystkie sesje tego "
+                   "konta zostały unieważnione.")
+
+    @app.cli.command("prune-audit")
+    @click.option("--days", type=int, default=None, help="Starsze niż N dni (domyślnie AUDIT_RETENTION_DAYS).")
+    @click.option("--all-actions", is_flag=True, help="Wszystkie wpisy, nie tylko login_failed/login_blocked.")
+    def prune_audit_cmd(days, all_actions):
+        """Retencja dziennika: usuwa stare wpisy nieudanych i zablokowanych logowań (z --all-actions: wszystkie)."""
+        days = app.config["AUDIT_RETENTION_DAYS"] if days is None else days
+        if days < 1:
+            click.echo("--days musi być liczbą dni ≥ 1.", err=True)
+            raise SystemExit(2)
+        removed = prune_audit(days, all_actions)
+        db.session.commit()
+        scope = "wszystkie akcje" if all_actions else "login_failed, login_blocked"
+        click.echo(f"Usunięto {removed} wpisów dziennika starszych niż {days} dni ({scope}).")
+
     @app.cli.command("reset-demo")
     def reset_demo_cmd():
         """Czyści dane i przywraca stan demo."""
@@ -140,10 +193,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
             reset_demo()
         except RuntimeError as e:
             click.echo(str(e), err=True)
-            raise SystemExit(1)
+            raise SystemExit(1) from None
         click.echo("Demo zresetowane")
 
     from flask import render_template
+
     from .api import bp as api_bp
     csrf.exempt(api_bp)
     app.register_blueprint(api_bp)

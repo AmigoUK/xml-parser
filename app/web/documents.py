@@ -1,10 +1,10 @@
 import io
 import re
 
-from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request,
-                   send_file, url_for)
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 
+from app.api.serializers import doc_to_json
 from app.engine.canonical import FIELD_LABELS, HEADER_FIELDS, LINE_FIELDS
 from app.extensions import db
 from app.ingest import ReaderError
@@ -20,6 +20,8 @@ ISSUE_CARDS_LIMIT = 50
 TREE_ROWS_LIMIT = 3000
 LEAF_PATHS_LIMIT = 2000
 LINES_TABLE_LIMIT = 500
+RECENT_DOCS_LIMIT = 10   # pulpit: ostatnie dokumenty
+DOCS_LIST_LIMIT = 200    # lista dokumentów
 ALWAYS_REMEMBER = {"create_supplier", "use_supplier", "add_conversion", "allow_duplicate", "reject"}
 FORM_FIELDS = ("name", "tax_id", "supplier_id", "alias", "unit", "from_unit", "to_unit", "factor", "scope",
                "line_no", "product_code", "code")
@@ -61,7 +63,7 @@ def index():
 @login_required
 def dashboard():
     counts = {s: Document.query.filter_by(status=s).count() for s in STATUS_LABELS}
-    recent = Document.query.order_by(Document.id.desc()).limit(10).all()
+    recent = Document.query.order_by(Document.id.desc()).limit(RECENT_DOCS_LIMIT).all()
     return render_template("dashboard.html", counts=counts, docs=recent, labels=STATUS_LABELS)
 
 
@@ -97,7 +99,7 @@ def documents():
     status = request.args.get("status")
     if status in STATUS_LABELS:
         q = q.filter_by(status=status)
-    return render_template("documents.html", docs=q.limit(200).all(), title="Dokumenty", queue=False,
+    return render_template("documents.html", docs=q.limit(DOCS_LIST_LIMIT).all(), title="Dokumenty", queue=False,
                            labels=STATUS_LABELS, current=status)
 
 
@@ -189,5 +191,4 @@ def raw(doc_id):
 @bp.get("/dokumenty/<int:doc_id>/json")
 @login_required
 def as_json(doc_id):
-    from app.api.routes import doc_to_json
     return jsonify(doc_to_json(_get(doc_id)))

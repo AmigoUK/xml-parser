@@ -22,7 +22,14 @@ przekazać je sama. Wartości przykładowe i opisy: [`.env.example`](../.env.exa
 | `APP_INTERNAL_PORT` / `PORT` | nie (`5010`) | `PORT` platformy ma pierwszeństwo (Cloud Run, Heroku); ten sam port czyta sonda `HEALTHCHECK` |
 | `MIGRATE_ON_START` | nie (`1`) | `0` = migracje i seed uruchamia osobne zadanie (init container / job) |
 | `MIGRATE_LOCK_TIMEOUT` | nie (`600`) | ile sekund replika czeka na blokadę migracji |
-| `DB_WAIT_ATTEMPTS`, `GUNICORN_CMD_ARGS`, `MAX_*`, `LOGIN_*` | nie | jak w `.env.example` |
+| `DEMO_API_KEY` | tylko demo | min. 24 znaki; wartość z `.env.example` jest odrzucana (klucz nie powstaje) |
+| `SESSION_HOURS` | nie (`8`) | czas życia sesji panelu w godzinach |
+| `AUDIT_RETENTION_DAYS` | nie (`90`) | retencja wpisów logowań dla `flask prune-audit` (cron) |
+| `GUNICORN_WORKERS`, `GUNICORN_THREADS`, `GUNICORN_TIMEOUT`, `GUNICORN_WORKER_TMP_DIR` | nie (`2`, `8`, `60`, `/dev/shm`) | pojedyncze flagi gunicorna; `GUNICORN_CMD_ARGS` zastępuje cały zestaw |
+| `DB_WAIT_ATTEMPTS`, `MAX_*`, `LOGIN_*` | nie | jak w `.env.example` |
+
+Aplikacja **wymaga własnej (sub)domeny**: wdrożenie pod podścieżką (`https://firma.pl/xml-parser/`) nie jest obsługiwane —
+adresy w Pomocy, w przykładach integracji i w Swagger UI są liczone od korzenia hosta.
 
 Nie kopiuj `.env` ze starego hosta 1:1: `APP_BIND` z adresem `tailscale0` nie istnieje na nowej maszynie
 (`docker compose up` kończy się „cannot assign requested address”), a `XP_SUBNET` może kolidować z sieciami nowego hosta.
@@ -38,6 +45,8 @@ nagłówków `X-Forwarded-*`:
 client_max_body_size 11m;                 # ≥ MAX_DOCUMENT_BYTES + 64 KB, inaczej nginx odpowie własną stroną 413
 proxy_read_timeout    75s;                # ≥ gunicorn --timeout 60
 proxy_send_timeout    75s;
+# aplikacja sama dodaje Strict-Transport-Security, gdy widzi HTTPS (X-Forwarded-Proto przez ProxyFix); wpis na proxy
+# obejmuje też strony błędów samego proxy
 add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
 limit_req_zone $binary_remote_addr zone=xp_login:1m rate=10r/m;
@@ -82,8 +91,13 @@ W `.env` aplikacji: `TRUSTED_PROXY_COUNT=1` (jedno proxy), `SESSION_COOKIE_SECUR
   (albo przenieś `db` do profilu), ustaw `DATABASE_URL` z `?charset=utf8mb4`, kolację bazy `utf8mb4_unicode_ci`.
   Wtyczki uwierzytelniania `caching_sha2_password` / `ed25519` działają — obraz ma pakiet `cryptography`; błąd
   użytkownika/hasła/bazy (1044, 1045, 1049, 1698) kończy start od razu, bez 10 ponowień.
-- **Zasoby.** gunicorn: 2 workery × 8 wątków, `--timeout 60`, `--worker-tmp-dir /dev/shm` (platforma bez `/dev/shm`:
-  nadpisz `GUNICORN_CMD_ARGS` bez tej flagi). Pamięć ~1 GB na aplikację przy plikach 10 MB.
+- **Zasoby.** gunicorn: `GUNICORN_WORKERS` (2) × `GUNICORN_THREADS` (8), `GUNICORN_TIMEOUT` (60 s);
+  `--worker-tmp-dir /dev/shm` jest dodawany tylko, gdy katalog istnieje (`GUNICORN_WORKER_TMP_DIR` zmienia ścieżkę),
+  więc runtime bez `/dev/shm` startuje. `GUNICORN_CMD_ARGS` zastępuje cały zestaw flag. Pamięć ~1 GB na aplikację przy
+  plikach 10 MB.
+- **Hasło administratora i dziennik.** Po wdrożeniu (i po każdym wycieku `.env`) ustaw hasło poleceniem
+  `flask set-admin-password` (albo „Zmień hasło” w panelu) — seed nie nadpisuje hasła istniejącego konta. Do crona:
+  `flask prune-audit` (retencja wpisów logowań, `AUDIT_RETENTION_DAYS`).
 
 ## 4. Przeniesienie danych (stary host → nowy)
 
@@ -108,6 +122,9 @@ przełączeniu trzeba przenieść wstecz tą samą procedurą.
 
 - brak ostrzeżenia `X-Forwarded-For … TRUSTED_PROXY_COUNT=0` (inaczej proxy jest, a ProxyFix wyłączony),
 - brak ostrzeżenia `SESSION_COOKIE_SECURE=0` przy `TRUSTED_PROXY_COUNT>0`,
+- brak ostrzeżenia `DEMO_API_KEY jest wartością przykładową…` (klucz demo nie powstał) i `OSTRZEŻENIE: ADMIN_PASSWORD…`,
+- `curl -I https://host/login` zwraca `Strict-Transport-Security`, `Permissions-Policy` i `Content-Security-Policy`
+  z `script-src 'self'` (bez `'unsafe-eval'`),
 - `Baza: mysql+pymysql://…` wskazuje właściwy host (hasło nie jest wypisywane),
 - adresy w Pomocy (`/pomoc/integracja`) mają schemat `https` i host publiczny,
 - `tools/backup.sh` w cronie z `BACKUP_DIR` na osobnym dysku; raz na kwartał próbne odtworzenie.

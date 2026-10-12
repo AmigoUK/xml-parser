@@ -2,7 +2,7 @@
 import io
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -26,7 +26,7 @@ def local_time_plus_2h():
     time.tzset()
     try:
         # kontrola fixture'a: naiwne 06:00 „lokalne” to 04:00 UTC — inaczej test przechodziłby na pusto
-        assert datetime(2026, 10, 11, 6).astimezone(timezone.utc).hour == 4
+        assert datetime(2026, 10, 11, 6).astimezone(UTC).hour == 4
         yield
     finally:
         if old is None:
@@ -126,7 +126,7 @@ def test_format_aware_is_converted_to_utc():
 
 def test_format_aware_utc_has_single_z_suffix():
     """Bez zdjęcia strefy isoformat() dałby `+00:00` obok `Z`."""
-    assert format_api_datetime(datetime(2026, 10, 11, 6, 0, tzinfo=timezone.utc)) == "2026-10-11T06:00:00.000000Z"
+    assert format_api_datetime(datetime(2026, 10, 11, 6, 0, tzinfo=UTC)) == "2026-10-11T06:00:00.000000Z"
 
 
 @pytest.mark.parametrize("dt", [

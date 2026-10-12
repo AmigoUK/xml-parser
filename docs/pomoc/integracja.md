@@ -2,7 +2,7 @@
 
 # Integracja z własną aplikacją
 
-Ten przewodnik prowadzi krok po kroku przez podłączenie Twojego systemu (ERP, magazyn, sklep, skrypt) do parsera: od klucza API, przez wysyłkę faktury, odbiór wyniku i synchronizację zmian statusów, po ponowienia i gotowy kod w czterech językach. Szczegóły każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie [REST API](api.md). Adres bazowy tej instancji: `http://localhost:18506/api/v1`.
+Ten przewodnik prowadzi krok po kroku przez podłączenie Twojego systemu (ERP, magazyn, sklep, skrypt) do parsera: od klucza API, przez wysyłkę faktury, odbiór wyniku i synchronizację zmian statusów, po ponowienia i gotowy kod w czterech językach. Szczegóły każdego endpointu i pełną tabelę kodów odpowiedzi znajdziesz w temacie [REST API](api.md). Adres bazowy (przykład — w panelu widzisz adres swojej instancji): `https://parser.example.com/api/v1`.
 
 <a id="model"></a>
 
@@ -45,7 +45,7 @@ Twoja aplikacja                                 Parser faktur
 
 ## 3. Wysyłka faktury
 
-Dwa równoważne sposoby wysłania pliku na `POST http://localhost:18506/api/v1/documents`:
+Dwa równoważne sposoby wysłania pliku na `POST https://parser.example.com/api/v1/documents`:
 
 - **multipart/form-data** z polem o nazwie dokładnie `file` (nazwa pliku z formularza zostaje zapisana w dokumencie) — zalecane;
 - **surowe body** z nagłówkiem `Content-Type` innym niż formularzowy (np. `application/xml`, `application/json`, `text/csv`) i opcjonalnym `X-Filename` z nazwą pliku (bez niego zapisywana jest nazwa `dokument`).
@@ -73,13 +73,13 @@ Jeżeli wysyłka zwróciła `approved`, wynik masz od razu w odpowiedzi. Dokumen
 
 ### Sposób A: odpytywanie po `id` — natychmiastowy wynik
 
-Gdy wynik jest potrzebny od razu (np. użytkownik czeka na ekranie), wywołuj `GET http://localhost:18506/api/v1/documents/{id}`, aż status przestanie być `needs_review`. Zacznij od kilku sekund i podwajaj przerwę do kilku minut (np. 5 s, 10 s, 20 s … maks. 5 min). Rozwiązanie problemów zależy od człowieka — jeśli po godzinie dokument nadal czeka, zostaw go synchronizacji (sposób B), która jednym przebiegiem obejmuje wszystkie oczekujące dokumenty. Tak działają przykłady kodu poniżej uruchomione z plikiem faktury.
+Gdy wynik jest potrzebny od razu (np. użytkownik czeka na ekranie), wywołuj `GET https://parser.example.com/api/v1/documents/{id}`, aż status przestanie być `needs_review`. Zacznij od kilku sekund i podwajaj przerwę do kilku minut (np. 5 s, 10 s, 20 s … maks. 5 min). Rozwiązanie problemów zależy od człowieka — jeśli po godzinie dokument nadal czeka, zostaw go synchronizacji (sposób B), która jednym przebiegiem obejmuje wszystkie oczekujące dokumenty. Tak działają przykłady kodu poniżej uruchomione z plikiem faktury.
 
 <a id="synchronizacja"></a>
 
 ### Sposób B (zalecany do synchronizacji): `updated_since` + `cursor`
 
-`GET http://localhost:18506/api/v1/documents?updated_since=…` zwraca dokumenty Twojego klucza, które **zmieniły się** w podanej chwili lub później — także przyjęte dawno, a zatwierdzone przez operatora dopiero teraz. Pozycje listy (`items`) nie zawierają `invoice` ani `issues`; pełny wynik pobierasz przez `GET /documents/{id}`. Dokładna semantyka:
+`GET https://parser.example.com/api/v1/documents?updated_since=…` zwraca dokumenty Twojego klucza, które **zmieniły się** w podanej chwili lub później — także przyjęte dawno, a zatwierdzone przez operatora dopiero teraz. Pozycje listy (`items`) nie zawierają `invoice` ani `issues`; pełny wynik pobierasz przez `GET /documents/{id}`. Dokładna semantyka:
 
 - `updated_since` — dokumenty, których `updated_at` jest równe podanemu czasowi lub późniejsze (porównanie „≥”). `updated_at` zmienia każde przetworzenie dokumentu (przyjęcie, decyzja operatora w panelu, „Przetwórz ponownie”, `reprocess` przez API) — także gdy wynik wyszedł taki sam — oraz „Odrzuć” i „Przywróć” w panelu. Samo pobranie dokumentu go nie zmienia.
 - Kolejność: rosnąco po `updated_at`, a przy równym czasie po `id` — najpierw dokumenty zmienione najdawniej.
@@ -93,9 +93,9 @@ Gdy wynik jest potrzebny od razu (np. użytkownik czeka na ekranie), wywołuj `G
 Kolejne strony jednego przebiegu (wartości przykładowe):
 
 ```text
-GET http://localhost:18506/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500
+GET https://parser.example.com/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500
 → {"items": [… 500 dokumentów …], "next_cursor": "MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw"}
-GET http://localhost:18506/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500&cursor=MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw
+GET https://parser.example.com/api/v1/documents?updated_since=2026-10-11T06:00:00Z&status=approved&limit=500&cursor=MjAyNi0xMC0xMVQwNjowNDozOC4zMTIzMDh8Nw
 → {"items": [… reszta …], "next_cursor": null}
 ```
 
@@ -299,7 +299,7 @@ from datetime import datetime, timedelta
 
 import requests
 
-BASE_URL = "http://localhost:18506/api/v1"
+BASE_URL = "https://parser.example.com/api/v1"
 API_KEY = os.environ["XP_API_KEY"]  # klucz trzymaj w zmiennej środowiskowej, nie w kodzie
 FINAL = {"approved", "duplicate", "rejected"}  # statusy, na których kończymy odpytywanie
 SYNC_START = "1970-01-01T00:00:00Z"  # pierwszy przebieg: pełna synchronizacja (albo data wdrożenia integracji)
@@ -441,7 +441,7 @@ if __name__ == "__main__":
 // Wysyłka faktury, odbiór wyniku i synchronizacja zmian (PHP 8, rozszerzenie curl).
 // Użycie: php faktura.php faktura.xml        — wysyłka i odbiór wyniku (sposób A)
 //         php faktura.php --sync [stan.json] — jeden przebieg synchronizacji (sposób B)
-const BASE_URL = 'http://localhost:18506/api/v1';
+const BASE_URL = 'https://parser.example.com/api/v1';
 const FINAL_STATUSES = ['approved', 'duplicate', 'rejected'];
 const SYNC_START = '1970-01-01T00:00:00Z'; // pierwszy przebieg: pełna synchronizacja (albo data wdrożenia)
 const SYNC_MARGIN = '-5 minutes';          // zapas na zmiany zatwierdzone w innej kolejności niż ich updated_at
@@ -588,7 +588,7 @@ if ($doc['status'] === 'approved') {
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
-const BASE_URL = "http://localhost:18506/api/v1";
+const BASE_URL = "https://parser.example.com/api/v1";
 const API_KEY = process.env.XP_API_KEY;
 const FINAL = new Set(["approved", "duplicate", "rejected"]);
 const SYNC_START = "1970-01-01T00:00:00Z"; // pierwszy przebieg: pełna synchronizacja (albo data wdrożenia)
@@ -709,7 +709,7 @@ if (process.argv[2] === "--sync") {
 # Użycie: ./faktura.sh faktura.xml        — wysyłka i odbiór wyniku (sposób A)
 #         ./faktura.sh --sync [stan.json] — jeden przebieg synchronizacji (sposób B)
 set -euo pipefail
-BASE="http://localhost:18506/api/v1"
+BASE="https://parser.example.com/api/v1"
 : "${XP_API_KEY:?Ustaw zmienną środowiskową XP_API_KEY}"
 for t in curl jq; do command -v "$t" > /dev/null || { echo "Brak programu $t — zainstaluj go (curl 7.76+, jq 1.6+)." >&2; exit 1; }; done
 DELAY="${DELAY:-5}"          # pierwsza przerwa między odpytaniami (s)
@@ -807,7 +807,7 @@ esac
 - Sposobu A (odpytywanie po `id`) używasz tylko wtedy, gdy wynik jest potrzebny zaraz po wysyłce.
 - Ponawiasz po błędach sieci i 5xx; przy `duplicate` przechodzisz na `id` oryginału.
 - Ktoś po Twojej stronie wie, że faktury nowych dostawców czekają na operatora w panelu.
-- Monitorujesz dostępność usługi przez `GET http://localhost:18506/healthz` (bez klucza).
+- Monitorujesz dostępność usługi przez `GET https://parser.example.com/healthz` (bez klucza).
 
 <a id="bledy"></a>
 

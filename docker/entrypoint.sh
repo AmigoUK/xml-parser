@@ -71,7 +71,18 @@ if [ -d migrations ]; then
 fi
 # Wątkowe workery: bezczynne gniazda (np. preconnect przeglądarki) nie blokują workerów sync.
 # Cykliczny restart workerów (max-requests) ogranicza wycieki pamięci.
-# Nadpisanie: zmienna GUNICORN_CMD_ARGS (flagi CLI miałyby pierwszeństwo, więc są tylko tutaj).
-export GUNICORN_CMD_ARGS="${GUNICORN_CMD_ARGS:--k gthread -w 2 --threads 8 --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100 --worker-tmp-dir /dev/shm}"
+# Pojedyncze flagi: GUNICORN_WORKERS / GUNICORN_THREADS / GUNICORN_TIMEOUT; cały zestaw: GUNICORN_CMD_ARGS (zastępuje
+# wszystko; flagi CLI miałyby pierwszeństwo, więc są tylko tutaj). --worker-tmp-dir tylko, gdy katalog istnieje —
+# runtime bez /dev/shm (gVisor, --ipc=none) nie może wywrócić startu; wtedy heartbeat workerów idzie do domyślnego tmp.
+if [ -z "${GUNICORN_CMD_ARGS:-}" ]; then
+  GUNICORN_CMD_ARGS="-k gthread -w ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-8} --timeout ${GUNICORN_TIMEOUT:-60} --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100"
+  worker_tmp="${GUNICORN_WORKER_TMP_DIR:-/dev/shm}"
+  if [ -d "$worker_tmp" ]; then
+    GUNICORN_CMD_ARGS="$GUNICORN_CMD_ARGS --worker-tmp-dir $worker_tmp"
+  else
+    echo "UWAGA: katalog $worker_tmp nie istnieje - gunicorn użyje domyślnego katalogu tymczasowego na pliki heartbeat workerów." >&2
+  fi
+fi
+export GUNICORN_CMD_ARGS
 # Port wewnętrzny: PORT platformy (Cloud Run, Heroku…) ma pierwszeństwo przed APP_INTERNAL_PORT z obrazu/compose.
 exec gunicorn -b "0.0.0.0:${PORT:-${APP_INTERNAL_PORT:-5010}}" --access-logfile - "app:create_app()"

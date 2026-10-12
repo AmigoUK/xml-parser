@@ -1,31 +1,29 @@
 import difflib
 import json
 
-import regex
-import sqlalchemy as sa
-from sqlalchemy.exc import IntegrityError
-
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 
 from app.engine.canonical import HEADER_FIELDS, LINE_FIELDS
 from app.engine.suggest import field_candidates, learned_pairs, load_synonyms
 from app.engine.template import apply_template
-from app.engine.transforms import MAX_PATTERN, REGISTRY, TRANSFORM_LABELS, parse_factor
+from app.engine.transforms import TRANSFORM_LABELS, validate_rules
 from app.engine.validate import validate_invoice
-from app.engine.values import DECIMAL_SEPARATORS
 from app.extensions import db
 from app.ids import parse_id
 from app.ingest import ReaderError
 from app.models import Document, Template, TemplateVersion
 from app.services.audit import audit
-from app.services.lookups_db import DbLookups
-from app.services.pipeline import current_rules, load_tree, process
 from app.services.dbutil import commit_with_retry
+from app.services.lookups_db import DbLookups
 from app.services.negotiation import CONFLICT_MSG, save_rules
-from app.services.templates import active_rule_sets, new_version
+from app.services.pipeline import current_rules, load_tree, process
+from app.services.templates import active_rule_sets, locked_active_version_id, new_version
 
 bp = Blueprint("templates_views", __name__, url_prefix="/szablony")
+COMMENT_MAX = TemplateVersion.comment.type.length  # komentarz wersji obcinany do kolumny
+EDITOR_CANDIDATES = 3  # podpowiedzi ścieżek na pole w edytorze
 
 
 def _tpl(tid: int) -> Template:
@@ -111,11 +109,13 @@ def _render_editor(doc: Document, rules: dict, title: str):
         return redirect(url_for("docs.detail", doc_id=doc.id))
     synonyms, learned = load_synonyms(), learned_pairs(active_rule_sets())
     line_path = rules.get("line_path")
-    cands = {f.key: [c.to_dict() for c in field_candidates(tree, f.key, line_path, synonyms, learned, limit=3)]
+    cands = {f.key: [c.to_dict() for c in field_candidates(tree, f.key, line_path, synonyms, learned,
+                                                             limit=EDITOR_CANDIDATES)]
              for f in HEADER_FIELDS + LINE_FIELDS if f.key != "doc_type"}
     config = {
         "docId": doc.id, "rules": rules, "rows": tree.display_rows(), "groups": tree.group_paths(),
-        "header": [{"key": f.key, "label": f.label, "required": f.required} for f in HEADER_FIELDS if f.key != "doc_type"],
+        "header": [{"key": f.key, "label": f.label, "required": f.required}
+                   for f in HEADER_FIELDS if f.key != "doc_type"],
         "lines": [{"key": f.key, "label": f.label, "required": f.required} for f in LINE_FIELDS],
         "candidates": cands, "transforms": TRANSFORM_LABELS,
         "previewUrl": url_for("templates_views.preview", doc_id=doc.id),
@@ -156,94 +156,6 @@ STALE_BASE_MSG = ("Szablon zmienił się w międzyczasie (ktoś zapisał nowszą
 
 class _StaleBaseVersion(Exception):
     """Aktywna wersja szablonu różni się od wersji bazowej edytora — 409, bez ponawiania."""
-
-
-def _locked_active_version_id(doc: Document) -> int | None:
-    """Aktywna wersja szablonu dokumentu odczytana z bazy pod blokadą wiersza do końca transakcji (FR-5)."""
-    if not doc.template_id:
-        return None
-    stmt = sa.select(Template.active_version_id).where(Template.id == doc.template_id)
-    if db.session.get_bind().dialect.name == "sqlite":
-        # SQLite nie zna FOR UPDATE: zapis no-op bierze blokadę zapisu bazy do końca transakcji
-        db.session.execute(sa.update(Template).where(Template.id == doc.template_id)
-                           .values(active_version_id=Template.active_version_id)
-                           .execution_options(synchronize_session=False))
-    else:
-        stmt = stmt.with_for_update()  # odczyt blokujący widzi najnowszą zatwierdzoną wartość (InnoDB)
-    return db.session.execute(stmt).scalar()
-
-
-def _check_arg(name: str, arg, key: str) -> str | None:
-    if name == "map" and not isinstance(arg, dict):
-        return f"Transformacja 'map' w polu '{key}' wymaga słownika."
-    if name == "convert":
-        try:
-            parse_factor(arg)  # liczba > 0, spójnie z CRUD i negocjacją (EDGE-16)
-        except ValueError as exc:
-            return f"Transformacja 'convert' w polu '{key}': {exc}"
-    if name == "decimal" and arg not in (None, "", *DECIMAL_SEPARATORS):
-        return f"Transformacja 'decimal' w polu '{key}': separator dziesiętny musi być „,” albo „.”."
-    if name == "date" and not (isinstance(arg, str) and arg):
-        return f"Transformacja 'date' w polu '{key}' wymaga formatu daty (tekst)."
-    if name == "split":
-        if arg is not None and not isinstance(arg, dict):
-            return f"Transformacja 'split' w polu '{key}' wymaga obiektu (sep, index)."
-        arg = arg or {}
-        if not isinstance(arg.get("sep", " "), str) or isinstance(arg.get("index", 0), bool) \
-                or not isinstance(arg.get("index", 0), int):
-            return f"Transformacja 'split' w polu '{key}': sep musi być tekstem, a index liczbą całkowitą."
-    if name == "concat":
-        if not isinstance(arg, dict) or not isinstance(arg.get("paths", []), list) \
-                or not all(isinstance(x, str) for x in arg.get("paths", [])) \
-                or not isinstance(arg.get("sep", " "), str):
-            return f"Transformacja 'concat' w polu '{key}' wymaga obiektu z listą 'paths' i tekstem 'sep'."
-    return None
-
-
-def validate_rules(rules: dict) -> str | None:
-    """Zwraca polski komunikat błędu albo None, gdy reguły są poprawne (biała lista transformacji, limity regex)."""
-    if rules.get("line_path") is not None and not isinstance(rules["line_path"], str):
-        return "Ścieżka elementu z pozycjami musi być tekstem."
-    for bucket in ("header", "lines", "defaults", "line_defaults"):
-        if not isinstance(rules.get(bucket, {}), dict):
-            return f"Sekcja '{bucket}' musi być obiektem."
-    for bucket in ("defaults", "line_defaults"):
-        for k, v in rules.get(bucket, {}).items():
-            if not isinstance(v, (str, int, float)) or isinstance(v, bool):
-                return f"Wartość domyślna pola '{k}' musi być tekstem lub liczbą."
-    for bucket in ("header", "lines"):
-        for key, rule in rules.get(bucket, {}).items():
-            if not isinstance(rule, dict):
-                return f"Reguła pola '{key}' musi być obiektem."
-            for attr in ("path", "constant"):
-                if rule.get(attr) is not None and not isinstance(rule[attr], str):
-                    return f"Pole '{attr}' w regule '{key}' musi być tekstem."
-            chain = rule.get("transforms", [])
-            if not isinstance(chain, list):
-                return f"Transformacje pola '{key}' muszą być listą."
-            for step in chain:
-                if isinstance(step, str):
-                    name, arg = step, None
-                elif isinstance(step, dict) and len(step) == 1:
-                    name, arg = next(iter(step.items()))
-                else:
-                    return f"Niepoprawny krok transformacji w polu '{key}'."
-                if name not in REGISTRY:
-                    return f"Nieznana transformacja '{name}' w polu '{key}'."
-                msg = _check_arg(name, arg, key)
-                if msg:
-                    return msg
-                if name == "regex_extract":
-                    pattern = arg.get("pattern", "") if isinstance(arg, dict) else None
-                    if not isinstance(pattern, str):
-                        return f"Transformacja 'regex_extract' w polu '{key}' wymaga wzorca (pattern)."
-                    if len(pattern) > MAX_PATTERN:
-                        return f"Wyrażenie regularne w polu '{key}' jest za długie (max {MAX_PATTERN} znaków)."
-                    try:
-                        regex.compile(pattern)
-                    except regex.error:
-                        return f"Błędne wyrażenie regularne w polu '{key}'."
-    return None
 
 
 def _mapped(rules: dict, section: str, key: str) -> bool:
@@ -311,7 +223,7 @@ def save(doc_id):
                        needs_confirm=True), 400
     raw_comment = payload.get("comment")
     comment = (raw_comment.strip() if isinstance(raw_comment, str) else "") or "Zmiana w edytorze mapowań"
-    comment = comment[:500]
+    comment = comment[:COMMENT_MAX]
     try:  # próba na sucho: wyjątek = 400 i nic nie zapisujemy (błędy transformacji to zwykłe issues)
         apply_template(load_tree(doc), rules, DbLookups(), doc.supplier_id, doc.overrides or {})
     except (ReaderError, OSError):
@@ -324,7 +236,7 @@ def save(doc_id):
     def apply():
         # FR-5: kontrola wersji bazowej w każdej próbie, pod blokadą wiersza szablonu — zapis innego
         # operatora między kontrolą a commitem (albo przed ponowieniem po IntegrityError) daje 409
-        if check_base and base != _locked_active_version_id(doc):
+        if check_base and base != locked_active_version_id(doc):
             raise _StaleBaseVersion()
         if doc.template_id or doc.supplier_id:
             v = save_rules(doc, rules, current_user.email, comment)

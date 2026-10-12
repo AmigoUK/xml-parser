@@ -76,9 +76,9 @@ def test_upload_empty_file(auth_client):
 
 # --- regresje bezpieczeństwa ---
 
-import json
+import json  # noqa: E402 — sekcja dopisana później, importy przy niej
 
-import pytest
+import pytest  # noqa: E402
 
 
 @pytest.mark.parametrize("nxt", ["/\\evil.com", "//evil.com", "https://evil.com", "/\\\\evil.com"])

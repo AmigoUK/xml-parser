@@ -10,15 +10,18 @@ _PAREN = re.compile(r"\(([0-9]{2,4})\)([^(]*)")
 
 
 class GS1Error(ValueError):
+    """Niepoprawny kod GS1-128 (nieznany AI, za krótka wartość, zła cyfra kontrolna GTIN)."""
     pass
 
 
 def gtin_check_digit(body: str) -> str:
+    """Cyfra kontrolna GTIN (mod 10, wagi 3/1) dla ciągu cyfr bez ostatniej."""
     total = sum(int(d) * (3 if i % 2 == 0 else 1) for i, d in enumerate(reversed(body)))
     return str((10 - total % 10) % 10)
 
 
 def is_valid_gtin(code: str) -> bool:
+    """Czy tekst to poprawny GTIN-8/12/13/14 (same cyfry ASCII, zgodna cyfra kontrolna)."""
     code = (code or "").strip()
     if not (code.isascii() and code.isdigit()) or len(code) not in (8, 12, 13, 14):
         return False
@@ -32,6 +35,7 @@ def _validate(out: dict[str, str]) -> dict[str, str]:
 
 
 def parse_gs1(code: str) -> dict[str, str]:
+    """Rozkłada kod GS1-128 (z nawiasami albo z separatorem GS) na słownik AI → wartość; błąd → GS1Error."""
     s = (code or "").strip()
     if not s:
         raise GS1Error("Pusty kod GS1.")
@@ -69,6 +73,7 @@ def parse_gs1(code: str) -> dict[str, str]:
 
 
 def gs1_date(yymmdd: str) -> str:
+    """Data GS1 (RRMMDD; DD=00 → ostatni dzień miesiąca) → ISO 8601; błąd → GS1Error."""
     if not re.fullmatch(r"[0-9]{6}", yymmdd or ""):
         raise GS1Error(f"Niepoprawna data GS1: {yymmdd}")
     yy, mm, dd = int(yymmdd[:2]), int(yymmdd[2:4]), int(yymmdd[4:])

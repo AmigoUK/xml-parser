@@ -30,6 +30,10 @@ Tak: pliki z deklaracją DOCTYPE/ENTITY są odrzucane, encje nie są rozwijane, 
 
 Sesja wygasa po 8 h bez aktywności. „Wyloguj” unieważnia wszystkie sesje tego konta — także na innych urządzeniach. Sesja nie jest powiązana z adresem IP ani przeglądarką, więc sama zmiana sieci (np. przejście z Wi-Fi na LTE) nie wylogowuje; adres IP liczy się natomiast w limicie nieudanych prób logowania.
 
+## Jak zmienić hasło?
+
+Po zalogowaniu wybierz „Zmień hasło” obok adresu e-mail w górnym pasku: podaj obecne hasło i dwa razy nowe (co najmniej 10 znaków, nie przykładowe). Pozostałe sesje tego konta zostaną wylogowane. Administrator instancji może też ustawić hasło poleceniem flask set-admin-password (np. po wycieku).
+
 ## Ile mam prób logowania?
 
 Po 5 nieudanych próbach w ciągu 15 min dla pary (e-mail, adres IP) ta para jest blokowana na 15 min. Dodatkowo obowiązują limity 20 prób z jednego IP (na dowolne konta) w 15 min i 50 prób na jedno konto z dowolnych IP w 5 min.

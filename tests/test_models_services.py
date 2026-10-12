@@ -3,8 +3,19 @@ from decimal import Decimal
 import pytest
 
 from app.extensions import db
-from app.models import (ApiKey, AuditLog, Document, Product, ProductMapping, Supplier, Template, Unit, UnitAlias,
-                        UnitConversion, User)
+from app.models import (
+    ApiKey,
+    AuditLog,
+    Document,
+    Product,
+    ProductMapping,
+    Supplier,
+    Template,
+    Unit,
+    UnitAlias,
+    UnitConversion,
+    User,
+)
 from app.services.apikeys import create_key, verify_key
 from app.services.audit import audit
 from app.services.lookups_db import DbLookups

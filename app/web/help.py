@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 import struct
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 from flask import Blueprint, abort, current_app, render_template, request
@@ -12,10 +12,11 @@ from app.api.routes import LIST_DEFAULT_LIMIT, LIST_MAX_LIMIT
 from app.engine.issues import MAX_LINE_NOS
 from app.engine.transforms import MAX_INPUT, MAX_PATTERN, REGEX_TIMEOUT, REGISTRY, TRANSFORM_LABELS
 from app.engine.values import MAX_FACTOR_INTEGER_DIGITS, MAX_INTEGER_DIGITS, MAX_NUMBER_TEXT
+from app.formatting import MIB, mib
 from app.help_content import FAQ, ISSUE_HELP, STATUS_HELP, TOPICS, TOPICS_BY_SLUG, TRANSFORM_HELP
 from app.models import STATUS_LABELS
+from app.services.catalog import MAX_IMPORT_BYTES, MAX_IMPORT_ROWS
 from app.services.pipeline import FINGERPRINT_MIN
-from app.web.catalog import MAX_IMPORT_BYTES, MAX_IMPORT_ROWS
 from app.web.documents import ISSUE_CARDS_LIMIT
 
 bp = Blueprint("help", __name__, url_prefix="/pomoc")
@@ -54,11 +55,12 @@ def fmt_int(n: int) -> str:
 
 
 def fmt_bytes(n: int) -> str:
-    mib, kib = 1024 * 1024, 1024
-    if n >= mib and n % mib == 0:
-        return f"{n // mib} MB"
-    if n >= mib:
-        return f"{n / mib:.1f} MB".replace(".", ",")
+    """Rozmiar po polsku: pełne MB, ułamek MB z przecinkiem, KB albo B."""
+    kib = 1024
+    if n >= MIB and n % MIB == 0:
+        return f"{mib(n)} MB"
+    if n >= MIB:
+        return f"{n / MIB:.1f} MB".replace(".", ",")
     if n >= kib:
         return f"{n // kib} KB"
     return f"{n} B"
@@ -111,7 +113,7 @@ def _transforms(limits: dict) -> list[dict]:
     return out
 
 
-@lru_cache(maxsize=None)
+@cache
 def _example_text(name: str) -> str:
     return (EXAMPLES_DIR / name).read_text(encoding="utf-8")
 

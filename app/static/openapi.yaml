@@ -32,6 +32,16 @@ components:
           properties:
             code: { type: string, example: bad_request }
             message: { type: string }
+    Supplier:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        tax_id: { type: string, nullable: true, description: NIP/VAT po normalizacji (bez spacji i myślników) }
+    SupplierList:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Supplier" } }
     Issue:
       type: object
       properties:
@@ -152,6 +162,12 @@ paths:
   /documents:
     post:
       summary: Wyślij fakturę
+      parameters:
+        - name: X-Filename
+          in: header
+          required: false
+          description: Nazwa pliku przy wysyłce jako surowe body (bez multipart); bez nagłówka zapisywana jest nazwa `dokument`.
+          schema: { type: string, example: faktura.xml }
       requestBody:
         content:
           multipart/form-data:
@@ -224,7 +240,8 @@ paths:
       parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Document" } } } }
-        "404": { description: Nie znaleziono }
+        "401": { description: Brak klucza API }
+        "404": { description: Nie znaleziono (także dokument innego klucza API) }
   /documents/{id}/reprocess:
     post:
       summary: Przetwórz ponownie aktywną wersją szablonu
@@ -235,9 +252,13 @@ paths:
       parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Document" } } } }
-        "404": { description: Nie znaleziono }
+        "401": { description: Brak klucza API }
+        "404": { description: Nie znaleziono (także dokument innego klucza API) }
         "409": { description: Dokument odrzucony przez operatora, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /suppliers:
     get:
       summary: Lista dostawców
-      responses: { "200": { description: OK } }
+      description: Tylko dostawcy z dokumentów tego klucza API (klucz nie widzi całej kartoteki), rosnąco po nazwie.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/SupplierList" } } } }
+        "401": { description: Brak klucza API }

@@ -44,7 +44,7 @@ def load_forbidden_tokens() -> set[str]:
     if not TOKENS_FILE.is_file():
         return set()
     lines = TOKENS_FILE.read_text(encoding="utf-8").splitlines()
-    return {l.strip().lower() for l in lines if l.strip() and not l.lstrip().startswith("#")}
+    return {line.strip().lower() for line in lines if line.strip() and not line.lstrip().startswith("#")}
 
 
 def find_violations(text: str, forbidden: set[str] | None = None) -> set[str]:
