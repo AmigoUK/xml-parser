@@ -49,6 +49,7 @@ from app.services.dbutil import fit_column as _fit
 from app.services.lookups_db import DbLookups
 from app.services.storage import get_storage
 from app.services.templates import active_rule_sets
+from app.services.webhook_outbox import emit_status_change
 
 FINGERPRINT_MIN = 0.6
 FILE_MISSING_MSG = ("Brak pliku źródłowego dokumentu w magazynie plików — wgraj fakturę ponownie albo odtwórz "
@@ -352,14 +353,25 @@ def touch(doc: Document) -> Document:
     return doc
 
 
-def process(doc: Document) -> Document:
+def _emit_if_changed(doc: Document, previous: str | None) -> Document:
+    """Zdarzenie webhooka, gdy przetworzenie zmieniło status (outbox w tej samej sesji, bez flush)."""
+    if doc.status != previous:
+        emit_status_change(doc, previous)
+    return doc
+
+
+def process(doc: Document, *, previous_status: str | None = None) -> Document:
     """Przetwarza dokument. Jedyny punkt wejścia — każda ścieżka (API, panel, negocjacja, edytor) przechodzi
     przez straż ręcznego odrzucenia (BE-2) i obsługę błędów (BE-9/BE-10). Każde przetworzenie odświeża
-    `updated_at` (`touch`), także gdy wynik jest identyczny; ręcznie odrzucony dokument zostaje nietknięty."""
+    `updated_at` (`touch`), także gdy wynik jest identyczny; ręcznie odrzucony dokument zostaje nietknięty.
+
+    Zmiana statusu względem `previous_status` (domyślnie: status sprzed przetworzenia) kolejkuje zdarzenie
+    webhooka klucza API dokumentu — także w kaskadzie duplikatów, bo zdegradowana kopia też idzie tędy."""
     if doc.is_manually_rejected:  # cofa je tylko jawne „Przywróć” (negotiation.restore)
         return doc
+    previous = doc.status if previous_status is None else previous_status
     try:
-        return touch(_process(doc))
+        _process(doc)
     except SQLAlchemyError:
         raise  # błąd bazy — transakcja do wycofania przez wywołującego
     except Exception as exc:  # noqa: BLE001 - np. zepsuta reguła szablonu; dokument nie może zginąć (BE-10)
@@ -368,7 +380,9 @@ def process(doc: Document) -> Document:
                "sprawdź reguły szablonu albo zgłoś problem administratorowi.")
         doc.status, doc.error = _error_status(doc), msg
         doc.issues = [Issue("internal_error", BLOCKING, msg).to_dict()]
-        return touch(doc)
+    # emisja poza try: błąd outboxu nie może zamienić poprawnego wyniku w internal_error — leci do wywołującego,
+    # który wycofuje transakcję (dokument i zdarzenie razem)
+    return _emit_if_changed(touch(doc), previous)
 
 
 def _process(doc: Document) -> Document:

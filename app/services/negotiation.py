@@ -43,6 +43,7 @@ from app.services.pipeline import (
     touch,
 )
 from app.services.templates import create_template, new_version
+from app.services.webhook_outbox import emit_status_change
 
 NEED_SUPPLIER = "Najpierw rozpoznaj dostawcę — to pierwszy problem na liście."
 
@@ -345,9 +346,12 @@ def _points_to(other: Document, doc: Document) -> bool:
 
 
 def a_reject(doc, data, remember, user):
+    previous = doc.status
     doc.status = STATUS_REJECTED
     doc.rejected_by = (user or "operator")[:Document.rejected_by.type.length]
-    touch(doc)  # odrzucenie nie przechodzi przez process() — updated_at odświeżamy jawnie
+    touch(doc)  # odrzucenie nie przechodzi przez process() — updated_at i zdarzenie webhooka obsługujemy jawnie
+    if previous != STATUS_REJECTED:
+        emit_status_change(doc, previous)
     db.session.flush()
     # duplikaty odrzuconego dokumentu nie mogą wskazywać na odrzucony — przelicz je (EDGE-24)
     for other in _copies(doc):
@@ -367,7 +371,7 @@ def restore(doc: Document, user: str | None = None) -> Document:
         doc.rejected_by = None
         doc.status = STATUS_RECEIVED
         audit("restore", "document", doc.id, {}, user)
-        process(doc)
+        process(doc, previous_status=STATUS_REJECTED)
         db.session.flush()
         if doc.status != STATUS_DUPLICATE:
             for other in _copies(doc):
