@@ -2,10 +2,11 @@
 {% from "_issues.html" import issue_card with context %}
 {% block title %}Dokument #{{ doc.id }}{% endblock %}
 {% block content %}
+<div class="mb-2"><a class="small" href="{% if doc.status == 'needs_review' %}{{ url_for('docs.queue') }}{% else %}{{ url_for('docs.documents') }}{% endif %}">{% if doc.status == 'needs_review' %}← Wróć do kolejki{% else %}← Wróć do dokumentów{% endif %}</a></div>
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
   <div>
     <h1 class="h4 m-0">Dokument #{{ doc.id }} <span class="badge text-bg-{{ {'approved':'success','needs_review':'warning','duplicate':'secondary','rejected':'danger'}.get(doc.status,'light') }}">{{ doc.status_label }}</span></h1>
-    <div class="small text-muted">{{ doc.filename }} · {{ (doc.fmt or '?')|upper }} · dostawca: {{ doc.supplier.name if doc.supplier else 'nierozpoznany' }}
+    <div class="small text-muted"><span class="d-inline-block align-bottom cell-truncate" title="{{ doc.filename }}">{{ doc.filename }}</span> · {{ (doc.fmt or '?')|upper }} · dostawca: {{ doc.supplier.name if doc.supplier else 'nierozpoznany' }}
       {% if doc.template_version %} · szablon „{{ doc.template.name }}” v{{ doc.template_version.version }}{% elif doc.draft_rules %} · reguły robocze ({% if doc.supplier_id %}szablon powstanie przy pierwszym zapisie mapowania{% else %}szablon powstanie po rozpoznaniu dostawcy i zapisie mapowania{% endif %}){% endif %}</div>
   </div>
   <div class="d-flex gap-2">
@@ -36,7 +37,7 @@
 <div class="row g-3">
   <div class="col-lg-5">
     <h2 class="h6">Plik źródłowy</h2>
-    <div class="card card-body p-2" style="max-height: 70vh; overflow: auto">
+    <div class="card card-body p-2 scroll-pane">
       {% if rows_truncated %}<div class="small text-muted mb-1">Pokazano pierwsze {{ rows|length }} wierszy pliku — całość w „Plik źródłowy”.</div>{% endif %}
       {% for r in rows %}<div class="tree-row" style="padding-left: {{ r.depth * 12 }}px" title="{{ r.path }}">{{ r.name }}{% if r.value %}: <span class="val">{{ r.value }}</span>{% endif %}</div>{% endfor %}
     </div>
@@ -46,13 +47,13 @@
     {% if doc.result %}
     <table class="table table-sm bg-white small">
       {% for f in header_fields %}{% set parts = f.key.split('.') %}{% set ns = namespace(v=doc.result) %}{% for p in parts %}{% set ns.v = ns.v[p] if ns.v is mapping and p in ns.v else none %}{% endfor %}
-      <tr><th class="w-50">{{ f.label }}</th><td>{% if ns.v is iterable and ns.v is not string %}{{ ns.v|join(', ') }}{% else %}{{ ns.v if ns.v is not none else '—' }}{% endif %}</td></tr>{% endfor %}
+      <tr><th class="w-50">{{ f.label }}</th><td{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{% if ns.v is iterable and ns.v is not string %}{{ ns.v|join(', ') }}{% elif ns.v is none %}—{% elif f.kind in ('money', 'price') %}{{ ns.v|money }}{% elif f.kind == 'decimal' %}{{ ns.v|qty }}{% else %}{{ ns.v }}{% endif %}</td></tr>{% endfor %}
     </table>
     <div class="table-responsive">
     <table class="table table-sm bg-white small">
       {% if doc.result.lines|length > lines_limit %}<caption class="small">Pokazano {{ lines_limit }} z {{ doc.result.lines|length }} pozycji — całość w JSON.</caption>{% endif %}
-      <thead><tr><th>#</th><th>Indeks</th>{% for f in line_fields %}<th>{{ f.label }}</th>{% endfor %}<th>JM źródłowa</th><th>Przelicznik</th></tr></thead>
-      <tbody>{% for l in doc.result.lines[:lines_limit] %}<tr><td>{{ l.line_no }}</td><td>{{ l.product_index or '—' }}</td>{% for f in line_fields %}<td>{{ l[f.key] if l[f.key] is not none else '—' }}</td>{% endfor %}<td>{{ l.unit_source or '—' }}</td><td>{{ l.conversion_factor }}</td></tr>{% endfor %}</tbody>
+      <thead><tr><th>#</th><th>Indeks</th>{% for f in line_fields %}<th{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{{ f.label }}</th>{% endfor %}<th>JM źródłowa</th><th class="text-end">Przelicznik</th></tr></thead>
+      <tbody>{% for l in doc.result.lines[:lines_limit] %}<tr><td>{{ l.line_no }}</td><td>{{ l.product_index or '—' }}</td>{% for f in line_fields %}<td{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{% if l[f.key] is none %}—{% elif f.kind in ('money', 'price') %}{{ l[f.key]|money }}{% elif f.kind == 'decimal' %}{{ l[f.key]|qty }}{% else %}{{ l[f.key] }}{% endif %}</td>{% endfor %}<td>{{ l.unit_source or '—' }}</td><td class="text-end">{{ l.conversion_factor|qty }}</td></tr>{% endfor %}</tbody>
     </table>
     </div>
     {% endif %}

@@ -1,13 +1,13 @@
-{% macro form_open(doc, action) -%}
-<form method="post" action="{{ url_for('docs.resolve_issue', doc_id=doc.id) }}" class="mt-2">
+{% macro form_open(doc, action, confirm=None) -%}
+<form method="post" action="{{ url_for('docs.resolve_issue', doc_id=doc.id) }}" class="mt-2"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="action" value="{{ action }}">
 {%- endmacro %}
 
-{% macro remember(default=True) -%}
+{% macro remember(idx, action, default=True) -%}
 <div class="form-check form-switch my-2">
-  <input class="form-check-input" type="checkbox" name="remember" value="1" {% if default %}checked{% endif %}>
-  <label class="form-check-label small">Zapamiętaj w szablonie / słowniku dostawcy (inaczej — tylko ta faktura)</label>
+  <input class="form-check-input" type="checkbox" name="remember" value="1" id="remember-{{ idx }}-{{ action }}" {% if default %}checked{% endif %}>
+  <label class="form-check-label small" for="remember-{{ idx }}-{{ action }}">Zapamiętaj w szablonie / słowniku dostawcy (inaczej — tylko ta faktura)</label>
 </div>
 {%- endmacro %}
 
@@ -32,15 +32,15 @@
         <div class="col-md-6">
           {{ form_open(doc, 'create_supplier') }}
             <div class="small fw-semibold">Utwórz nowego dostawcę</div>
-            <input class="form-control form-control-sm my-1" name="name" placeholder="Nazwa" value="{{ create.name if create else '' }}" required>
-            <input class="form-control form-control-sm my-1" name="tax_id" placeholder="NIP / VAT" value="{{ create.tax_id if create and create.tax_id else '' }}">
+            <input class="form-control form-control-sm my-1" name="name" placeholder="Nazwa" aria-label="Nazwa dostawcy" value="{{ create.name if create else '' }}" required>
+            <input class="form-control form-control-sm my-1" name="tax_id" placeholder="NIP / VAT" aria-label="NIP / VAT dostawcy" value="{{ create.tax_id if create and create.tax_id else '' }}">
             <button class="btn btn-sm btn-primary">Utwórz i zapamiętaj</button>
           </form>
         </div>
         <div class="col-md-6">
           {{ form_open(doc, 'use_supplier') }}
             <div class="small fw-semibold">…albo wskaż istniejącego</div>
-            <select class="form-select form-select-sm my-1" name="supplier_id" required>
+            <select class="form-select form-select-sm my-1" name="supplier_id" aria-label="Istniejący dostawca" required>
               {% for s in i.suggestions if s.kind == 'use_supplier' %}<option value="{{ s.supplier_id }}">★ {{ s.name }} ({{ (s.confidence*100)|round|int }}%)</option>{% endfor %}
               {% for s in ctx.suppliers %}<option value="{{ s.id }}">{{ s.name }}{% if s.tax_id %} — {{ s.tax_id }}{% endif %}</option>{% endfor %}
             </select>
@@ -64,18 +64,18 @@
           </div>
         {% endfor %}
         <div class="form-check d-flex gap-2 align-items-center">
-          <input class="form-check-input" type="radio" name="choice" value="manual_path" {% if not i.suggestions %}checked{% endif %}>
-          <select class="form-select form-select-sm" name="manual_path">
+          <input class="form-check-input" type="radio" name="choice" value="manual_path" aria-label="Wskaż ścieżkę ręcznie" {% if not i.suggestions %}checked{% endif %}>
+          <select class="form-select form-select-sm" name="manual_path" aria-label="Ścieżka w pliku źródłowym">
             {% for p in ctx.leaf_paths %}<option>{{ p }}</option>{% endfor %}
           </select>
         </div>
         {% if not i.line_no and i.field != 'line_path' %}
         <div class="form-check d-flex gap-2 align-items-center">
-          <input class="form-check-input" type="radio" name="choice" value="value">
-          <input class="form-control form-control-sm" name="value" placeholder="stała wartość (np. PLN)">
+          <input class="form-check-input" type="radio" name="choice" value="value" aria-label="Użyj stałej wartości">
+          <input class="form-control form-control-sm" name="value" placeholder="stała wartość (np. PLN)" aria-label="Stała wartość">
         </div>
         {% endif %}
-        {{ remember() }}
+        {{ remember(idx, 'map_field') }}
         <button class="btn btn-sm btn-primary">Zastosuj</button>
         <a class="btn btn-sm btn-link" href="{{ url_for('templates_views.editor_for_document', doc_id=doc.id) }}">Otwórz edytor mapowań</a>
       </form>
@@ -85,12 +85,12 @@
         <input type="hidden" name="alias" value="{{ i.source_value }}">
         <div class="d-flex gap-2 align-items-center">
           <span class="small">„{{ i.source_value }}” to u nas:</span>
-          <select class="form-select form-select-sm w-auto" name="unit">
+          <select class="form-select form-select-sm w-auto" name="unit" aria-label="Jednostka miary">
             {% for s in i.suggestions %}<option value="{{ s.unit }}">★ {{ s.unit }} ({{ (s.confidence*100)|round|int }}% · {{ s.reason }})</option>{% endfor %}
             {% for u in ctx.units %}<option value="{{ u.code }}">{{ u.code }} — {{ u.name }}</option>{% endfor %}
           </select>
         </div>
-        {{ remember() }}
+        {{ remember(idx, 'map_unit') }}
         <button class="btn btn-sm btn-primary">Zastosuj</button>
       </form>
 
@@ -101,11 +101,11 @@
         <input type="hidden" name="line_no" value="{{ i.line_no }}">
         <div class="d-flex gap-2 align-items-center flex-wrap small">
           1 {{ i.source_value }} =
-          <input class="form-control form-control-sm w-auto" name="factor" value="{{ g.factor or '' }}" placeholder="np. 12 albo 1.125" title="Kropka to separator dziesiętny" required>
-          <select class="form-select form-select-sm w-auto" name="to_unit">
+          <input class="form-control form-control-sm w-auto" name="factor" inputmode="decimal" aria-label="Przelicznik" value="{{ g.factor or '' }}" placeholder="np. 12 albo 1.125" title="Kropka to separator dziesiętny" required>
+          <select class="form-select form-select-sm w-auto" name="to_unit" aria-label="Jednostka docelowa">
             {% for u in ctx.units if u.is_base %}<option value="{{ u.code }}" {% if u.code == g.to_unit %}selected{% endif %}>{{ u.code }}</option>{% endfor %}
           </select>
-          <select class="form-select form-select-sm w-auto" name="scope">
+          <select class="form-select form-select-sm w-auto" name="scope" aria-label="Zakres przelicznika">
             <option value="supplier">dla wszystkich towarów dostawcy</option>
             <option value="product">tylko dla tego towaru</option>
           </select>
@@ -119,11 +119,11 @@
         <div class="col-md-6">
           {{ form_open(doc, 'map_product') }}
             <input type="hidden" name="line_no" value="{{ i.line_no }}">
-            <select class="form-select form-select-sm" name="product_code">
+            <select class="form-select form-select-sm" name="product_code" aria-label="Towar z kartoteki">
               {% for s in i.suggestions if s.kind == 'product' %}<option value="{{ s.code }}">★ {{ s.code }} — {{ s.name }} ({{ (s.confidence*100)|round|int }}%)</option>{% endfor %}
               {% for p in ctx.products %}<option value="{{ p.code }}">{{ p.code }} — {{ p.name }}</option>{% endfor %}
             </select>
-            {{ remember() }}
+            {{ remember(idx, 'map_product') }}
             <button class="btn btn-sm btn-primary">Przypisz towar</button>
           </form>
         </div>
@@ -131,10 +131,10 @@
           {{ form_open(doc, 'create_product') }}
             <input type="hidden" name="line_no" value="{{ i.line_no }}">
             <div class="small fw-semibold">…albo dodaj nowy towar do kartoteki</div>
-            <input class="form-control form-control-sm my-1" name="code" value="{{ create.code if create else '' }}" required>
-            <input class="form-control form-control-sm my-1" name="name" value="{{ create.name if create else '' }}" required>
-            <select class="form-select form-select-sm my-1" name="unit">{% for u in ctx.units %}<option {% if create and u.code == create.unit %}selected{% endif %}>{{ u.code }}</option>{% endfor %}</select>
-            {{ remember() }}
+            <input class="form-control form-control-sm my-1" name="code" placeholder="Kod towaru" aria-label="Kod towaru" value="{{ create.code if create else '' }}" required>
+            <input class="form-control form-control-sm my-1" name="name" placeholder="Nazwa towaru" aria-label="Nazwa towaru" value="{{ create.name if create else '' }}" required>
+            <select class="form-select form-select-sm my-1" name="unit" aria-label="Jednostka miary nowego towaru">{% for u in ctx.units %}<option {% if create and u.code == create.unit %}selected{% endif %}>{{ u.code }}</option>{% endfor %}</select>
+            {{ remember(idx, 'create_product') }}
             <button class="btn btn-sm btn-outline-primary">Dodaj i przypisz</button>
           </form>
         </div>
@@ -143,7 +143,7 @@
     {% elif i.code == 'duplicate' %}
       <div class="d-flex gap-2">
         {{ form_open(doc, 'allow_duplicate') }}<button class="btn btn-sm btn-outline-warning">To nie duplikat — przetwórz</button></form>
-        {{ form_open(doc, 'reject') }}<button class="btn btn-sm btn-outline-danger">Odrzuć</button></form>
+        {{ form_open(doc, 'reject', 'Odrzucić dokument? Cofnąć to może tylko „Przywróć”.') }}<button class="btn btn-sm btn-outline-danger">Odrzuć</button></form>
       </div>
     {% endif %}
   </div>
