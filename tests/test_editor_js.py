@@ -22,7 +22,10 @@ const vm = require('node:vm'); const fs = require('node:fs');
 const src = fs.readFileSync(process.argv[2], 'utf8');
 global.document = { querySelector: () => ({content: 'csrf-token'}), getElementById: () => null,
                     addEventListener: () => {} };
-global.window = { location: '', confirm: () => true };
+global.windowHandlers = {};
+global.window = { location: '', confirm: () => true,
+                  addEventListener: (t, h) => {
+                    (global.windowHandlers[t] = global.windowHandlers[t] || []).push(h); } };
 let responses = [];
 global.fetch = async (url, opts) => {
   global.lastOpts = opts; const r = responses.shift(); r.url = r.url || url; return r;
@@ -59,6 +62,34 @@ vm.runInThisContext(src);
   c.preview = {issues: [{severity: 'blocking', message: 'm'}], invoice: {number: 'X'}};
   out.previewSummary = c.previewSummary(); out.issueClass = c.issueClass(c.preview.issues[0]);
   out.previewJson = c.previewJson();
+  // stan dirty: zmiana reguł ustawia flagę, udany zapis ją zeruje
+  const d = editorComponent(cfg);
+  out.dirtyInitial = d.dirty;
+  responses = [resp({body: JSON.stringify({invoice: {}, issues: []})})];
+  d.select(cfg.rows[1]); d.assign('header', 'number');
+  out.dirtyAfterAssign = d.dirty;
+  responses = [resp({body: JSON.stringify({redirect: '/done'})})];
+  await d.save();
+  out.dirtyAfterSave = d.dirty; out.redirectedTo = global.window.location;
+  const e = editorComponent(cfg);
+  responses = [resp({ok: false, status: 500, type: 'text/html', body: 'x'})];
+  e.dirty = true; await e.save();
+  out.dirtyAfterFailedSave = e.dirty;
+  // beforeunload blokuje tylko przy dirty i poza zapisem
+  function unload(comp, dirty, saving) {
+    comp.dirty = dirty; comp.saving = saving;
+    const ev = {prevented: false, returnValue: undefined, preventDefault() { this.prevented = true; }};
+    comp.onBeforeUnload(ev); return {prevented: ev.prevented, returnValue: ev.returnValue};
+  }
+  const u = editorComponent(cfg);
+  out.unload = {clean: unload(u, false, false), dirty: unload(u, true, false), saving: unload(u, true, true)};
+  // init() rejestruje handler beforeunload
+  global.windowHandlers = {};
+  responses = [resp({body: JSON.stringify({invoice: {}, issues: []})})];
+  const i = editorComponent(cfg); i.init();
+  out.registered = (global.windowHandlers.beforeunload || []).length;
+  out.registeredWorks = (global.windowHandlers.beforeunload || []).map(h => { i.dirty = true; i.saving = false;
+    const ev = {preventDefault() { this.p = true; }}; h(ev); return !!ev.p; });
   console.log(JSON.stringify(out));
 })().catch(e => { console.error(e.stack); process.exit(1); });
 """
@@ -124,3 +155,37 @@ def test_editor_config_passed_as_json_data_block_not_expression():
     html = (ROOT / "app" / "templates" / "editor.html").read_text(encoding="utf-8")
     assert 'x-data="editor"' in html
     assert '<script type="application/json" id="editor-config">' in html
+
+
+def test_dirty_flag_set_on_change_and_cleared_after_save(component_output):
+    out = component_output
+    assert out["dirtyInitial"] is False
+    assert out["dirtyAfterAssign"] is True
+    assert out["dirtyAfterSave"] is False and out["redirectedTo"] == "/done"
+    assert out["dirtyAfterFailedSave"] is True  # nieudany zapis nie kasuje niezapisanych zmian
+
+
+def test_beforeunload_blocks_only_when_dirty(component_output):
+    u = component_output["unload"]
+    assert u["clean"] == {"prevented": False}
+    assert u["dirty"] == {"prevented": True, "returnValue": ""}
+    assert u["saving"] == {"prevented": False}
+
+
+def test_init_registers_beforeunload_handler(component_output):
+    assert component_output["registered"] == 1
+    assert component_output["registeredWorks"] == [True]
+
+
+def test_editor_icon_buttons_have_aria_labels():
+    html = (ROOT / "app" / "templates" / "editor.html").read_text(encoding="utf-8")
+    for click in ('@click="setLinePath()"', '@click="assign(s.key, f.key)"', '@click="clear(s.key, f.key)"'):
+        tag = re.search(r"<button[^>]*" + re.escape(click) + r"[^>]*>", html).group(0)
+        assert "aria-label=" in tag and "title=" in tag, tag
+    assert '@input="markDirty()"' in html
+
+
+def test_editor_has_no_static_inline_style():
+    html = (ROOT / "app" / "templates" / "editor.html").read_text(encoding="utf-8")
+    assert not re.search(r'\sstyle=', html)  # statyczne style -> klasy; dynamiczne :style zostaje
+    assert 'class="row g-0 flex-grow-1 min-h-0"' in html
