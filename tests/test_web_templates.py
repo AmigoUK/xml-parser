@@ -127,3 +127,26 @@ def test_editor_escapes_hostile_value(auth_client):
     html = auth_client.get(f"/szablony/dokument/{d.id}/edytor").get_data(as_text=True)
     assert hostile not in html and "<img src=x" not in html
     assert "\\u003c/script\\u003e" in html
+
+
+def test_detail_has_back_link_supplier_and_select_labels(auth_client):
+    make_doc_with_template()
+    t = Template.query.one()
+    html = auth_client.get(f"/szablony/{t.id}").get_data(as_text=True)
+    assert "← Szablony" in html and 'href="/szablony"' in html
+    assert "Hurtownia Alfa" in html
+    assert 'for="cmp-a"' in html and 'id="cmp-a"' in html
+    assert 'for="cmp-b"' in html and 'id="cmp-b"' in html
+    assert "table-responsive" in html and "<time " in html
+    t.supplier_id = None
+    t.supplier = None
+    db.session.commit()
+    assert auth_client.get(f"/szablony/{t.id}").status_code == 200
+
+
+def test_restore_button_has_confirm(auth_client):
+    d = make_doc_with_template()
+    resolve(d, "map_field", {"field": "currency", "value": "PLN"}, True, "admin")
+    t = Template.query.one()
+    html = auth_client.get(f"/szablony/{t.id}").get_data(as_text=True)
+    assert 'data-confirm="Przywrócić wersję 1' in html
