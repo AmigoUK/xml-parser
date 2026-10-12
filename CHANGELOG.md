@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nic jeszcze._
+
+## [0.7.1] — 2026-10-12
+
 ### Added
 - Polskie strony błędów panelu (403, 404, 405, 413, 500 i przepełnienie liczby w adresie) z nawigacją i stopką; `/api/*` nadal odpowiada JSON-em.
 - Stronicowanie list: kursor („Starsze →” / „Następne →”) w Dokumentach, Kolejce, Historii i Szablonach oraz numerowane strony w słownikach (w stałej kolejności słownika).
@@ -310,7 +314,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/AmigoUK/xml-parser/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/AmigoUK/xml-parser/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AmigoUK/xml-parser/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/AmigoUK/xml-parser/compare/v0.4.0...v0.5.0
