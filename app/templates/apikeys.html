@@ -5,6 +5,9 @@
 {% if new_key %}
 <div class="alert alert-success"><strong>Nowy klucz — Skopiuj teraz, nie pokażemy go ponownie:</strong><br><code class="user-select-all">{{ new_key }}</code></div>
 {% endif %}
+{% if webhook_secret %}
+<div class="alert alert-success"><strong>Sekret webhooka — Skopiuj teraz, nie pokażemy go ponownie</strong> (klucz „{{ webhook_secret[0].name }}”):<br><code class="user-select-all">{{ webhook_secret[1] }}</code></div>
+{% endif %}
 <form method="post" action="{{ url_for('apikeys.create') }}" class="d-flex gap-2 mb-3 w-form-key">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="visually-hidden" for="new-key-name">Nazwa nowego klucza</label>
@@ -23,8 +26,53 @@
       <form method="post" action="{{ url_for('apikeys.toggle', key_id=k.id) }}" class="d-inline"{% if k.active %} data-confirm="Wyłączyć klucz „{{ k.name }}”? Systemy używające go przestaną działać."{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">{{ 'Wyłącz' if k.active else 'Włącz' }}</button></form>
       <form method="post" action="{{ url_for('apikeys.delete', key_id=k.id) }}" class="d-inline" data-confirm="Usunąć klucz „{{ k.name }}”?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Usuń</button></form>
     </td>
-  </tr>{% else %}
+  </tr>
+  {% if is_admin %}
+  <tr>
+    <td colspan="5" class="border-top-0 pt-0">
+      <details>
+        <summary class="small">Webhook {% if k.webhook_url %}<span class="badge text-bg-success">ustawiony</span>{% else %}<span class="badge text-bg-secondary">brak adresu</span>{% endif %}</summary>
+        <div class="py-2">
+          <form method="post" action="{{ url_for('apikeys.webhook_set', key_id=k.id) }}" class="d-flex gap-1 mb-2 w-form-key">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="visually-hidden" for="webhook-url-{{ k.id }}">Adres webhooka klucza „{{ k.name }}”</label>
+            <input class="form-control form-control-sm" type="url" id="webhook-url-{{ k.id }}" name="url" maxlength="{{ url_max }}" placeholder="https://…" value="{{ k.webhook_url or '' }}" required>
+            <button class="btn btn-sm btn-primary">Zapisz</button>
+          </form>
+          {% if k.webhook_url %}
+          <div class="d-flex flex-wrap gap-1 mb-2">
+            <form method="post" action="{{ url_for('apikeys.webhook_test', key_id=k.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Wyślij testowe zdarzenie</button></form>
+            <form method="post" action="{{ url_for('apikeys.webhook_rotate', key_id=k.id) }}" class="d-inline" data-confirm="Wygenerować nowy sekret? Stary przestanie działać."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary">Rotuj sekret</button></form>
+            <form method="post" action="{{ url_for('apikeys.webhook_clear', key_id=k.id) }}" class="d-inline" data-confirm="Wyczyścić webhook klucza „{{ k.name }}”? Adres i sekret zostaną usunięte."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Wyczyść</button></form>
+          </div>
+          {% endif %}
+          <div class="table-responsive">
+          <table class="table table-sm small mb-0">
+            <caption class="caption-top">Dostawy — {{ deliveries_limit }} najnowszych</caption>
+            <thead><tr><th>Czas</th><th>Zdarzenie</th><th>Dokument</th><th>Stan</th><th>Próby</th><th>Kod HTTP</th><th>Ostatni błąd</th><th class="text-end">Akcje</th></tr></thead>
+            <tbody>{% for d in deliveries[k.id] %}
+            <tr data-delivery-row>
+              <td class="text-nowrap">{{ d.created_at|dt }}</td>
+              <td><code>{{ d.event }}</code></td>
+              <td>{% if d.document_id %}<a href="{{ url_for('docs.detail', doc_id=d.document_id) }}">#{{ d.document_id }}</a>{% else %}—{% endif %}</td>
+              <td><span class="badge text-bg-{{ {'sent':'success','failed':'danger','pending':'warning'}.get(d.status,'light') }}">{{ d.status }}</span></td>
+              <td>{{ d.attempts }}</td>
+              <td>{{ d.last_status_code or '—' }}</td>
+              <td>{% if d.last_error %}<span class="d-inline-block align-bottom cell-truncate" title="{{ d.last_error }}">{{ d.last_error }}</span>{% else %}—{% endif %}</td>
+              <td class="text-end">{% if d.status == failed %}<form method="post" action="{{ url_for('apikeys.delivery_retry', delivery_id=d.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-primary">Ponów</button></form>{% endif %}</td>
+            </tr>{% else %}
+            <tr><td colspan="8" class="text-muted text-center">Brak dostaw.</td></tr>{% endfor %}</tbody>
+          </table>
+          </div>
+        </div>
+      </details>
+    </td>
+  </tr>
+  {% endif %}{% else %}
   <tr><td colspan="5" class="text-muted text-center">Brak kluczy — utwórz pierwszy powyżej.</td></tr>{% endfor %}</tbody>
 </table>
 </div>
+{% if not is_admin %}
+<p class="small text-muted">Ustawienia webhooków (adres, sekret, lista dostaw) zmienia tylko administrator.</p>
+{% endif %}
 {% endblock %}
