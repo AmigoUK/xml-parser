@@ -12,8 +12,9 @@ Zrzuty odświeża się po każdym wydaniu — stopka pokazuje wersję aplikacji.
 Instancja: osobny podproces z aplikacją z repozytorium na 127.0.0.1:<port> (domyślnie 18517; port żywego demo 18506
 jest odrzucany, zajęty port też), świeża SQLite i storage w katalogu tymczasowym, bez lokalnego .env
 (PYTHON_DOTENV_DISABLED=1, FLASK_SKIP_DOTENV=1) i bez zmiennych konfiguracji z otoczenia (ENV_PREFIXES), DEMO_MODE=1,
-fikcyjne konto admin@example.com z hasłem losowanym przy każdym uruchomieniu i fikcyjny klucz API demo. Dane — tylko
-próbki z demo/samples/ (SAMPLES): nauka na alfa-1.xml pętlą „pierwsza podpowiedź + zapamiętaj” z testów uczenia, potem
+fikcyjne konto admin@example.com z hasłem losowanym przy każdym uruchomieniu i fikcyjny klucz API demo. Dane — pierwsza
+faza zestawu demo (demo/dataset/, dokumenty nierozwiązane) i próbki z demo/samples/ (SAMPLES):
+nauka na alfa-1.xml pętlą „pierwsza podpowiedź + zapamiętaj” z testów uczenia, potem
 alfa-2 (zatwierdzona automatycznie), beta-ksef i delta (rozwiązane), gamma-ubl i epsilon (czekają do wyjaśnienia).
 Przeglądarka: Chromium z Playwright, okno 1400×900, device_scale_factor=1, locale pl-PL. Pliki PNG w katalogu
 wyjściowym są nadpisywane; na końcu narzędzie wypisuje listę plików i błędy konsoli przeglądarki, zatrzymuje serwer
@@ -82,8 +83,40 @@ class Shot(NamedTuple):
 # Baza jest świeża, więc id dokumentu = pozycja na liście (sprawdzane w serve()).
 SAMPLES = [("alfa-1.xml", True), ("alfa-2.xml", False), ("beta-ksef.xml", True), ("delta.csv", True),
            ("gamma-ubl.xml", False), ("epsilon.json", False), ("zeta.csv", "missing_conversion")]
-DOC_ID = [name for name, _ in SAMPLES].index("gamma-ubl.xml") + 1  # nowy dostawca z problemami do wyjaśnienia
-ZETA_ID = [name for name, _ in SAMPLES].index("zeta.csv") + 1  # worki po 25 kg: karta „brak przelicznika” (FAQ)
+class ToolError(Exception):
+    """Błąd przygotowania lub uruchomienia instancji — komunikat dla użytkownika (kod wyjścia 2)."""
+
+
+DATASET_MANIFEST = ROOT / "demo" / "dataset" / "manifest.json"
+
+
+def dataset_offset() -> int:
+    """Liczba dokumentów pierwszej fazy zestawu demo — wczytywane są przed próbkami, więc o tyle przesuwają się
+    id próbek. Manifest czytany stdlib json (bez importu aplikacji): `--list` działa bez niej. Brak albo zły
+    manifest → ToolError (kod wyjścia 2) — wołane tam, gdzie offset jest naprawdę potrzebny (start serwera)."""
+    try:
+        files = json.loads(DATASET_MANIFEST.read_text(encoding="utf-8"))["files"]
+        # "first" = wartość PHASES["pierwsze"] z app/services/demo_dataset.py (źródło prawdy); literał, bo import
+        # aplikacji zepsułby --list bez niej
+        return sum(1 for f in files if f["phase"] == "first")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise ToolError(f"Brak lub zły manifest zestawu demo ({DATASET_MANIFEST}): {e!r} — "
+                        "uruchom tools/gen_demo_dataset.py.") from e
+
+
+def _offset_or_zero() -> int:
+    """Offset do adresów w PAGES przy imporcie: bez manifestu 0, żeby import i `--list` nie padały."""
+    try:
+        return dataset_offset()
+    except ToolError:
+        return 0
+
+
+DATASET_OFFSET = _offset_or_zero()
+# nowy dostawca z problemami do wyjaśnienia
+DOC_ID = DATASET_OFFSET + [name for name, _ in SAMPLES].index("gamma-ubl.xml") + 1
+# worki po 25 kg: karta „brak przelicznika” (FAQ)
+ZETA_ID = DATASET_OFFSET + [name for name, _ in SAMPLES].index("zeta.csv") + 1
 
 PAGES = [
     Shot("01-demo", "/demo", True),
@@ -99,11 +132,9 @@ PAGES = [
     Shot("11-api-docs", "/api/docs", False, wait_for=".opblock-summary-path"),  # Swagger UI wyrenderował specyfikację
     Shot("12-pomoc-integracja", "/pomoc/integracja#odbior", False),
     Shot("13-faq-worek", f"/dokumenty/{ZETA_ID}", False),  # FAQ: „1 worek = 25 kg” w negocjacji
+    # karta zestawu demo z postępem pierwszej fazy; zrzut po zalogowaniu (przyciski karty widzą tylko zalogowani)
+    Shot("14-demo-zestaw", "/demo#zestaw", False),
 ]
-
-
-class ToolError(Exception):
-    """Błąd przygotowania lub uruchomienia instancji — komunikat dla użytkownika (kod wyjścia 2)."""
 
 
 # ----------------------------------------------------------------------------------------------
@@ -115,12 +146,14 @@ def serve(port: int, workdir: Path) -> None:
     procesu nadrzędnego (server_env), baza i storage — w `workdir`."""
     if os.environ.get("DEMO_MODE") != "1" or not os.environ.get("ADMIN_PASSWORD"):
         raise SystemExit("Tryb --serve uruchamia tools/screenshots.py — nie wywołuj go ręcznie.")
+    offset = dataset_offset()
     os.environ["PYTHON_DOTENV_DISABLED"] = "1"  # przed importem app.config: lokalny .env nie jest wczytywany
     sys.path.insert(0, str(ROOT))
     from werkzeug.serving import make_server
 
     from app import create_app
     from app.extensions import db
+    from app.services.demo_dataset import load_phase
     from app.services.pipeline import ingest
     from app.services.seed import seed_base, seed_demo
 
@@ -134,7 +167,14 @@ def serve(port: int, workdir: Path) -> None:
         db.create_all()
         seed_base()
         seed_demo()
-        for expected_id, (name, resolve) in enumerate(SAMPLES, start=1):
+        # pierwsza faza zestawu demo przed próbkami: dokumenty „do przejrzenia” od nieznanych dostawców zostają
+        # nierozwiązane (karta zestawu na /demo), a id próbek przesuwa offset
+        loaded = load_phase("pierwsze", source="demo").loaded
+        for doc in loaded:
+            print(f"  dokument {doc.id}: {doc.filename} — {doc.status}", flush=True)
+        if len(loaded) != offset or [d.id for d in loaded] != list(range(1, offset + 1)):
+            raise SystemExit(f"Zestaw demo: oczekiwano {offset} dokumentów od id 1 — adresy w PAGES złe.")
+        for expected_id, (name, resolve) in enumerate(SAMPLES, start=offset + 1):
             doc = ingest((samples / name).read_bytes(), name, source="demo")
             if resolve is True:
                 resolve_with_top_suggestions(doc)
@@ -370,6 +410,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{shot.name:22} {shot.path:36} {'cała strona' if shot.full_page else window}")
         return 0
     try:
+        dataset_offset()  # brak manifestu zestawu → czytelny błąd przed startem serwera
         shots = select_shots(args.only)
         if args.port in live_demo_ports():
             raise ToolError(f"Port {args.port} to żywe demo (APP_PORT) — zrzuty wyłącznie z odizolowanej instancji "
