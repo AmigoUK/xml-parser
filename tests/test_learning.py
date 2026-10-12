@@ -1,9 +1,13 @@
 """Kryterium sukcesu specu: pierwsza faktura → negocjacja, kolejna tego dostawcy → automatycznie."""
+from pathlib import Path
+
 import pytest
 
 from app.services.negotiation import resolve
 from app.services.pipeline import ingest
 from tests.conftest import sample_bytes
+
+DATASET = Path(__file__).resolve().parent.parent / "demo" / "dataset"
 
 
 def resolve_with_top_suggestions(doc, fallback_factor="12", max_steps=25, stop_at=None):
@@ -45,22 +49,33 @@ def resolve_with_top_suggestions(doc, fallback_factor="12", max_steps=25, stop_a
     pytest.fail(f"Nie udało się rozwiązać problemów: {doc.issues}")
 
 
-@pytest.mark.parametrize("name,second", [
-    ("alfa-1.xml", None),
-    ("beta-ksef.xml", (b"FV/B/1024/2026", b"FV/B/1025/2026")),
-    ("gamma-ubl.xml", (b"GAM-2026-0315", b"GAM-2026-0316")),
-    ("delta.csv", (b"D/77/2026", b"D/78/2026")),
-    ("epsilon.json", (b"E-2026-0042", b"E-2026-0043")),
-    ("zeta.csv", (b"Z/301/2026", b"Z/302/2026")),
+@pytest.mark.parametrize("kind,name,second", [
+    ("sample", "alfa-1.xml", None),
+    ("sample", "beta-ksef.xml", (b"FV/B/1024/2026", b"FV/B/1025/2026")),
+    ("sample", "gamma-ubl.xml", (b"GAM-2026-0315", b"GAM-2026-0316")),
+    ("sample", "delta.csv", (b"D/77/2026", b"D/78/2026")),
+    ("sample", "epsilon.json", (b"E-2026-0042", b"E-2026-0043")),
+    ("sample", "zeta.csv", (b"Z/301/2026", b"Z/302/2026")),
+    ("dataset", "01-alfa-1.xml", "07-alfa-2.xml"),
+    ("dataset", "02-beta-1.xml", "08-beta-2.xml"),
+    ("dataset", "03-eta-1.xml", "09-eta-2.xml"),
+    ("dataset", "04-gamma-1.xml", "10-gamma-2.xml"),
+    ("dataset", "05-epsilon-1.json", "11-epsilon-2.json"),
+    ("dataset", "06-zeta-1.csv", "12-zeta-2.csv"),
 ])
-def test_first_invoice_negotiated_next_one_automatic(seeded, name, second):
-    first = ingest(sample_bytes(name), name)
+def test_first_invoice_negotiated_next_one_automatic(seeded, kind, name, second):
+    """`sample`: próbka + podmiana numeru (lub alfa-2); `dataset`: prawdziwa druga faktura z zestawu demo."""
+    if kind == "dataset":
+        first_bytes, second_bytes = (DATASET / name).read_bytes(), (DATASET / second).read_bytes()
+    else:
+        first_bytes = sample_bytes(name)
+        second_bytes = sample_bytes("alfa-2.xml") if second is None else first_bytes.replace(*second)
+    first = ingest(first_bytes, name)
     assert first.status == "needs_review"
     resolve_with_top_suggestions(first)
     assert first.status == "approved", first.issues
 
-    data = sample_bytes("alfa-2.xml") if second is None else sample_bytes(name).replace(*second)
-    nxt = ingest(data, "kolejna-" + name)
+    nxt = ingest(second_bytes, "kolejna-" + name)
     assert nxt.status == "approved", nxt.issues
     assert nxt.supplier_id == first.supplier_id
     assert nxt.template_id == first.template_id
