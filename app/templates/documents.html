@@ -3,10 +3,20 @@
 {% block content %}
 <h1 class="h4 mb-3">{{ title }}</h1>
 {% if not queue %}
-<div class="btn-group btn-group-sm mb-3">
-  <a class="btn btn-outline-secondary {% if not current %}active{% endif %}" href="{{ url_for('docs.documents') }}">Wszystkie</a>
-  {% for s, l in labels.items() %}<a class="btn btn-outline-secondary {% if current == s %}active{% endif %}" href="{{ url_for('docs.documents', status=s) }}">{{ l }}</a>{% endfor %}
+{% set status = current if current in labels else None %}
+<div class="d-flex flex-wrap gap-2 align-items-start mb-3">
+  <div class="btn-group btn-group-sm flex-wrap">
+    <a class="btn btn-outline-secondary {% if not status %}active{% endif %}" href="{{ url_for('docs.documents', q=q or None) }}">Wszystkie</a>
+    {% for s, l in labels.items() %}<a class="btn btn-outline-secondary {% if status == s %}active{% endif %}" href="{{ url_for('docs.documents', status=s, q=q or None) }}">{{ l }}</a>{% endfor %}
+  </div>
+  <form method="get" action="{{ url_for('docs.documents') }}" role="search" class="d-flex gap-2 ms-md-auto">
+    {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+    <input type="search" name="q" value="{{ q }}" maxlength="100" class="form-control form-control-sm" placeholder="Numer faktury lub dostawca" aria-label="Szukaj dokumentów po numerze faktury lub nazwie dostawcy">
+    <button class="btn btn-sm btn-outline-primary">Szukaj</button>
+    {% if q %}<a class="btn btn-sm btn-link" href="{{ url_for('docs.documents', status=status) }}">Wyczyść</a>{% endif %}
+  </form>
 </div>
 {% endif %}
 {% include "_doc_table.html" %}
+{% with pager_mode = "cursor_asc" if queue else "cursor_desc" %}{% include "_pager.html" %}{% endwith %}
 {% endblock %}

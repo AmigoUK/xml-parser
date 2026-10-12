@@ -1,13 +1,21 @@
 {% extends "base.html" %}
 {% block title %}{{ spec.title }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <h1 class="h4 m-0">{{ spec.title }}</h1>
   <div class="d-flex gap-2">
     {% for label, endpoint in spec.extra_actions %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for(endpoint) }}">{{ label }}</a>{% endfor %}
-    <a class="btn btn-sm btn-primary" href="{{ url_for('catalog.new_' ~ spec.key) }}">Dodaj</a>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('catalog.new_' ~ spec.key) }}">{{ spec.new_label }}</a>
   </div>
 </div>
+{% if spec.search_fields %}
+<form method="get" action="{{ url_for('catalog.list_' ~ spec.key) }}" role="search" class="d-flex gap-2 mb-3">
+  <input type="search" name="q" value="{{ q }}" maxlength="100" class="form-control form-control-sm" placeholder="Szukaj…" aria-label="Szukaj: {{ spec.title }}">
+  <button class="btn btn-sm btn-outline-primary">Szukaj</button>
+  {% if q %}<a class="btn btn-sm btn-link" href="{{ url_for('catalog.list_' ~ spec.key) }}">Wyczyść</a>{% endif %}
+</form>
+{% endif %}
+<div class="table-responsive">
 <table class="table table-sm table-hover bg-white">
   <thead><tr>{% for label, _ in spec.columns %}<th>{{ label }}</th>{% endfor %}<th class="text-end">Akcje</th></tr></thead>
   <tbody>
@@ -16,15 +24,22 @@
       {% for _, getter in spec.columns %}<td>{{ getter(row) }}</td>{% endfor %}
       <td class="text-end text-nowrap">
         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('catalog.edit_' ~ spec.key, obj_id=row.id) }}">Edytuj</a>
-        <form method="post" action="{{ url_for('catalog.delete_' ~ spec.key, obj_id=row.id) }}" class="d-inline" data-confirm="Usunąć?">
+        <form method="post" action="{{ url_for('catalog.delete_' ~ spec.key, obj_id=row.id) }}" class="d-inline" data-confirm="Usunąć {{ spec.singular_acc }} „{{ spec.label_of(row) }}”?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-sm btn-outline-danger">Usuń</button>
         </form>
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="{{ spec.columns|length + 1 }}" class="text-muted">Brak rekordów.</td></tr>
+    <tr><td colspan="{{ spec.columns|length + 1 }}" class="text-muted">
+      {%- if q %}Brak rekordów pasujących do „{{ q }}”.
+      {%- else %}Brak rekordów. <a href="{{ url_for('catalog.new_' ~ spec.key) }}">{{ spec.new_label }} →</a>
+        {%- for label, endpoint in spec.extra_actions %} · <a href="{{ url_for(endpoint) }}">{{ label }}</a>{% endfor %}
+      {%- endif -%}
+    </td></tr>
   {% endfor %}
   </tbody>
 </table>
+</div>
+{% with pager_mode = "numbered" %}{% include "_pager.html" %}{% endwith %}
 {% endblock %}
