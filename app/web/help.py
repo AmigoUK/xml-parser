@@ -32,6 +32,12 @@ INTEGRATION_EXAMPLES = [  # (język bloku kodu, tytuł, plik)
     ("javascript", "JavaScript — Node.js 18+ (fetch, FormData, Blob)", "integracja.mjs"),
     ("bash", "Powłoka — curl i jq", "integracja.sh"),
 ]
+WEBHOOK_EXAMPLES = [  # (język bloku kodu, tytuł, plik) — odbiorca webhooka z weryfikacją podpisu
+    ("python", "Python (stdlib)", "webhook-odbiorca.py"),
+    ("php", "PHP", "webhook-odbiorca.php"),
+    ("javascript", "Node.js", "webhook-odbiorca.mjs"),
+    ("bash", "bash", "webhook-odbiorca.sh"),
+]
 SAMPLE_RESPONSE_FILE = "odpowiedz-zatwierdzona.json"
 DATASET_SCRIPT = "zestaw-demo.sh"
 
