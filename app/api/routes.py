@@ -1,6 +1,6 @@
 from functools import wraps
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, flash, g, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import defer
 from werkzeug.exceptions import NotFound
@@ -166,41 +166,67 @@ def list_suppliers():
     return jsonify(items=[{"id": s.id, "name": s.name, "tax_id": s.tax_id} for s in q])
 
 
+def _is_api() -> bool:
+    return request.path.startswith("/api/")
+
+
+def _panel_error(code: int, title: str, message: str):
+    """Polska strona błędu panelu (rozszerza base.html, więc z nawigacją i stopką). Nigdy nie ujawnia treści wyjątku;
+    gdy sam render zawiedzie (np. zepsuta sesja bazy), zwraca prosty tekst."""
+    try:
+        return render_template("errors/error.html", code=code, title=title, message=message), code
+    except Exception:  # noqa: BLE001 — ostatnia deska ratunku, nie wolno zgłosić kolejnego 500
+        return f"{title}\n{message}\n", code, {"Content-Type": "text/plain; charset=utf-8"}
+
+
+@bp.app_errorhandler(403)
+def _forbidden(exc):
+    if _is_api():
+        return exc  # zachowanie API bez zmian
+    return _panel_error(403, "Brak uprawnień", "Ta akcja jest dostępna tylko dla administratora.")
+
+
 @bp.app_errorhandler(413)
 def too_large(exc):
-    if not request.path.startswith("/api/"):
-        return exc
     limit = current_app.config["MAX_DOCUMENT_BYTES"] // (1024 * 1024)
-    return api_error("too_large", f"Plik przekracza limit {limit} MB.", 413)
-
-
-def _json_or_default(exc, code, message):
-    if not request.path.startswith("/api/"):
-        return exc
-    return api_error(code, message, exc.code if hasattr(exc, "code") and exc.code else 500)
+    if _is_api():
+        return api_error("too_large", f"Plik przekracza limit {limit} MB.", 413)
+    message = f"Plik jest za duży (maks. {limit} MB)."
+    if request.endpoint in ("docs.upload", "catalog.import_products"):
+        flash(message, "error")
+        return redirect(url_for(request.endpoint))
+    return _panel_error(413, "Plik jest za duży", message)
 
 
 @bp.app_errorhandler(404)
 def _not_found(exc):
-    return _json_or_default(exc, "not_found", "Nie znaleziono zasobu.")
+    if _is_api():
+        return api_error("not_found", "Nie znaleziono zasobu.", 404)
+    return _panel_error(404, "Nie znaleziono strony", "Adres jest nieprawidłowy albo zasób już nie istnieje.")
 
 
 @bp.app_errorhandler(405)
 def _method_not_allowed(exc):
-    return _json_or_default(exc, "method_not_allowed", "Metoda niedozwolona dla tego adresu.")
+    if _is_api():
+        return api_error("method_not_allowed", "Metoda niedozwolona dla tego adresu.", 405)
+    return _panel_error(405, "Metoda niedozwolona", "Ten adres nie obsługuje tej metody żądania.")
 
 
 @bp.app_errorhandler(OverflowError)
 def _overflow(exc):
     """Siatka bezpieczeństwa: liczba ponad zakres kolumny związana w zapytaniu (SQLite rzuca surowy
     OverflowError, nieopakowany przez SQLAlchemy) to błąd wejścia, nie awaria — 400 w API, 404 w panelu."""
-    if request.path.startswith("/api/"):
+    if _is_api():
         return api_error("bad_request", "Identyfikator poza dopuszczalnym zakresem.", 400)
-    return NotFound()
+    return _not_found(NotFound())
 
 
 @bp.app_errorhandler(500)
 def _server_error(exc):
-    if not request.path.startswith("/api/"):
-        return exc
-    return api_error("internal_error", "Wewnętrzny błąd serwera.", 500)
+    if _is_api():
+        return api_error("internal_error", "Wewnętrzny błąd serwera.", 500)
+    try:
+        db.session.rollback()  # sesja po wyjątku bywa w stanie przerwanej transakcji
+    except Exception:  # noqa: BLE001
+        pass
+    return _panel_error(500, "Błąd serwera", "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.")
