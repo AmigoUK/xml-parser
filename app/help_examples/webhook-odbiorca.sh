@@ -56,7 +56,7 @@ body="$(cat; printf x)"
 body="${body%x}"
 if command -v python3 >/dev/null 2>&1; then
   # Preferowane: sekret zostaje w środowisku procesu i nie trafia do argv (nie widać go w `ps`).
-  mac="$(printf '%s.%s' "$ts" "$body" | python3 -c '
+  mac="$(printf '%s.%s' "$ts" "$body" | python3 -I -c '
 import hashlib, hmac, os, sys
 print(hmac.new(os.environ["XP_WEBHOOK_SECRET"].encode(), sys.stdin.buffer.read(), hashlib.sha256).hexdigest())')"
 else
