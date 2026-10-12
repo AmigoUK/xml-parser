@@ -57,6 +57,14 @@ def test_money_polish_thousands_and_comma(app):
     assert _render(app, "{{ v|money }}", v=Decimal("12")) == "12,00"
 
 
+def test_price_keeps_up_to_four_decimals_min_two(app):
+    assert _render(app, "{{ v|price }}", v=Decimal("3.1234")) == "3,1234"
+    assert _render(app, "{{ v|price }}", v=Decimal("12.5")) == "12,50"
+    assert _render(app, "{{ v|price }}", v=Decimal("1234.5")) == "1\xa0234,50"
+    assert _render(app, "{{ v|price }}", v="abc") == "abc"
+    assert _render(app, "{{ v|price }}", v=None) == ""
+
+
 def test_qty_strips_trailing_zeros_max_four_places(app):
     assert _render(app, "{{ v|qty }}", v=Decimal("1.5000")) == "1,5"
     assert _render(app, "{{ v|qty }}", v=Decimal("10.000")) == "10"
@@ -77,7 +85,7 @@ def test_mib_filter(app):
 
 
 def test_filters_registered_in_jinja_env(app):
-    for name in ("dt", "dts", "money", "qty", "mib"):
+    for name in ("dt", "dts", "money", "price", "qty", "mib"):
         assert name in app.jinja_env.filters
 
 

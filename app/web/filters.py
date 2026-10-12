@@ -9,7 +9,7 @@ from flask import Flask, current_app
 from markupsafe import Markup, escape
 
 from .. import formatting
-from ..engine.values import fmt_money, fmt_qty
+from ..engine.values import fmt_money, fmt_price, fmt_qty
 
 log = logging.getLogger(__name__)
 DASH = "—"
@@ -74,6 +74,14 @@ def money(value) -> str:
     return escape(value) if d is None else _group(fmt_money(d))
 
 
+def price(value) -> str:
+    """Cena jednostkowa „1 234,5678”: do 4 miejsc, co najmniej 2; None → pusty tekst, nienumeryczna bez zmian."""
+    if value is None:
+        return ""
+    d = _decimal(value)
+    return escape(value) if d is None else _group(fmt_price(d))
+
+
 def qty(value) -> str:
     """Ilość do 4 miejsc po przecinku bez zer końcowych; None → pusty tekst, nienumeryczne bez zmian."""
     if value is None:
@@ -85,4 +93,4 @@ def qty(value) -> str:
 
 
 def register_filters(app: Flask) -> None:
-    app.jinja_env.filters.update(dt=dt, dts=dts, money=money, qty=qty, mib=formatting.mib)
+    app.jinja_env.filters.update(dt=dt, dts=dts, money=money, price=price, qty=qty, mib=formatting.mib)
