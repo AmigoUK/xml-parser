@@ -1,6 +1,7 @@
 """Migracje: e4a1d7c03b52 na danych sprzed v0.2.0 (duplikaty między zakresami FR-8, ponawialność FR-9),
-86ccf8021da9 (mikrosekundy w documents.created_at / updated_at — DATETIME(6) w MariaDB, na SQLite bez zmian)
-i 2eff54106035 (indeks listy synchronizacji API: documents (api_key_id, updated_at, id)).
+86ccf8021da9 (mikrosekundy w documents.created_at / updated_at — DATETIME(6) w MariaDB, na SQLite bez zmian),
+2eff54106035 (indeks listy synchronizacji API: documents (api_key_id, updated_at, id)) i miejsce 99f2fe61d963
+(webhook_deliveries, v0.9.0) w łańcuchu — sama migracja webhooków: tests/test_webhook_model.py.
 
 Migracje uruchamiane w podprocesie (`flask db upgrade`) — konfiguracja logowania Alembica nie wpływa na
 resztę testów; dane wstawiane surowym SQL w schemacie z rewizji b7f3c2a91d40. Testy oznaczone `needs_mariadb`
@@ -31,6 +32,8 @@ BEFORE = "b7f3c2a91d40"
 UNIQUE_KEYS = "e4a1d7c03b52"  # unikalność kluczy w bazie (v0.2.0)
 MICRO = "86ccf8021da9"  # mikrosekundy w czasie dokumentów (v0.5.0)
 SYNC_INDEX = "2eff54106035"  # indeks listy synchronizacji API (v0.5.0)
+CODE_COLLATION = "d2c1e7a94f30"  # kolacja binarna products.code (v0.6.0)
+WEBHOOKS = "99f2fe61d963"  # tabela webhook_deliveries — outbox webhooków (v0.9.0)
 SYNC_INDEX_NAME = "ix_documents_api_key_updated"
 SYNC_INDEX_COLUMNS = ["api_key_id", "updated_at", "id"]
 
@@ -190,7 +193,8 @@ def test_document_times_are_plain_datetime_on_sqlite():
     assert "DATETIME(6)" not in ddl
 
 
-@pytest.mark.parametrize("revision, parent", [(MICRO, UNIQUE_KEYS), (SYNC_INDEX, MICRO)], ids=["mikro", "indeks"])
+@pytest.mark.parametrize("revision, parent", [(MICRO, UNIQUE_KEYS), (SYNC_INDEX, MICRO), (WEBHOOKS, CODE_COLLATION)],
+                         ids=["mikro", "indeks", "webhooki"])
 def test_revision_follows_parent_on_a_single_chain(revision, parent):
     cfg = AlembicConfig()
     cfg.set_main_option("script_location", str(ROOT / "migrations"))
@@ -391,8 +395,6 @@ def test_sync_index_migration_on_mariadb(mariadb_url, tmp_path):
 
 
 # --- d2c1e7a94f30: kolacja binarna products.code (MariaDB) -------------------------------------------------
-
-CODE_COLLATION = "d2c1e7a94f30"
 
 
 def _code_collation(engine):

@@ -16,6 +16,7 @@ from app.models import (
     UnitAlias,
     UnitConversion,
     User,
+    WebhookDelivery,
 )
 from app.services.accounts import PLACEHOLDER_PASSWORDS, password_problem  # noqa: F401 (PLACEHOLDER_PASSWORDS — zgodność)
 from app.services.apikeys import create_key, hash_key
@@ -106,7 +107,9 @@ def reset_demo(user: str | None = None) -> None:
         shas = {sha for (sha,) in db.session.query(Document.sha256).distinct()}
         db.session.query(Document).update({Document.template_version_id: None, Document.template_id: None,
                                            Document.corrects_document_id: None, Document.dedupe_key: None})
-        for model in (Document, ProductMapping, UnitConversion, TemplateVersion, Template, Product, AuditLog):
+        # dostawy webhooków przed dokumentami: document_id bez kaskady blokowałby DELETE dokumentów
+        for model in (WebhookDelivery, Document, ProductMapping, UnitConversion, TemplateVersion, Template, Product,
+                      AuditLog):
             db.session.query(model).delete()
         db.session.query(UnitAlias).filter(UnitAlias.supplier_id.isnot(None)).delete()
         db.session.query(Supplier).delete()
