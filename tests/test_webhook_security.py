@@ -59,6 +59,11 @@ def test_allows_http_with_flag(dns):
 def test_rejects_userinfo_fragment_and_long_url(dns):
     dns({"example.com": ["93.184.216.34"]})
     for url in (
+        "https://example.com:0/h",
+        "https://example.com:70000/h",
+        "https://example.com/h\nX: y",
+        "https://exa mple.com/h",
+        "https://example.com/\x00",
         "https://user:pw@example.com/h",
         "https://user@example.com/h",
         "https://example.com/h#frag",
@@ -69,14 +74,30 @@ def test_rejects_userinfo_fragment_and_long_url(dns):
             ws.validate_target(url)
 
 
-def test_blocks_loopback_private_linklocal_metadata_cgnat(dns):
+def test_blocks_loopback_private_linklocal_metadata_cgnat(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("prawdziwe DNS")
+
+    monkeypatch.setattr(socket, "getaddrinfo", boom)
     for ip in ("127.0.0.1", "10.0.0.5", "192.168.1.1", "172.16.0.1", "169.254.169.254",
-               "100.64.0.1", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "0.0.0.0"):
+               "100.64.0.1", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "0.0.0.0",
+               "64:ff9b::7f00:1", "::127.0.0.1"):
         assert ws.is_blocked_ip(ipaddress.ip_address(ip)), ip
         with pytest.raises(ws.TargetError):
             ws.validate_target(f"https://[{ip}]/h" if ":" in ip else f"https://{ip}/h")
     assert not ws.is_blocked_ip(ipaddress.ip_address("93.184.216.34"))
     assert not ws.is_blocked_ip(ipaddress.ip_address("2606:2800:220:1::1"))
+
+
+def test_resolve_false_makes_no_dns_calls_and_length_boundary(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("DNS")
+
+    monkeypatch.setattr(socket, "getaddrinfo", boom)
+    base = "https://example.com/"
+    assert ws.validate_target(base + "a" * (500 - len(base)), resolve=False).ip is None
+    with pytest.raises(ws.TargetError):
+        ws.validate_target(base + "a" * (501 - len(base)), resolve=False)
 
 
 def test_localhost_name_resolving_to_loopback_is_blocked(dns):
@@ -141,3 +162,16 @@ def test_new_secret_length_and_alphabet():
     assert len(s) >= 43
     assert set(s) <= set(string.ascii_letters + string.digits + "-_")
     assert ws.new_secret() != s
+
+
+def test_verify_returns_false_on_garbage_input():
+    sig = ws.sign(SECRET, TS, BODY)
+    now = 1760000000
+    assert not ws.verify(SECRET, TS, BODY, "ż" + sig, now=now)
+    assert not ws.verify(SECRET, "1" * 5000, BODY, sig, now=now)
+    assert not ws.verify(SECRET, TS, BODY, sig.encode(), now=now)
+    assert not ws.verify(SECRET, TS, BODY.decode(), sig, now=now)
+    assert not ws.verify(None, TS, BODY, sig, now=now)
+    assert not ws.verify(SECRET, None, BODY, sig, now=now)
+    assert not ws.verify(SECRET, TS, BODY, None, now=now)
+    assert not ws.verify(SECRET, TS, BODY, "\udcff", now=now)

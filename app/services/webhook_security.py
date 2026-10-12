@@ -21,6 +21,8 @@ HEADER_DELIVERY = "X-XP-Delivery"
 
 MAX_URL_LENGTH = 500
 _CGNAT = ipaddress.ip_network("100.64.0.0/10")
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_V4_COMPAT = ipaddress.ip_network("::/96")
 
 
 class TargetError(ValueError):
@@ -29,6 +31,8 @@ class TargetError(ValueError):
 
 @dataclass(frozen=True)
 class ResolvedTarget:
+    """Zwalidowany cel: składniki URL oraz wybrany adres IP (None przy `resolve=False`)."""
+
     url: str
     scheme: str
     host: str
@@ -37,9 +41,15 @@ class ResolvedTarget:
     ip: str | None
 
 
-def _unwrap(ip):
-    mapped = getattr(ip, "ipv4_mapped", None)
-    return mapped if mapped is not None else ip
+def _unwrap(ip: ipaddress.IPv4Address | ipaddress.IPv6Address):
+    """Rozpakowuje IPv4 osadzone w IPv6 (mapped, NAT64 64:ff9b::/96, zgodne ::/96)."""
+    if ip.version == 6:
+        mapped = ip.ipv4_mapped
+        if mapped is not None:
+            return mapped
+        if ip in _NAT64 or ip in _V4_COMPAT:
+            return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    return ip
 
 
 def is_blocked_ip(ip) -> bool:
@@ -61,7 +71,7 @@ def parse_allowed_hosts(text: str) -> tuple:
     return tuple(items)
 
 
-def _in_allowlist(ip, allowed_hosts) -> bool:
+def _in_allowlist(ip, allowed_hosts: tuple) -> bool:
     ip = _unwrap(ip)
     return any(
         not isinstance(a, str) and a.version == ip.version and ip in a for a in allowed_hosts
@@ -69,12 +79,14 @@ def _in_allowlist(ip, allowed_hosts) -> bool:
 
 
 def validate_target(
-    url: str, *, allow_http: bool = False, allowed_hosts=(), resolve: bool = True
+    url: str, *, allow_http: bool = False, allowed_hosts: tuple = (), resolve: bool = True
 ) -> ResolvedTarget:
     """Waliduje adres webhooka; przy `resolve=True` rozwiązuje DNS i sprawdza wszystkie adresy."""
     url = (url or "").strip()
     if not url:
         raise TargetError("Adres webhooka jest pusty.")
+    if any(c.isspace() or ord(c) < 32 for c in url):
+        raise TargetError("Adres webhooka nie może zawierać spacji ani znaków sterujących.")
     if len(url) > MAX_URL_LENGTH:
         raise TargetError(f"Adres webhooka jest za długi (maks. {MAX_URL_LENGTH} znaków).")
     try:
@@ -95,6 +107,8 @@ def validate_target(
     if not host:
         raise TargetError("Adres webhooka nie zawiera nazwy hosta.")
     host = host.lower()
+    if port is not None and not 1 <= port <= 65535:
+        raise TargetError("Port w adresie webhooka musi mieścić się w zakresie 1–65535.")
     if port is None:
         port = 443 if scheme == "https" else 80
     path = parts.path or "/"
@@ -145,14 +159,23 @@ def sign(secret: str, ts: str, body: bytes) -> str:
 def verify(
     secret: str, ts: str, body: bytes, signature: str, *, max_skew: int = 300, now: float | None = None
 ) -> bool:
-    """Weryfikuje podpis (porównanie stałoczasowe) oraz świeżość znacznika czasu."""
-    if not isinstance(ts, str) or not ts.isascii() or not ts.isdigit():
+    """Weryfikuje podpis (porównanie stałoczasowe) i świeżość znacznika czasu; nigdy nie rzuca wyjątku."""
+    try:
+        if not (isinstance(secret, str) and isinstance(ts, str) and isinstance(body, bytes)):
+            return False
+        if not isinstance(signature, str):
+            return False
+        if not (ts.isascii() and ts.isdigit() and len(ts) <= 12):
+            return False
+        current = time.time() if now is None else now
+        if abs(current - int(ts)) > max_skew:
+            return False
+        expected = sign(secret, ts, body).encode()
+        return hmac.compare_digest(expected, signature.encode("utf-8", "surrogateescape"))
+    except (TypeError, ValueError, AttributeError, UnicodeError):
         return False
-    current = time.time() if now is None else now
-    if abs(current - int(ts)) > max_skew:
-        return False
-    return hmac.compare_digest(sign(secret, ts, body), signature or "")
 
 
 def new_secret() -> str:
+    """Nowy sekret podpisu (256 bitów, alfabet URL-safe); pokazywany adminowi tylko raz."""
     return secrets.token_urlsafe(32)
