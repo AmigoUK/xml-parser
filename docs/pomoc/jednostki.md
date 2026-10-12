@@ -31,7 +31,7 @@ Po przeliczeniu ilość jest **mnożona** przez współczynnik, cena jednostkowa
 
 ![Tabela przeliczników jednostek z kolumnami przelicznik, dostawca i towar oraz przyciskami Edytuj i Usuń](../../app/static/screenshots/07-przeliczniki.png)
 
-*Przeliczniki jednostek zapamiętane w negocjacji: 1 worek = 25 kg (Młyn Beta) i 1 karton = 12 szt (Opakowania Delta), oba dla wszystkich towarów dostawcy.*
+*Przeliczniki zapamiętane w negocjacji: 1 worek = 25 kg (Młyn Beta) i 1 karton = 12 szt (Opakowania Delta), oba dla wszystkich towarów dostawcy.*
 
 **Kropka jest zawsze separatorem dziesiętnym w przelicznikach** (w słowniku, w negocjacji i w transformacji `convert`): `1.125` = 1,125, a `1.000` = 1. Przecinek przed dokładnie trzema cyframi (`1,125`) jest niejednoznaczny i zostanie odrzucony z podpowiedzią, co wpisać. Przelicznik musi być większy od zera i mieć najwyżej 12 cyfr całkowitych.
 

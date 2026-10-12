@@ -65,7 +65,7 @@ SERVER_TIMEOUT = 180  # s na start instancji (seed i nauka na próbkach)
 # Zmienne czytane przez app/config.py — usuwane ze środowiska serwera, żeby instancja nie przejęła bazy, sekretów ani
 # limitów z otoczenia operatora (limity widać w Pomocy, SESSION_COOKIE_SECURE=1 zablokowałby logowanie po HTTP).
 ENV_PREFIXES = ("DATABASE_", "MARIADB", "ADMIN_", "DEMO_", "SECRET", "STORAGE", "MAX_", "LOGIN_",
-                "SESSION_COOKIE", "REMEMBER_COOKIE", "TRUSTED_PROXY")
+                "SESSION_COOKIE", "DISPLAY_TZ", "TRUSTED_PROXY")
 INSTALL_HINT = ("Brak Playwright — zainstaluj (może być osobny venv, serwer i tak działa z .venv/bin/python):\n"
                 "  pip install playwright && playwright install chromium")
 

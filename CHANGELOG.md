@@ -7,7 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nic jeszcze._
+### Added
+- Polskie strony błędów panelu (403, 404, 405, 413, 500 i przepełnienie liczby w adresie) z nawigacją i stopką; `/api/*` nadal odpowiada JSON-em.
+- Stronicowanie list: kursor („Starsze →” / „Następne →”) w Dokumentach, Kolejce, Historii i Szablonach oraz numerowane strony w słownikach (alfabetycznie).
+- Wyszukiwarka dokumentów (`?q=`) i pole wyszukiwania w słownikach (`?q=` + `?page=`).
+- Filtry Historii (akcja, użytkownik) z polskimi etykietami wszystkich akcji.
+- Komunikaty po operacjach na kluczach API (utworzenie, zmiana nazwy, wyłączenie) i po operacjach w słownikach, z nazwą wpisu.
+- Potwierdzenia: Odrzuć, Przywróć wersję, Wyłącz klucz, usuwanie wpisów słowników (z nazwą).
+- Stany pustych list z odnośnikami do następnego kroku.
+- `DISPLAY_TZ` (domyślnie `Europe/Warsaw`): czas lokalny w panelu, baza i REST API bez zmian (UTC); zmienna w `.env.example`, compose i README.
+- Ostrzeżenie przed opuszczeniem edytora mapowań z niezapisanymi zmianami (`beforeunload`).
+- Aktywna pozycja nawigacji (`aria-current="page"`) i atrybuty ARIA przełączników menu.
+- FAQ w Pomocy: „Jaki czas pokazuje panel?” (`#czas-w-panelu`) i „Lista pokazuje tylko 200 wpisów — gdzie reszta?” (`#dluzsze-listy`).
+
+### Changed
+- Nazwy stron zgodne z menu: „Mapowania towarów”, „Jednostki”, „Przeliczniki”, „Historia”, „Szablony”; podpisy zrzutów w Pomocy i README poprawione tak samo.
+- Formaty: kwoty „1 234,56” (ceny jednostkowe do 4 miejsc, wyrównane do prawej), czas jako `<time>` z UTC w `datetime` i pełną strefą w podpowiedzi.
+- Etykiety akcji w Historii po polsku; akcja „Zmień nazwę” przy kluczu API.
+- Zamykane komunikaty (`role="alert"`), pasek „← Panel” w `/api/docs`, blokada podwójnego wysłania formularza wgrywania, pole wyszukiwania w słownikach.
+
+### Fixed
+- N+1 zapytań na liście szablonów.
+- Pusta nazwa klucza API była po cichu ignorowana — teraz komunikat błędu.
+- Kategoria komunikatu po błędzie resetu demo.
+- Dostępność formularzy: etykiety pól, `autocomplete`, atrybuty `aria-*`; klasa `.scroll-pane` zamiast stylu inline.
+- Filtr `price` pokazuje ceny jednostkowe z 4 miejscami zamiast zaokrąglenia do kwoty.
+- Pusta strona z kursorem pokazuje powrót zamiast fałszywego stanu pustego.
+
+### Security
+- Limit prób obecnego hasła przy zmianie hasła (osobna pula `pwchange:`); logowanie odrzuca e-mail z takim prefiksem, więc puli nie da się zapisać z zewnątrz.
+- Usunięto martwe ustawienia `REMEMBER_COOKIE_*`.
+- Bezpieczne budowanie adresów stronicowania (odrzucanie argumentów `_` w `url_for`, brak kolizji z `view_args`).
+
+### Znane ograniczenie
+- Gdy żądanie jest odrzucane za duże (413) zanim serwer przeczyta treść, przeglądarka może pokazać reset połączenia zamiast polskiej strony błędu.
 
 ## [0.7.0] — 2026-10-12
 

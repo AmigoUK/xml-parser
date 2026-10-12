@@ -288,6 +288,19 @@ FAQ: list[dict] = [
     {"q": "Jak przywrócić ręcznie odrzucony dokument?",
      "a": "Otwórz dokument i kliknij „Przywróć”. Ani „Przetwórz ponownie”, ani API (zwraca 409) nie cofają "
           "ręcznego odrzucenia.", "link": "statusy-i-problemy"},
+    {"q": "Jaki czas pokazuje panel?",
+     "slug": "czas-w-panelu",
+     "a": "Czas lokalny. Panel pokazuje daty i godziny w strefie z ustawienia DISPLAY_TZ (domyślnie Europe/Warsaw), "
+          "więc wpis z 10:00 UTC zobaczysz latem jako 12:00. Najedź na godzinę, a w podpowiedzi zobaczysz pełną "
+          "strefę. Baza i REST API zawsze używają UTC z przyrostkiem „Z” (np. 2026-10-12T10:00:00Z) — "
+          "integracje nie muszą nic przeliczać.", "link": None},
+    {"q": "Lista pokazuje tylko 200 wpisów — gdzie reszta?",
+     "slug": "dluzsze-listy",
+     "a": "Dłuższe listy są dzielone na strony. Dokumenty, kolejka, Historia i Szablony mają na dole przyciski "
+          "„Starsze →” i „Następne →”; słowniki (Dane) mają numerowane strony i są ułożone alfabetycznie. Żeby "
+          "nie przewijać, użyj wyszukiwania: pole nad listą Dokumentów oraz pole „Szukaj” w słownikach (adres "
+          "z ?q=…), a w Historii filtrów „akcja” i „użytkownik”. Strona z filtrem ma własny adres, więc możesz ją "
+          "dodać do zakładek.", "link": None},
     {"q": "Dostawca sprzedaje w workach, a my liczymy w kilogramach. Jak to ustawić?",
      "slug": "worek-na-kg", "template": "_worek-na-kg.html",
      "a": "Wystarczy raz powiedzieć systemowi, ile waży worek. W negocjacji wskaż, że zapis „worek” z faktury to "

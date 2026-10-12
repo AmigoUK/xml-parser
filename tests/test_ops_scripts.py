@@ -107,7 +107,7 @@ def test_compose_app_gets_only_app_variables():
     env = app["environment"]
     assert "MARIADB_ROOT_PASSWORD" not in env and "MARIADB_PASSWORD" not in env
     for name in ("SECRET_KEY", "DATABASE_URL", "STORAGE_DIR", "TRUSTED_PROXY_COUNT", "SESSION_COOKIE_SECURE",
-                 "PREFERRED_URL_SCHEME", "APP_INTERNAL_PORT", "MIGRATE_ON_START", "GUNICORN_CMD_ARGS"):
+                 "PREFERRED_URL_SCHEME", "DISPLAY_TZ", "APP_INTERNAL_PORT", "MIGRATE_ON_START", "GUNICORN_CMD_ARGS"):
         assert name in env, name
     assert "${TRUSTED_PROXY_COUNT:-0}" in str(env["TRUSTED_PROXY_COUNT"])  # brak w .env = bezpieczna wartość
     assert any("${APP_INTERNAL_PORT:-5010}" in p for p in app["ports"])

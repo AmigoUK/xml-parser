@@ -46,6 +46,18 @@ Po 5 nieudanych próbach w ciągu 15 min dla pary (e-mail, adres IP) ta para jes
 
 Otwórz dokument i kliknij „Przywróć”. Ani „Przetwórz ponownie”, ani API (zwraca 409) nie cofają ręcznego odrzucenia. [Więcej →](statusy-i-problemy.md)
 
+<a id="czas-w-panelu"></a>
+
+## Jaki czas pokazuje panel?
+
+Czas lokalny. Panel pokazuje daty i godziny w strefie z ustawienia DISPLAY_TZ (domyślnie Europe/Warsaw), więc wpis z 10:00 UTC zobaczysz latem jako 12:00. Najedź na godzinę, a w podpowiedzi zobaczysz pełną strefę. Baza i REST API zawsze używają UTC z przyrostkiem „Z” (np. 2026-10-12T10:00:00Z) — integracje nie muszą nic przeliczać.
+
+<a id="dluzsze-listy"></a>
+
+## Lista pokazuje tylko 200 wpisów — gdzie reszta?
+
+Dłuższe listy są dzielone na strony. Dokumenty, kolejka, Historia i Szablony mają na dole przyciski „Starsze →” i „Następne →”; słowniki (Dane) mają numerowane strony i są ułożone alfabetycznie. Żeby nie przewijać, użyj wyszukiwania: pole nad listą Dokumentów oraz pole „Szukaj” w słownikach (adres z ?q=…), a w Historii filtrów „akcja” i „użytkownik”. Strona z filtrem ma własny adres, więc możesz ją dodać do zakładek.
+
 <a id="worek-na-kg"></a>
 
 ## Dostawca sprzedaje w workach, a my liczymy w kilogramach. Jak to ustawić?
