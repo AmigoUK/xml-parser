@@ -1,0 +1,43 @@
+<div class="card" id="zestaw"><div class="card-body">
+  <h2 class="h5">Zestaw demo «Miesiąc faktur»</h2>
+  <p class="small">24 faktury od sześciu dostawców w różnych formatach (XML, KSeF, UBL, CSV, JSON). Naucz parser na
+    pierwszych sześciu (po jednej od każdego dostawcy), rozwiąż kolejkę „do wyjaśnienia”, a następnie wczytaj
+    pozostałe i zobacz, jak system czyta je sam. Kolumna „faktyczny” porównuje wynik z oczekiwanym.</p>
+  {% if dataset is none %}
+    <p class="text-muted mb-0">Zestaw demo niedostępny — brak katalogu demo/dataset.</p>
+  {% else %}
+    {% if current_user.is_authenticated %}
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for key, label in [('pierwsze', 'Wczytaj pierwsze'), ('pozostale', 'Wczytaj pozostałe'), ('wszystko', 'Wczytaj wszystko')] %}
+      {% set pend = dataset_counts[key][0] %}
+      <form method="post" action="{{ url_for('demo.load_dataset_phase', phase=key) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-primary{% if not pend %} text-muted{% endif %}"{% if not pend %} disabled{% endif %}>{{ label }} ({{ pend }})</button>
+      </form>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="small text-muted">Aby wczytać faktury zestawu, <a href="{{ url_for('auth.login') }}">zaloguj się</a>.</p>
+    {% endif %}
+    <div class="table-responsive">
+      <table class="table table-sm small align-middle mb-0">
+        <thead><tr><th>#</th><th>Plik</th><th>Dostawca</th><th>Format</th><th>Co pokazuje</th><th>Oczekiwany</th><th>Faktyczny</th><th>Źródło</th></tr></thead>
+        <tbody>
+        {% for row in dataset %}
+        {% set e = row.entry %}
+        <tr{% if row.matches_expected is false %} class="table-warning"{% endif %}>
+          <td>{{ e.order }}</td>
+          <td><code>{{ e.filename }}</code></td>
+          <td>{{ (manifest.suppliers.get(e.supplier) or {}).get('name', e.supplier) }}</td>
+          <td>{{ e.format }}</td>
+          <td>{{ e.shows }}</td>
+          <td>{{ status_labels.get(e.on_ingest.status, e.on_ingest.status) }}{% if e.after_resolve %} → {{ status_labels.get(e.after_resolve.status, e.after_resolve.status) }}{% endif %}</td>
+          <td>{% if row.doc_id %}<a href="{{ url_for('docs.detail', doc_id=row.doc_id) }}">{{ row.status_label }}</a>{% else %}—{% endif %}</td>
+          <td>{{ row.source or '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div></div>

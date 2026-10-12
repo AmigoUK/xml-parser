@@ -3,6 +3,23 @@ from pathlib import Path
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from app.models import STATUS_LABELS
+from app.services.demo_dataset import (
+    PHASES,
+    DatasetError,
+    DatasetLoadError,
+    load_manifest,
+    load_phase,
+)
+from app.services.demo_dataset import (
+    counts as dataset_counts,
+)
+from app.services.demo_dataset import (
+    is_available as dataset_available,
+)
+from app.services.demo_dataset import (
+    progress as dataset_progress,
+)
 from app.services.pipeline import ingest
 from app.services.seed import reset_demo
 
@@ -38,8 +55,32 @@ def only_in_demo_mode():
 def index():
     # hasła admina nie pokazujemy nigdy; klucz API demo tylko zalogowanym (K-1)
     demo_key = current_app.config.get("DEMO_API_KEY") if current_user.is_authenticated else None
+    dataset = manifest = counts = None
+    if dataset_available():
+        try:
+            manifest = load_manifest()
+            dataset, counts = dataset_progress(manifest), dataset_counts()
+        except DatasetError as exc:  # uszkodzony manifest → komunikat zamiast 500
+            flash(str(exc), "error")
     return render_template("demo.html", samples=DEMO_SAMPLES, api_base=request.host_url.rstrip("/"),
-                           demo_key=demo_key, admin_email=current_app.config.get("ADMIN_EMAIL"))
+                           demo_key=demo_key, admin_email=current_app.config.get("ADMIN_EMAIL"),
+                           dataset=dataset, dataset_counts=counts, manifest=manifest, status_labels=STATUS_LABELS)
+
+
+@bp.post("/zestaw/wczytaj/<phase>")
+@login_required
+def load_dataset_phase(phase):
+    if phase not in PHASES:
+        abort(404)
+    try:
+        result = load_phase(phase, source="demo")
+    except DatasetLoadError as exc:
+        flash(f"{exc} Wczytano {len(exc.partial.loaded)} faktur, pominięto {len(exc.partial.skipped)}.", "error")
+    except DatasetError as exc:
+        flash(str(exc), "error")
+    else:
+        flash(f"Wczytano {len(result.loaded)} faktur, pominięto {len(result.skipped)} już wczytanych.", "success")
+    return redirect(url_for("demo.index") + "#zestaw")
 
 
 @bp.post("/wczytaj/<path:name>")
