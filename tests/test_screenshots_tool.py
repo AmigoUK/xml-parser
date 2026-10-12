@@ -53,7 +53,24 @@ def test_samples_exist_and_resolve_modes_are_known(tool):
         assert (ROOT / "demo" / "samples" / name).is_file(), name
         assert mode in (True, False) or mode in ISSUE_HELP, (name, mode)
     assert dict(tool.SAMPLES)["zeta.csv"] == "missing_conversion"
-    assert tool.PAGES[-1].path == f"/dokumenty/{tool.ZETA_ID}"
+    faq = next(shot for shot in tool.PAGES if shot.name == "13-faq-worek")
+    assert faq.path == f"/dokumenty/{tool.ZETA_ID}"
+
+
+def test_dataset_first_phase_offsets_document_ids(tool):
+    """Instancja zrzutów wczytuje pierwszą fazę zestawu demo przed próbkami, więc id próbek przesuwają się o liczbę
+    wpisów „first” z prawdziwego manifestu (6); DOC_ID/ZETA_ID i adresy w PAGES odzwierciedlają przesunięcie."""
+    from app.services.demo_dataset import load_manifest
+    first = len(load_manifest().by_phase("pierwsze"))
+    assert first == 6
+    assert tool.dataset_offset() == first
+    names = [name for name, _ in tool.SAMPLES]
+    assert tool.DOC_ID == first + names.index("gamma-ubl.xml") + 1
+    assert tool.ZETA_ID == first + names.index("zeta.csv") + 1
+    paths = {shot.name: shot.path for shot in tool.PAGES}
+    assert paths["04-dokument"] == f"/dokumenty/{tool.DOC_ID}"
+    assert paths["05-edytor-mapowan"] == f"/szablony/dokument/{tool.DOC_ID}/edytor"
+    assert paths["14-demo-zestaw"] == "/demo#zestaw"
 
 
 def test_list_without_playwright(tool, capsys):
@@ -158,6 +175,13 @@ def test_serve_mode_starts_isolated_instance(tool, tmp_path):
         assert health["status"] == "ok" and health["version"] == __version__
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(base + "/demo", timeout=10) as r:
             assert r.status == 200
+        # TODO (kontroler, po scaleniu karty zestawu z T3): dodać assert "Zestaw demo" w treści /demo
+        # (tu: /dokumenty wymaga logowania, więc sprawdzamy log startu — sześć plików zestawu wczytanych przed próbkami)
+    from app.services.demo_dataset import load_manifest
+    log = (tmp_path / "serwer.log").read_text(encoding="utf-8")
+    for entry in load_manifest().by_phase("pierwsze"):
+        assert f": {entry.filename} — " in log, entry.filename
+    assert "dokument 7: alfa-1.xml" in log
     assert (tmp_path / "serwer.log").read_text(encoding="utf-8").count(tool.READY) == 1
 
 

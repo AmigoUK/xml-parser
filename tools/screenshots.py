@@ -12,8 +12,9 @@ Zrzuty odświeża się po każdym wydaniu — stopka pokazuje wersję aplikacji.
 Instancja: osobny podproces z aplikacją z repozytorium na 127.0.0.1:<port> (domyślnie 18517; port żywego demo 18506
 jest odrzucany, zajęty port też), świeża SQLite i storage w katalogu tymczasowym, bez lokalnego .env
 (PYTHON_DOTENV_DISABLED=1, FLASK_SKIP_DOTENV=1) i bez zmiennych konfiguracji z otoczenia (ENV_PREFIXES), DEMO_MODE=1,
-fikcyjne konto admin@example.com z hasłem losowanym przy każdym uruchomieniu i fikcyjny klucz API demo. Dane — tylko
-próbki z demo/samples/ (SAMPLES): nauka na alfa-1.xml pętlą „pierwsza podpowiedź + zapamiętaj” z testów uczenia, potem
+fikcyjne konto admin@example.com z hasłem losowanym przy każdym uruchomieniu i fikcyjny klucz API demo. Dane — pierwsza
+faza zestawu demo (demo/dataset/, dokumenty nierozwiązane) i próbki z demo/samples/ (SAMPLES):
+nauka na alfa-1.xml pętlą „pierwsza podpowiedź + zapamiętaj” z testów uczenia, potem
 alfa-2 (zatwierdzona automatycznie), beta-ksef i delta (rozwiązane), gamma-ubl i epsilon (czekają do wyjaśnienia).
 Przeglądarka: Chromium z Playwright, okno 1400×900, device_scale_factor=1, locale pl-PL. Pliki PNG w katalogu
 wyjściowym są nadpisywane; na końcu narzędzie wypisuje listę plików i błędy konsoli przeglądarki, zatrzymuje serwer
@@ -82,8 +83,21 @@ class Shot(NamedTuple):
 # Baza jest świeża, więc id dokumentu = pozycja na liście (sprawdzane w serve()).
 SAMPLES = [("alfa-1.xml", True), ("alfa-2.xml", False), ("beta-ksef.xml", True), ("delta.csv", True),
            ("gamma-ubl.xml", False), ("epsilon.json", False), ("zeta.csv", "missing_conversion")]
-DOC_ID = [name for name, _ in SAMPLES].index("gamma-ubl.xml") + 1  # nowy dostawca z problemami do wyjaśnienia
-ZETA_ID = [name for name, _ in SAMPLES].index("zeta.csv") + 1  # worki po 25 kg: karta „brak przelicznika” (FAQ)
+DATASET_MANIFEST = ROOT / "demo" / "dataset" / "manifest.json"
+
+
+def dataset_offset() -> int:
+    """Liczba dokumentów pierwszej fazy zestawu demo („first” w manifeście) — wczytywane są przed próbkami, więc
+    o tyle przesuwają się ich id. Manifest czytany stdlib json (bez importu aplikacji): `--list` działa bez niej."""
+    files = json.loads(DATASET_MANIFEST.read_text(encoding="utf-8"))["files"]
+    return sum(1 for f in files if f["phase"] == "first")
+
+
+DATASET_OFFSET = dataset_offset()
+# nowy dostawca z problemami do wyjaśnienia
+DOC_ID = DATASET_OFFSET + [name for name, _ in SAMPLES].index("gamma-ubl.xml") + 1
+# worki po 25 kg: karta „brak przelicznika” (FAQ)
+ZETA_ID = DATASET_OFFSET + [name for name, _ in SAMPLES].index("zeta.csv") + 1
 
 PAGES = [
     Shot("01-demo", "/demo", True),
@@ -99,6 +113,8 @@ PAGES = [
     Shot("11-api-docs", "/api/docs", False, wait_for=".opblock-summary-path"),  # Swagger UI wyrenderował specyfikację
     Shot("12-pomoc-integracja", "/pomoc/integracja#odbior", False),
     Shot("13-faq-worek", f"/dokumenty/{ZETA_ID}", False),  # FAQ: „1 worek = 25 kg” w negocjacji
+    # karta zestawu demo z postępem pierwszej fazy; zrzut po zalogowaniu (przyciski karty widzą tylko zalogowani)
+    Shot("14-demo-zestaw", "/demo#zestaw", False),
 ]
 
 
@@ -121,6 +137,7 @@ def serve(port: int, workdir: Path) -> None:
 
     from app import create_app
     from app.extensions import db
+    from app.services.demo_dataset import load_phase
     from app.services.pipeline import ingest
     from app.services.seed import seed_base, seed_demo
 
@@ -134,7 +151,14 @@ def serve(port: int, workdir: Path) -> None:
         db.create_all()
         seed_base()
         seed_demo()
-        for expected_id, (name, resolve) in enumerate(SAMPLES, start=1):
+        # pierwsza faza zestawu demo przed próbkami: dokumenty „do przejrzenia” od nieznanych dostawców zostają
+        # nierozwiązane (karta zestawu na /demo), a id próbek przesuwa DATASET_OFFSET
+        loaded = load_phase("pierwsze", source="demo").loaded
+        for doc in loaded:
+            print(f"  dokument {doc.id}: {doc.filename} — {doc.status}", flush=True)
+        if len(loaded) != DATASET_OFFSET or [d.id for d in loaded] != list(range(1, DATASET_OFFSET + 1)):
+            raise SystemExit(f"Zestaw demo: oczekiwano {DATASET_OFFSET} dokumentów od id 1 — adresy w PAGES złe.")
+        for expected_id, (name, resolve) in enumerate(SAMPLES, start=DATASET_OFFSET + 1):
             doc = ingest((samples / name).read_bytes(), name, source="demo")
             if resolve is True:
                 resolve_with_top_suggestions(doc)
