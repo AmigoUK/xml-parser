@@ -8,6 +8,15 @@
 //
 // Sekret bierz ze zmiennej XP_WEBHOOK_SECRET (nie wpisuj go w kodzie).
 //
+//
+// Ochrona przed powtórzeniem (replay): podpis obejmuje tylko „<timestamp>.<ciało>”, bez nagłówka X-XP-Delivery,
+// więc w oknie ±300 s identyczne żądanie można przesłać ponownie. Deduplikuj po X-XP-Delivery WYŁĄCZNIE PO
+// pozytywnej weryfikacji podpisu (inaczej ktoś bez sekretu mógłby „zająć” cudzy identyfikator), przechowuj
+// widziane identyfikatory trwale (np. tabela webhook_deliveries_seen z unikalnym kluczem albo zbiór w Redis
+// z TTL > 300 s) i powtórzony identyfikator traktuj jak sukces: odpowiedz 200 bez ponownego przetwarzania.
+//
+// Rozmiar ciała ogranicza dyrektywa post_max_size (php.ini); PHP odrzuci większe żądania przed skryptem.
+//
 // Tryby:
 //   XP_WEBHOOK_SECRET=... php -S 0.0.0.0:9000 webhook-odbiorca.php     serwer HTTP (wbudowany serwer PHP)
 //   php webhook-odbiorca.php --check <ts> <podpis> < ciało.json        weryfikacja bez sieci: OK / powód, kod 0 / 1
@@ -83,6 +92,8 @@ $data = json_decode($body, true);
 if (!is_array($data)) {
     return reply(400, 'ciało nie jest JSON-em');
 }
+// Dedup po X-XP-Delivery (po weryfikacji podpisu!): tu zapisz id w trwałym magazynie (tabela z unikalnym kluczem);
+// jeśli już jest — odpowiedz 200 bez przetwarzania. Wbudowany serwer nie trzyma stanu między żądaniami.
 if (($data['event'] ?? null) === 'webhook.test') {
     log_line('test OK');
 } else {

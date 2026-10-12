@@ -8,6 +8,12 @@ Parser wysyła POST z JSON-em i nagłówkami:
 
 Sekret bierz ze zmiennej XP_WEBHOOK_SECRET (nie wpisuj go w kodzie).
 
+Ochrona przed powtórzeniem (replay): podpis obejmuje tylko „<timestamp>.<ciało>”, bez nagłówka X-XP-Delivery,
+więc w oknie ±300 s identyczne żądanie można przesłać ponownie. Deduplikuj po X-XP-Delivery WYŁĄCZNIE PO
+pozytywnej weryfikacji podpisu (inaczej ktoś bez sekretu mógłby „zająć” cudzy identyfikator), przechowuj
+widziane identyfikatory trwale (np. tabela webhook_deliveries_seen z unikalnym kluczem albo zbiór w Redis
+z TTL > 300 s) i powtórzony identyfikator traktuj jak sukces: odpowiedz 200 bez ponownego przetwarzania.
+
 Tryby:
   python3 webhook-odbiorca.py --port 9000                        serwer HTTP (domyślnie port 9000)
   python3 webhook-odbiorca.py --check <ts> <podpis> < ciało.json weryfikacja bez sieci: OK / powód, kod 0 / 1
@@ -22,6 +28,7 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+MAX_BODY = 1024 * 1024  # 1 MiB: większe ciało odrzucamy (413) bez czytania
 MAX_SKEW = 300  # sekundy: starsze lub „z przyszłości” żądania odrzucamy (ochrona przed powtórzeniem)
 
 
@@ -42,9 +49,18 @@ def verify(secret: str, timestamp: str, signature: str, body: bytes, now: int | 
 
 class Handler(BaseHTTPRequestHandler):
     secret = ""
+    seen: set[str] = set()  # ilustracja; w produkcji trwały magazyn (tabela / Redis), nie pamięć procesu
 
     def do_POST(self):
-        body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return self.reply(411, "wymagany poprawny nagłówek Content-Length")
+        if length < 0:
+            return self.reply(400, "nieprawidłowy Content-Length")
+        if length > MAX_BODY:
+            return self.reply(413, "ciało zbyt duże")
+        body = self.rfile.read(length)
         reason = verify(self.secret, self.headers.get("X-XP-Timestamp", ""),
                         self.headers.get("X-XP-Signature", ""), body)
         if reason:
@@ -56,11 +72,17 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(body)
         except ValueError:
             return self.reply(400, "ciało nie jest JSON-em")
+        if not isinstance(data, dict):
+            return self.reply(400, "ciało musi być obiektem JSON")
+        delivery = self.headers.get("X-XP-Delivery", "")
+        if delivery in self.seen:  # powtórzona dostawa: sukces bez ponownego przetwarzania
+            return self.reply(200, "ok (duplikat)")
+        self.seen.add(delivery)
         if data.get("event") == "webhook.test":
             print("test OK", flush=True)
         else:
             print(f"event={data.get('event')} id={data.get('id')} status={data.get('status')} "
-                  f"delivery={self.headers.get('X-XP-Delivery')}", flush=True)
+                  f"delivery={delivery}", flush=True)
         self.reply(200, "ok")
 
     def reply(self, code: int, text: str):

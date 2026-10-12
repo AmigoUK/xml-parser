@@ -8,6 +8,13 @@
 //
 // Sekret bierz ze zmiennej XP_WEBHOOK_SECRET (nie wpisuj go w kodzie).
 //
+//
+// Ochrona przed powtórzeniem (replay): podpis obejmuje tylko „<timestamp>.<ciało>”, bez nagłówka X-XP-Delivery,
+// więc w oknie ±300 s identyczne żądanie można przesłać ponownie. Deduplikuj po X-XP-Delivery WYŁĄCZNIE PO
+// pozytywnej weryfikacji podpisu (inaczej ktoś bez sekretu mógłby „zająć” cudzy identyfikator), przechowuj
+// widziane identyfikatory trwale (np. tabela webhook_deliveries_seen z unikalnym kluczem albo zbiór w Redis
+// z TTL > 300 s) i powtórzony identyfikator traktuj jak sukces: odpowiedz 200 bez ponownego przetwarzania.
+//
 // Tryby:
 //   node webhook-odbiorca.mjs --port 9000                          serwer HTTP (domyślnie port 9000)
 //   node webhook-odbiorca.mjs --check <ts> <podpis> < ciało.json   weryfikacja bez sieci: OK / powód, kod 0 / 1
@@ -15,6 +22,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 
+const MAX_BODY = 1024 * 1024; // 1 MiB: większe ciało odrzucamy (413)
+const seen = new Set(); // ilustracja; w produkcji trwały magazyn (tabela / Redis), nie pamięć procesu
 const MAX_SKEW = 300; // sekundy: starsze lub „z przyszłości” żądania odrzucamy (ochrona przed powtórzeniem)
 
 /** null, gdy podpis jest poprawny; w przeciwnym razie powód odrzucenia (po polsku). */
@@ -30,9 +39,14 @@ function verify(secret, timestamp, signature, body, now = Math.floor(Date.now() 
   return null;
 }
 
-async function readBody(stream) {
+async function readBody(stream, limit = Infinity) {
   const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of stream) {
+    size += chunk.length;
+    if (size > limit) throw new RangeError("za duże ciało");
+    chunks.push(chunk);
+  }
   return Buffer.concat(chunks);
 }
 
@@ -60,18 +74,27 @@ if (checkAt !== -1) {
 const port = Number(option(args, "--port") ?? 9000);
 createServer(async (req, res) => {
   const reply = (code, text) => { res.writeHead(code, { "Content-Type": "text/plain; charset=utf-8" }); res.end(text); };
-  if (req.method !== "POST") return reply(405, "tylko POST");
-  const body = await readBody(req);
-  const reason = verify(secret, req.headers["x-xp-timestamp"], req.headers["x-xp-signature"], body);
-  if (reason) {
-    console.log(`odrzucono: ${reason}`);
-    return reply(401, reason);
+  try {
+    if (req.method !== "POST") return reply(405, "tylko POST");
+    let body;
+    try { body = await readBody(req, MAX_BODY); } catch { return reply(413, "ciało zbyt duże"); }
+    const reason = verify(secret, req.headers["x-xp-timestamp"], req.headers["x-xp-signature"], body);
+    if (reason) {
+      console.log(`odrzucono: ${reason}`);
+      return reply(401, reason);
+    }
+    // Dopiero po weryfikacji przetwarzamy treść. Odpowiadaj szybko (2xx); ciężką pracę zlecaj w tle.
+    let data;
+    try { data = JSON.parse(body.toString("utf8")); } catch { return reply(400, "ciało nie jest JSON-em"); }
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return reply(400, "ciało musi być obiektem JSON");
+    const delivery = req.headers["x-xp-delivery"] ?? "";
+    if (seen.has(delivery)) return reply(200, "ok (duplikat)"); // powtórzona dostawa: sukces bez przetwarzania
+    seen.add(delivery);
+    if (data.event === "webhook.test") console.log("test OK");
+    else console.log(`event=${data.event} id=${data.id} status=${data.status} delivery=${delivery}`);
+    reply(200, "ok");
+  } catch (err) { // nieoczekiwany błąd nie może zabić procesu; parser ponowi dostawę
+    console.error(err);
+    if (!res.headersSent) reply(500, "błąd wewnętrzny");
   }
-  // Dopiero po weryfikacji przetwarzamy treść. Odpowiadaj szybko (2xx); ciężką pracę zlecaj w tle.
-  // Dostawa może przyjść ponownie z tym samym X-XP-Delivery — zapisuj go i pomijaj duplikaty.
-  let data;
-  try { data = JSON.parse(body.toString("utf8")); } catch { return reply(400, "ciało nie jest JSON-em"); }
-  if (data.event === "webhook.test") console.log("test OK");
-  else console.log(`event=${data.event} id=${data.id} status=${data.status} delivery=${req.headers["x-xp-delivery"]}`);
-  reply(200, "ok");
 }).listen(port, () => console.log(`Nasłuch na porcie ${port} (Ctrl+C kończy)`));
