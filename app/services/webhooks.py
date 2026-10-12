@@ -8,7 +8,11 @@ Zasady (decyzje 4–7 wydania v0.9.0):
 - cel walidowany (anty-SSRF) przy każdej wysyłce; połączenie wyłącznie na adres IP zwrócony przez walidację —
   nazwa hosta nie jest rozwiązywana drugi raz (brak okna na DNS rebinding);
 - bez przekierowań (3xx = porażka), łączny limit czasu TIMEOUT na całe żądanie (watchdog zamyka gniazdo, więc
-  odbiorca sączący bajty nie zatrzyma workera), z odpowiedzi czytamy najwyżej READ_LIMIT bajtów.
+  odbiorca sączący bajty nie zatrzyma workera), z odpowiedzi czytamy najwyżej READ_LIMIT bajtów;
+- rozwiązywanie nazwy (`getaddrinfo` w `validate_target`) nie ma własnego limitu czasu — resolver, który nie
+  odpowiada, może w długiej partii przekroczyć zapas dzierżawy i inny worker wyśle tę samą dostawę drugi raz; to
+  dopuszczamy (dostawa „co najmniej raz”): `apply_result` zapisuje wynik warunkowo, a odbiorca deduplikuje po
+  `X-XP-Delivery` (uuid stały między próbami).
 """
 
 from __future__ import annotations
@@ -81,7 +85,9 @@ class _PinnedConnection(http.client.HTTPConnection):
 
     Łączny limit czasu: limity pojedynczych operacji gniazda to tylko dolna granica (odbiorca może sączyć po bajcie),
     więc od chwili powstania gniazda pilnuje go watchdog (`threading.Timer`), który w terminie robi
-    `shutdown(SHUT_RDWR)` — każde czekające `recv`/`send` natychmiast się kończy, a `expired` mówi, dlaczego."""
+    `shutdown(SHUT_RDWR)` — każde czekające `recv`/`send` natychmiast się kończy, a `expired` mówi, dlaczego.
+    Watchdog żyje do `stop_watchdog()` w `send_http`, a nie do `close()`: `getresponse()` zamyka połączenie przy
+    `Connection: close`/HTTP/1.0, a ciało odpowiedzi czytamy dopiero potem (gniazdo trzyma wtedy `resp.fp`)."""
 
     def __init__(self, target: ResolvedTarget, deadline: float):
         super().__init__(target.host, target.port, timeout=TIMEOUT)
@@ -96,7 +102,9 @@ class _PinnedConnection(http.client.HTTPConnection):
         sock = self._watched
         if sock is not None:
             try:
-                sock.shutdown(socket.SHUT_RDWR)
+                # bazowe socket.shutdown, nie SSLSocket.shutdown: to drugie zeruje `_sslobj` i ściga się z wątkiem
+                # głównym (AttributeError/ValueError zamiast OSError); samo zamknięcie kierunków fd wystarcza
+                socket.socket.shutdown(sock, socket.SHUT_RDWR)
             except OSError:
                 pass
 
@@ -121,10 +129,9 @@ class _PinnedConnection(http.client.HTTPConnection):
                 raise
         self.sock = sock
 
-    def close(self):
+    def stop_watchdog(self):
         if self._timer is not None:
             self._timer.cancel()
-        super().close()
 
 
 def _host_header(target: ResolvedTarget) -> str:
@@ -160,7 +167,10 @@ def send_http(target: ResolvedTarget, body: bytes, headers: dict) -> SendResult:
             return timeout_error
         return SendResult(False, None, _truncate(f"Błąd połączenia: {type(e).__name__}: {e}"))
     finally:
+        conn.stop_watchdog()  # najpierw watchdog — potem fd może zostać zamknięte i (pod innym obiektem) użyte ponownie
         conn.close()
+    # Watchdog, który zdążył zadziałać po pełnej odpowiedzi 2xx, a przed `stop_watchdog()`, też daje „limit czasu”:
+    # dostawa zostanie ponowiona (dostarczenie „co najmniej raz”, odbiorca deduplikuje po X-XP-Delivery).
     if conn.expired:
         return timeout_error
     if 200 <= resp.status < 300:

@@ -15,6 +15,12 @@ SHUTDOWN_POLL = 0.05
 
 # ---------------------------------------------------------------- odbiorca testowy
 
+TRICKLE_BODY = {  # tryb odbiorcy → status i nagłówki wysyłane od razu (ciało sączone)
+    "trickle_body_close": b"HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\nContent-Length: 30\r\n\r\n",
+    "trickle_body_http10": b"HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n",
+}
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -64,6 +70,16 @@ class _Handler(BaseHTTPRequestHandler):
                     if self.server.release.wait(0.1):
                         break
                     self.wfile.write(bytes([byte]))
+                    self.wfile.flush()
+            elif mode in TRICKLE_BODY:
+                # status i nagłówki od razu, ciało po bajcie co 0,1 s; przy `Connection: close`/HTTP/1.0 http.client
+                # zamyka połączenie już w getresponse(), a ciało czyta się później — limit musi nadal obowiązywać
+                self.wfile.write(TRICKLE_BODY[mode])
+                self.wfile.flush()
+                for _ in range(30):
+                    if self.server.release.wait(0.1):
+                        break
+                    self.wfile.write(b"B")
                     self.wfile.flush()
             elif mode == "big":
                 # zapowiada 10 MB, wysyła 2 KB i czeka — pełny odczyt zawisłby do limitu czasu

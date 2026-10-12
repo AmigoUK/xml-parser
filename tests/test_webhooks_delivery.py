@@ -127,6 +127,21 @@ def test_trickling_response_is_cut_at_total_deadline(app, receiver, monkeypatch)
     assert len(receiver.requests) == 1
 
 
+@pytest.mark.parametrize("mode", ["trickle_body_close", "trickle_body_http10"])
+def test_trickling_body_after_connection_close_is_cut_at_total_deadline(app, receiver, monkeypatch, mode):
+    """`Connection: close` albo HTTP/1.0: http.client zamyka połączenie już w getresponse(), a ciało (sączone po bajcie)
+    czytamy później — watchdog musi nadal działać, więc wynik to limit czasu, a nie `HTTP 500: BBB…` po 3 s."""
+    monkeypatch.setattr(webhooks, "TIMEOUT", 0.3)
+    receiver.set_mode(mode)
+    target = webhook_security.ResolvedTarget(receiver.url, "http", "127.0.0.1", receiver.port, "/hook", "127.0.0.1")
+    started = time.monotonic()
+    result = webhooks.send_http(target, b"{}", {"Content-Type": "application/json"})
+    elapsed = time.monotonic() - started
+    assert elapsed < 1, elapsed
+    assert result.ok is False and result.status_code is None
+    assert "limit czasu" in result.error
+
+
 def test_delivery_uuid_stable_across_retries(app, receiver):
     receiver.set_mode("error")
     d = make_delivery(make_key(receiver.url))
