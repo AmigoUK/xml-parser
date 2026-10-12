@@ -7,13 +7,14 @@ from sqlalchemy.orm import defer
 from werkzeug.exceptions import NotFound
 
 from app.extensions import db
-from app.models import STATUS_LABELS, Document, Supplier
+from app.ids import MAX_ID
+from app.models import STATUS_LABELS, WEBHOOK_FAILED, WEBHOOK_PENDING, WEBHOOK_SENT, Document, Supplier, WebhookDelivery
 from app.services.apikeys import verify_key
 from app.services.pipeline import DocumentTooLarge, StorageUnavailable, ingest, process
 
 from . import bp
 from .cursor import decode_cursor, encode_cursor
-from .serializers import API_SAFE_SUGGESTIONS, FOREIGN_DUPLICATE_MESSAGE, api_issues, doc_to_json  # noqa: F401 (re-eksport)
+from .serializers import API_SAFE_SUGGESTIONS, FOREIGN_DUPLICATE_MESSAGE, api_issues, delivery_to_json, doc_to_json  # noqa: F401 (re-eksport)
 from .timeutil import parse_api_datetime
 
 
@@ -165,6 +166,42 @@ def list_suppliers():
                                                 Document.supplier_id.isnot(None))
     q = Supplier.query.filter(Supplier.id.in_(own)).order_by(Supplier.name)
     return jsonify(items=[{"id": s.id, "name": s.name, "tax_id": s.tax_id} for s in q])
+
+
+@bp.get("/webhook-deliveries")
+@require_api_key
+def list_webhook_deliveries():
+    """Dostawy webhooków tego klucza, od najnowszych po (created_at, id); kursor jak w liście dokumentów."""
+    q = WebhookDelivery.query.filter_by(api_key_id=g.api_key.id)  # zakres z klucza w nagłówku, nigdy z kursora
+    status = request.args.get("status")
+    if status:
+        if status not in (WEBHOOK_PENDING, WEBHOOK_SENT, WEBHOOK_FAILED):
+            return api_error("bad_request", f"Nieznany status „{status}” (pending, sent albo failed).", 400)
+        q = q.filter_by(status=status)
+    document_id = request.args.get("document_id")
+    if document_id:
+        if not document_id.isascii() or not document_id.isdigit() or not 1 <= int(document_id) <= MAX_ID:
+            return api_error("bad_request", "Parametr document_id musi być dodatnią liczbą całkowitą.", 400)
+        q = q.filter_by(document_id=int(document_id))
+    try:
+        limit = max(1, min(int(request.args.get("limit", LIST_DEFAULT_LIMIT)), LIST_MAX_LIMIT))
+    except ValueError:
+        return api_error("bad_request", "Parametr limit musi być liczbą całkowitą.", 400)
+    cursor = request.args.get("cursor")
+    if cursor is not None:
+        try:
+            if cursor == "":
+                raise ValueError
+            after_at, after_id = decode_cursor(cursor)
+        except ValueError:
+            return api_error("bad_request", "Nieprawidłowy kursor — użyj wartości next_cursor z poprzedniej "
+                                            "odpowiedzi (na pierwszej stronie pomiń parametr).", 400)
+        q = q.filter(or_(WebhookDelivery.created_at < after_at,
+                         and_(WebhookDelivery.created_at == after_at, WebhookDelivery.id < after_id)))
+    rows = q.order_by(WebhookDelivery.created_at.desc(), WebhookDelivery.id.desc()).limit(limit + 1).all()
+    page = rows[:limit]
+    next_cursor = encode_cursor(page[-1].created_at, page[-1].id) if len(rows) > limit else None
+    return jsonify(items=[delivery_to_json(d) for d in page], next_cursor=next_cursor)
 
 
 def _is_api() -> bool:
