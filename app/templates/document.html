@@ -47,13 +47,13 @@
     {% if doc.result %}
     <table class="table table-sm bg-white small">
       {% for f in header_fields %}{% set parts = f.key.split('.') %}{% set ns = namespace(v=doc.result) %}{% for p in parts %}{% set ns.v = ns.v[p] if ns.v is mapping and p in ns.v else none %}{% endfor %}
-      <tr><th class="w-50">{{ f.label }}</th><td{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{% if ns.v is iterable and ns.v is not string %}{{ ns.v|join(', ') }}{% elif ns.v is none %}—{% elif f.kind in ('money', 'price') %}{{ ns.v|money }}{% elif f.kind == 'decimal' %}{{ ns.v|qty }}{% else %}{{ ns.v }}{% endif %}</td></tr>{% endfor %}
+      <tr><th class="w-50">{{ f.label }}</th><td{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{% if ns.v is iterable and ns.v is not string %}{{ ns.v|join(', ') }}{% elif ns.v is none %}—{% elif f.kind == 'money' %}{{ ns.v|money }}{% elif f.kind == 'price' %}{{ ns.v|price }}{% elif f.kind == 'decimal' %}{{ ns.v|qty }}{% else %}{{ ns.v }}{% endif %}</td></tr>{% endfor %}
     </table>
     <div class="table-responsive">
     <table class="table table-sm bg-white small">
       {% if doc.result.lines|length > lines_limit %}<caption class="small">Pokazano {{ lines_limit }} z {{ doc.result.lines|length }} pozycji — całość w JSON.</caption>{% endif %}
       <thead><tr><th>#</th><th>Indeks</th>{% for f in line_fields %}<th{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{{ f.label }}</th>{% endfor %}<th>JM źródłowa</th><th class="text-end">Przelicznik</th></tr></thead>
-      <tbody>{% for l in doc.result.lines[:lines_limit] %}<tr><td>{{ l.line_no }}</td><td>{{ l.product_index or '—' }}</td>{% for f in line_fields %}<td{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{% if l[f.key] is none %}—{% elif f.kind in ('money', 'price') %}{{ l[f.key]|money }}{% elif f.kind == 'decimal' %}{{ l[f.key]|qty }}{% else %}{{ l[f.key] }}{% endif %}</td>{% endfor %}<td>{{ l.unit_source or '—' }}</td><td class="text-end">{{ l.conversion_factor|qty }}</td></tr>{% endfor %}</tbody>
+      <tbody>{% for l in doc.result.lines[:lines_limit] %}<tr><td>{{ l.line_no }}</td><td>{{ l.product_index or '—' }}</td>{% for f in line_fields %}<td{% if f.kind in ('money', 'price', 'decimal') %} class="text-end"{% endif %}>{% if l[f.key] is none %}—{% elif f.kind == 'money' %}{{ l[f.key]|money }}{% elif f.kind == 'price' %}{{ l[f.key]|price }}{% elif f.kind == 'decimal' %}{{ l[f.key]|qty }}{% else %}{{ l[f.key] }}{% endif %}</td>{% endfor %}<td>{{ l.unit_source or '—' }}</td><td class="text-end">{{ l.conversion_factor|qty }}</td></tr>{% endfor %}</tbody>
     </table>
     </div>
     {% endif %}

@@ -28,7 +28,7 @@ ALL_ISSUES = [
 def _doc(status="needs_review", issues=None, **kw):
     totals = {"net": "1234567.5", "vat": "0", "gross": "1234567.5"}
     result = {"number": "FV/1/2026", "currency": "PLN", "totals": totals,
-              "lines": [{"line_no": 1, "name": "Mleko", "qty": "12.5000", "unit": "szt", "unit_price_net": "3.1",
+              "lines": [{"line_no": 1, "name": "Mleko", "qty": "12.5000", "unit": "szt", "unit_price_net": "3.1234",
                          "net": "1234.5", "conversion_factor": "1.2500", "unit_source": "kar"}]}
     doc = Document(filename="faktura-alfa-z-bardzo-dlugą-nazwą.xml", sha256="a" * 64, fmt="xml", status=status,
                    issues=issues if issues is not None else [], result=result, **kw)
@@ -52,6 +52,7 @@ def test_money_and_qty_formatting_and_text_end(auth_client):
     html = _page(auth_client)
     assert "1 234 567,50" in html
     assert "12,5" in html and "12,5000" not in html
+    assert '<td class="text-end">3,1234</td>' in html
     assert re.search(r'<td class="text-end">1 234 567,50</td>', html)
     assert re.search(r'<th class="text-end">Wartość netto</th>', html)
 
