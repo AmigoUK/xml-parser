@@ -176,6 +176,7 @@ def _panel_error(code: int, title: str, message: str):
     try:
         return render_template("errors/error.html", code=code, title=title, message=message), code
     except Exception:  # noqa: BLE001 — ostatnia deska ratunku, nie wolno zgłosić kolejnego 500
+        current_app.logger.exception("Nie udało się wyrenderować strony błędu %s — zwracam zwykły tekst.", code)
         return f"{title}\n{message}\n", code, {"Content-Type": "text/plain; charset=utf-8"}
 
 
@@ -228,5 +229,5 @@ def _server_error(exc):
     try:
         db.session.rollback()  # sesja po wyjątku bywa w stanie przerwanej transakcji
     except Exception:  # noqa: BLE001
-        pass
+        current_app.logger.warning("Nie udało się wycofać transakcji po błędzie 500.", exc_info=True)
     return _panel_error(500, "Błąd serwera", "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.")

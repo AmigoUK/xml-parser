@@ -5,13 +5,20 @@ from app.models import User
 KEY = {"X-API-Key": "xp_test_demo_key"}
 
 
+def _assert_shell(html):
+    """Strona błędu ma pełną skorupę panelu: nawigację, link do Pulpitu i Pomocy oraz stopkę z kredytami."""
+    assert "<nav" in html
+    assert '<a class="btn btn-primary" href="/">Wróć do Pulpitu</a>' in html
+    assert 'href="/pomoc"' in html
+    assert "<footer" in html and "dev@attv.uk" in html
+
+
 def test_panel_404_is_polish_page_with_nav(auth_client):
     r = auth_client.get("/nie-ma-takiej-strony")
     html = r.get_data(as_text=True)
     assert r.status_code == 404
     assert "Nie znaleziono strony" in html
-    assert 'href="/pomoc"' in html and 'href="/"' in html
-    assert "<nav" in html
+    _assert_shell(html)
     assert "Not Found" not in html
 
 
@@ -20,6 +27,7 @@ def test_panel_405_polish_page(auth_client):
     html = r.get_data(as_text=True)
     assert r.status_code == 405
     assert "Metoda niedozwolona" in html
+    _assert_shell(html)
     assert "Method Not Allowed" not in html
 
 
@@ -33,6 +41,7 @@ def test_panel_403_for_non_admin_demo_reset(seeded, client):
     html = r.get_data(as_text=True)
     assert r.status_code == 403
     assert "Brak uprawnień" in html
+    _assert_shell(html)
     assert "Forbidden" not in html
 
 
@@ -58,6 +67,7 @@ def test_panel_413_outside_upload_renders_page(seeded, app):
     html = r.get_data(as_text=True)
     assert r.status_code == 413
     assert "Plik jest za duży" in html
+    _assert_shell(html)
     assert "Request Entity Too Large" not in html
 
 
@@ -74,14 +84,24 @@ def test_panel_500_polish_without_details(seeded, app):
     html = r.get_data(as_text=True)
     assert r.status_code == 500
     assert "Błąd serwera" in html
+    _assert_shell(html)
     assert "tajny-szczegol-wyjatku" not in html and "RuntimeError" not in html
 
 
-def test_panel_overflow_renders_404_page(auth_client):
-    r = auth_client.get("/dokumenty/99999999999999999999999")
+def test_panel_overflow_renders_404_page(seeded, app):
+    @app.get("/test-overflow")
+    def overflow_view():
+        raise OverflowError("Python int too large to convert to SQLite INTEGER")
+
+    client = app.test_client()
+    client.post("/login", data={"email": "admin@example.com", "password": "haslo123"})
+    r = client.get("/test-overflow")  # ścieżka spoza /api/ — musi przejść przez handler OverflowError
     html = r.get_data(as_text=True)
     assert r.status_code == 404
     assert "Nie znaleziono strony" in html
+    _assert_shell(html)
+    assert "SQLite" not in html
+    assert client.get("/dokumenty/99999999999999999999999").status_code == 404
 
 
 def test_error_pages_keep_security_headers(auth_client):
