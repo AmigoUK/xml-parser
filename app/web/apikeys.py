@@ -1,4 +1,4 @@
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 
@@ -43,7 +43,15 @@ def _render(new_key, webhook_secret=None):
                            deliveries_limit=DELIVERIES_LIMIT)
 
 
-def _key_or_redirect(key_id):
+def _no_store(html):
+    """Odpowiedź z jednorazowym sekretem nie może wrócić z pamięci podręcznej (wstecz/dalej, proxy)."""
+    response = make_response(html)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+def _key_or_flash(key_id):
     key = db.session.get(ApiKey, key_id)
     if not key:
         flash("Nie znaleziono klucza.", "error")
@@ -139,7 +147,7 @@ def delete(key_id):
 @login_required
 def webhook_set(key_id):
     _admin_or_403()
-    key = _key_or_redirect(key_id)
+    key = _key_or_flash(key_id)
     if not key:
         return redirect(url_for("apikeys.index"))
     url = (request.form.get("url") or "").strip()
@@ -158,17 +166,19 @@ def webhook_set(key_id):
     audit("update", "api_key", key.id, {"webhook_url": target.url})
     db.session.commit()
     flash(f"Zapisano adres webhooka klucza „{key.name}”.", "success")
-    return _render(None, (key, secret) if secret else None)
+    if not secret:
+        return _render(None)
+    return _no_store(_render(None, (key, secret)))
 
 
 @bp.post("/<int:key_id>/webhook/wyczysc")
 @login_required
 def webhook_clear(key_id):
     _admin_or_403()
-    key = _key_or_redirect(key_id)
+    key = _key_or_flash(key_id)
     if key:
         clear_webhook(key)
-        audit("update", "api_key", key.id, {"webhook_url": None})
+        audit("update", "api_key", key.id, {"webhook_url": None, "webhook_secret": "cleared"})
         db.session.commit()
         flash(f"Wyczyszczono webhook klucza „{key.name}”.", "success")
     return redirect(url_for("apikeys.index"))
@@ -178,7 +188,7 @@ def webhook_clear(key_id):
 @login_required
 def webhook_rotate(key_id):
     _admin_or_403()
-    key = _key_or_redirect(key_id)
+    key = _key_or_flash(key_id)
     if not key:
         return redirect(url_for("apikeys.index"))
     if not key.webhook_url:
@@ -188,14 +198,14 @@ def webhook_rotate(key_id):
     audit("update", "api_key", key.id, {"webhook_secret": "rotated"})  # sam fakt — nigdy wartość
     db.session.commit()
     flash(f"Wygenerowano nowy sekret webhooka klucza „{key.name}”.", "success")
-    return _render(None, (key, secret))
+    return _no_store(_render(None, (key, secret)))
 
 
 @bp.post("/<int:key_id>/webhook/test")
 @login_required
 def webhook_test(key_id):
     _admin_or_403()
-    key = _key_or_redirect(key_id)
+    key = _key_or_flash(key_id)
     if not key:
         return redirect(url_for("apikeys.index"))
     if not key.webhook_url:

@@ -67,8 +67,10 @@ def test_set_webhook_url_generates_secret_shown_once(auth_client, monkeypatch):
     html = _text(r)
     assert "Sekret webhooka — Skopiuj teraz" in html and key.webhook_secret in html
     assert "Zapisano adres webhooka klucza „Hurtownia Alfa — ERP”." in html
+    assert r.headers["Cache-Control"] == "no-store" and r.headers["Pragma"] == "no-cache"
     # tylko raz: kolejne wyświetlenie strony nie pokazuje sekretu
-    assert key.webhook_secret not in _text(auth_client.get("/klucze-api"))
+    page = auth_client.get("/klucze-api")
+    assert page.status_code == 200 and key.webhook_secret not in _text(page)
     # zmiana adresu przy istniejącym sekrecie nie generuje nowego i nie pokazuje starego
     secret = key.webhook_secret
     r = auth_client.post(f"/klucze-api/{k.id}/webhook", data={"url": "https://erp.example.com/xp/inny"})
@@ -106,10 +108,14 @@ def test_set_webhook_url_rejects_private_target_with_flash(auth_client, app, mon
 def test_clear_webhook(auth_client):
     k = make_key("https://erp.example.com/xp/webhook")
     db.session.commit()
+    secret = k.webhook_secret
     r = auth_client.post(f"/klucze-api/{k.id}/webhook/wyczysc", follow_redirects=True)
     assert "Wyczyszczono webhook klucza „Hurtownia Alfa — ERP”." in _text(r)
     key = _reloaded_key(k.id)
     assert key.webhook_url is None and key.webhook_secret is None
+    entry = AuditLog.query.filter_by(entity="api_key", entity_id=k.id).order_by(AuditLog.id.desc()).first()
+    assert entry.action == "update" and entry.payload == {"webhook_url": None, "webhook_secret": "cleared"}
+    _assert_no_secret_in_audit(secret)
 
 
 def test_rotate_secret_changes_value_and_shows_once(auth_client):
@@ -122,7 +128,9 @@ def test_rotate_secret_changes_value_and_shows_once(auth_client):
     assert key.webhook_secret and key.webhook_secret != old
     html = _text(r)
     assert key.webhook_secret in html and "Sekret webhooka — Skopiuj teraz" in html and old not in html
-    assert key.webhook_secret not in _text(auth_client.get("/klucze-api"))
+    assert r.headers["Cache-Control"] == "no-store" and r.headers["Pragma"] == "no-cache"
+    page = auth_client.get("/klucze-api")
+    assert page.status_code == 200 and key.webhook_secret not in _text(page)
     _assert_no_secret_in_audit(key.webhook_secret)
     # bez adresu nie ma czego rotować
     bare = _key("Magazyn")
