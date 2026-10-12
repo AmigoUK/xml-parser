@@ -16,9 +16,6 @@ from tests.test_learning import resolve_with_top_suggestions
 SCRIPT = ROOT / "app" / "help_examples" / "zestaw-demo.sh"
 DATASET = ROOT / "demo" / "dataset"
 MANIFEST = json.loads((DATASET / "manifest.json").read_text(encoding="utf-8"))
-# Manifest opisuje wczytywanie z operatorem po drodze: 21 (eta-4) i 24 (zeta-4) są „approved” dopiero po rozwiązaniu
-# w panelu 15 (towar) i 18 (zeta-3). Skrypt wysyła wszystko jednym ciągiem, więc te dwie czekają na operatora.
-AWAIT_OPERATOR = {21, 24}
 FILES = sorted(MANIFEST["files"], key=lambda f: f["order"])
 
 
@@ -68,7 +65,7 @@ def test_script_rest_after_panel_learning_follows_manifest(live_api, tmp_path):
     lines = lines_of(res)
     assert len(lines) == len(rest) == 18, res.stdout
     for line, f in zip(lines, rest):
-        expected = "needs_review" if f["order"] in AWAIT_OPERATOR else f["expected"]["on_ingest"]["status"]
+        expected = f["expected"]["on_ingest"]["status"]
         assert line.endswith(f" {expected} {f['filename']}"), line
     assert " duplicate 20-beta-3-ponownie.xml" in res.stdout
 
