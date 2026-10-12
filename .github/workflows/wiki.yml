@@ -1,0 +1,53 @@
+name: Wiki
+
+# Lustro Pomocy w zakładce „Wiki” repozytorium: po każdym pushu na main, który zmienia wyeksportowaną Pomoc
+# (docs/pomoc — wynik tools/export_help.py) albo zrzuty ekranu, tools/export_wiki.py przepisuje strony i wypycha je
+# do repozytorium Wiki (<repo>.wiki.git). Źródłem prawdy pozostaje Pomoc w panelu; ręczne edycje w Wiki są nadpisywane.
+# Wymaganie jednorazowe: Wiki włączone w ustawieniach repozytorium i utworzona pierwsza strona (GitHub nie pozwala
+# wypchnąć do pustego repozytorium Wiki) — potem akcja utrzymuje wszystko sama.
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/pomoc/**
+      - app/static/screenshots/**
+      - tools/export_wiki.py
+      - .github/workflows/wiki.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Klon repozytorium Wiki
+        run: |
+          if ! git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki; then
+            echo "::warning::Repozytorium Wiki nie istnieje — włącz Wiki w ustawieniach repozytorium, utwórz pierwszą stronę w zakładce Wiki (dowolna treść) i uruchom ten workflow ręcznie (workflow_dispatch)."
+            echo "skip=1" >> "$GITHUB_ENV"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Strony Wiki z docs/pomoc (tylko biblioteka standardowa Pythona)
+        if: env.skip != '1'
+        run: python3 tools/export_wiki.py --out wiki --repo "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" --branch main
+      - name: Wypchnięcie zmian do Wiki
+        if: env.skip != '1'
+        working-directory: wiki
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki aktualne — brak zmian."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "docs(wiki): Pomoc z ${GITHUB_SHA::7}"
+          git push

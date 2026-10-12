@@ -22,6 +22,8 @@ DEMO_SAMPLES = [
      "shows": "przecinek dziesiętny, data DD.MM.RRRR, „kart.” → szt (×12)"},
     {"file": "epsilon.json", "title": "Epsilon Dairy", "format": "JSON",
      "shows": "jednostka „EA”, towary dopasowane po GTIN"},
+    {"file": "zeta.csv", "title": "Hurtownia Zeta", "format": "CSV",
+     "shows": "„wor.” → worek i przelicznik 1 worek = 25 kg podpowiedziany z nazwy towaru (scenariusz z FAQ)"},
 ]
 _ALLOWED = {s["file"] for s in DEMO_SAMPLES}
 

@@ -8,7 +8,7 @@ import pytest
 from flask import render_template_string
 
 from app.engine.transforms import REGISTRY, TransformContext, apply_chain
-from app.help_content import ISSUE_HELP, STATUS_HELP, TOPICS, TRANSFORM_HELP
+from app.help_content import FAQ, ISSUE_HELP, STATUS_HELP, TOPICS, TRANSFORM_HELP
 from app.ingest import read_document
 from app.models import STATUS_LABELS, Document
 
@@ -126,8 +126,9 @@ HELP_SHOTS = {
     "towary": ["06-kartoteka.png"],
     "statusy-i-problemy": ["04-dokument.png"],
     "api": ["11-api-docs.png"],
+    "faq": ["13-faq-worek.png"],
 }
-NO_SHOTS = {"integracja", "faq"}  # integracja: zrzut tej strony jest tylko w README
+NO_SHOTS = {"integracja"}  # zrzut tej strony jest tylko w README
 
 
 def _shots(html: str) -> list:
@@ -502,3 +503,59 @@ def test_integration_examples_are_valid_code(tmp_path):
             continue  # narzędzie niedostępne w tym środowisku — sprawdzane tam, gdzie jest
         res = subprocess.run([*cmd, str(EXAMPLES_DIR / files[tool])], capture_output=True, text=True, timeout=30)
         assert res.returncode == 0, f"{tool}: {res.stdout}{res.stderr}"
+
+
+# --- FAQ ---
+
+FAQ_TEMPLATES = ROOT / "app" / "templates" / "help" / "faq"
+
+
+def test_faq_entries_well_formed():
+    """Każde pytanie ma treść; `slug` (kotwica do linkowania z Pomocy i Wiki) jest unikalny i w kebab-case,
+    a `template` wskazuje istniejący partial w help/faq/ (odpowiedź rozbudowana: kroki, zrzut, pułapki)."""
+    slugs = [f["slug"] for f in FAQ if f.get("slug")]
+    assert slugs and len(slugs) == len(set(slugs))
+    for f in FAQ:
+        assert f["q"].strip().endswith("?") and f["a"].strip(), f["q"]
+        if f.get("slug"):
+            assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", f["slug"]), f["slug"]
+        if f.get("template"):
+            assert (FAQ_TEMPLATES / f["template"]).is_file(), f["template"]
+        if f.get("link"):
+            assert f["link"] in {t["slug"] for t in TOPICS}, f["link"]
+
+
+def test_faq_accordion_anchors_and_partials(client):
+    """Pytanie ze slugiem ma nagłówek o id = slug (link /pomoc/faq#slug), pozostałe — id numerowane (pomijane
+    w eksporcie); partial jest renderowany w treści odpowiedzi, poniżej krótkiej odpowiedzi."""
+    import lxml.html
+    html = client.get("/pomoc/faq").get_data(as_text=True)
+    doc = lxml.html.fromstring(html)
+    for f in FAQ:
+        (h,) = doc.xpath('//h2[contains(@class, "accordion-header")][.//button[normalize-space()=$q]]', q=f["q"])
+        if f.get("slug"):
+            assert h.get("id") == f["slug"]
+        else:
+            assert h.get("id").startswith("faq-h")
+    worek = next(f for f in FAQ if f.get("slug") == "worek-na-kg")
+    (body,) = doc.xpath('//h2[@id="worek-na-kg"]/following-sibling::div//div[contains(@class, "accordion-body")]')
+    text = " ".join(body.text_content().split())
+    assert worek["a"][:40] in text
+    assert "1 worek = 25 kg" in text and "Na co uważać" in text
+    assert body.xpath('.//figure[contains(@class, "help-shot")]//img[contains(@src, "13-faq-worek.png")]')
+    assert "500" in text and "÷ 25" in text  # wynik: 20 worków → 500 kg, cena podzielona przez 25
+
+
+def test_faq_covers_units_and_conversions(client):
+    """Pytania o jednostki i przeliczniki: worek→kg, różne worki per towar, poprawa przelicznika, cena po
+    przeliczeniu, tylko na jednostkę bazową, różne zapisy tej samej jednostki."""
+    html = client.get("/pomoc/faq").get_data(as_text=True)
+    for needle in ("worek", "25 kg", "50 kg", "tylko dla tego towaru", "Przetwórz ponownie", "jednostkę bazową",
+                   "cena jednostkowa", "alias"):
+        assert needle in html, needle
+    assert 'href="/pomoc/jednostki"' in html
+
+
+def test_units_topic_links_faq_entry(client):
+    html = client.get("/pomoc/jednostki").get_data(as_text=True)
+    assert 'href="/pomoc/faq#worek-na-kg"' in html

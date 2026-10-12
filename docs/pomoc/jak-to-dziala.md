@@ -31,4 +31,4 @@ Reguły zapisane w szablonach podpowiadają też ścieżki dla *nowych* dostawc�
 
 ![Pulpit panelu: liczniki statusów dokumentów i lista ostatnich dokumentów](../../app/static/screenshots/02-pulpit.png)
 
-*Pulpit po nauczeniu na alfa-1.xml: alfa-2.xml tego samego dostawcy zatwierdzona automatycznie, a pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json) czekają ze statusem „Do wyjaśnienia”.*
+*Pulpit po nauczeniu na alfa-1.xml: alfa-2.xml tego samego dostawcy zatwierdzona automatycznie, a pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json, zeta.csv) czekają ze statusem „Do wyjaśnienia”.*

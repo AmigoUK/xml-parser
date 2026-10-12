@@ -45,6 +45,17 @@ def test_pages_match_screenshot_files(tool):
     assert set(names) == {p.stem for p in SCREENSHOTS.glob("*.png")} - NOT_SCREENSHOTS
 
 
+def test_samples_exist_and_resolve_modes_are_known(tool):
+    """Próbki narzędzia istnieją w demo/samples; tryb to True/False albo kod problemu z rejestru Pomocy (operator
+    zatrzymuje się na nim — dokument „w trakcie” negocjacji, np. karta „brak przelicznika” do FAQ)."""
+    from app.help_content import ISSUE_HELP
+    for name, mode in tool.SAMPLES:
+        assert (ROOT / "demo" / "samples" / name).is_file(), name
+        assert mode in (True, False) or mode in ISSUE_HELP, (name, mode)
+    assert dict(tool.SAMPLES)["zeta.csv"] == "missing_conversion"
+    assert tool.PAGES[-1].path == f"/dokumenty/{tool.ZETA_ID}"
+
+
 def test_list_without_playwright(tool, capsys):
     assert tool.main(["--list"]) == 0
     out = capsys.readouterr().out

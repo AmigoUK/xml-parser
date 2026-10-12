@@ -44,3 +44,5 @@ Faktura CSV Opakowań Delta (próbka demo `delta.csv`) ma pozycję „Pudełko n
 3. Wynik pozycji: ilość `24` szt, cena netto `8.00`, przelicznik `12`.
 
 Nie mapuj `kart.` bezpośrednio na `szt` — `szt` jest jednostką bazową, więc ilość nie zostałaby przeliczona (2 szt zamiast 24).
+
+Ten sam scenariusz dla worków i kilogramów, z zrzutem i listą pułapek: [FAQ — „Dostawca sprzedaje w workach, a my liczymy w kilogramach”](faq.md#worek-na-kg).

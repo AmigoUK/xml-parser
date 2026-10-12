@@ -11,3 +11,4 @@ GTIN-y mają poprawne cyfry kontrolne (prefiks 590999…/400999… — nieprzydz
 | gamma-ubl.xml | UBL 2.1 | kody UN/ECE `C62`, `H87`, atrybut `unitCode` |
 | delta.csv | CSV `;` | przecinek dziesiętny, data `DD.MM.RRRR`, `kart.` → szt (×12) |
 | epsilon.json | JSON | `EA` → `szt`, dopasowanie towarów po GTIN |
+| zeta.csv | CSV `;` | `wor.` → `worek`, przelicznik `1 worek = 25 kg` podpowiedziany z nazwy towaru — scenariusz z FAQ „worki → kilogramy” |

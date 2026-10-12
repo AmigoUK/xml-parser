@@ -6,13 +6,16 @@ from app.services.pipeline import ingest
 from tests.conftest import sample_bytes
 
 
-def resolve_with_top_suggestions(doc, fallback_factor="12", max_steps=25):
-    """Symuluje operatora, który zawsze wybiera pierwszą podpowiedź i „zapamiętaj”."""
+def resolve_with_top_suggestions(doc, fallback_factor="12", max_steps=25, stop_at=None):
+    """Symuluje operatora, który zawsze wybiera pierwszą podpowiedź i „zapamiętaj”; `stop_at` = kod problemu,
+    przy którym operator przerywa (dokument zostaje „w trakcie” negocjacji — np. do zrzutu ekranu)."""
     for _ in range(max_steps):
         blocking = [i for i in doc.issues if i["severity"] == "blocking"]
         if not blocking:
             return doc
         i = blocking[0]
+        if i["code"] == stop_at:
+            return doc
         sug = i["suggestions"]
         code = i["code"]
         if code == "unknown_supplier":
@@ -48,6 +51,7 @@ def resolve_with_top_suggestions(doc, fallback_factor="12", max_steps=25):
     ("gamma-ubl.xml", (b"GAM-2026-0315", b"GAM-2026-0316")),
     ("delta.csv", (b"D/77/2026", b"D/78/2026")),
     ("epsilon.json", (b"E-2026-0042", b"E-2026-0043")),
+    ("zeta.csv", (b"Z/301/2026", b"Z/302/2026")),
 ])
 def test_first_invoice_negotiated_next_one_automatic(seeded, name, second):
     first = ingest(sample_bytes(name), name)

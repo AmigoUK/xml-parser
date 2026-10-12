@@ -1,0 +1,48 @@
+{# FAQ „worek → kg”: rozwinięcie odpowiedzi — kroki, zrzut ze scenariusza (próbka demo zeta.csv: 20 worków po 25 kg),
+   co dzieje się z liczbami i pułapki. Renderowane w akordeonie FAQ (faq.html) pod krótką odpowiedzią. #}
+{% from "help/_shot.html" import shot %}
+<h3 class="h6 mt-3">Krok po kroku</h3>
+<ol>
+  <li><strong>Jednostka.</strong> Faktura trafia do kolejki z problemem „Nieznana jednostka „worek””
+    (albo „wor.”, „BAG” — jak pisze dostawca). Wybierz naszą jednostkę <code>worek</code> i zostaw włączone
+    „zapamiętaj” — powstaje alias dostawcy.</li>
+  <li><strong>Przelicznik.</strong> Pojawia się „Brak przelicznika dla jednostki „worek””. W formularzu wpisz
+    <code>25</code>, wybierz <code>kg</code> i zakres „dla wszystkich towarów dostawcy”. Jeśli nazwa towaru zawiera
+    „25 kg”, liczba jest już podpowiedziana.</li>
+  <li><strong>Zapisz.</strong> Dokument jest przetwarzany od nowa; przelicznik zostaje w słowniku, więc następna
+    faktura tego dostawcy przejdzie bez pytań.</li>
+</ol>
+{{ shot("13-faq-worek.png", "Negocjacja faktury demo: 20 worków cukru po 25 kg — karta „Brak przelicznika” z formularzem "
+        "1 worek = 25 kg (liczba podpowiedziana z nazwy towaru) i wyborem zakresu „dla wszystkich towarów dostawcy”.",
+        "Widok dokumentu w panelu z kartą problemu brak przelicznika: pole 1 worek = 25, lista jednostek z wybranym kg, "
+        "lista zakresu i przycisk Zapisz przelicznik") }}
+<h3 class="h6 mt-3">Co dzieje się z liczbami</h3>
+<table class="table table-sm small">
+  <thead><tr><th>Pole</th><th>Na fakturze</th><th>Po przeliczeniu</th></tr></thead>
+  <tbody>
+    <tr><td>Ilość</td><td>20 worek</td><td>500 kg (× 25)</td></tr>
+    <tr><td>Cena netto</td><td>75,00 za worek</td><td>3,00 za kg (÷ 25)</td></tr>
+    <tr><td>Wartość pozycji</td><td>1 500,00</td><td>1 500,00 — bez zmian</td></tr>
+    <tr><td>W dokumencie i API</td><td><code>unit_source</code> = worek</td><td><code>unit</code> = kg, <code>conversion_factor</code> = 25</td></tr>
+  </tbody>
+</table>
+<h3 class="h6 mt-3">Na co uważać</h3>
+<ul>
+  <li><strong>Nie wskazuj „worek” wprost jako kg.</strong> <code>kg</code> jest jednostką bazową, więc nic nie zostanie
+    przeliczone — zostanie 20 kg zamiast 500 kg. Jeśli tak się stało, usuń alias w Dane → Aliasy jednostek i kliknij
+    „Przetwórz ponownie” w dokumencie.</li>
+  <li><strong>Kropka, nie przecinek.</strong> Przelicznik 12,5 wpisz jako <code>12.5</code>; zapis „1,125” jest
+    odrzucany jako niejednoznaczny (1,125 czy 1125?). Przelicznik musi być większy od zera i mieć najwyżej
+    {{ limits.max_factor_digits }} cyfr całkowitych.</li>
+  <li><strong>Przelicznik jest zawsze zapamiętywany</strong> — tu nie ma wyboru „tylko ta faktura”. Pomyłkę poprawisz
+    w Dane → Przeliczniki.</li>
+  <li><strong>Działa od teraz.</strong> Dokumenty przetworzone wcześniej (także zatwierdzone) nie zmieniają się same —
+    użyj w nich „Przetwórz ponownie”.</li>
+  <li><strong>Tylko na jednostkę bazową.</strong> Lista „na jednostkę” pokazuje wyłącznie jednostki bazowe (kg, szt, l…);
+    worek → karton nie jest możliwy.</li>
+  <li><strong>„Tylko dla tego towaru” wymaga przypisanego towaru.</strong> Jeśli pozycja ma jeszcze problem „nie przypisano
+    towaru”, rozwiąż go najpierw.</li>
+  <li><strong>Inne worki u tego dostawcy</strong> (np. 50 kg) — zobacz pytanie
+    <a href="{{ url_for('help.topic', slug='faq') }}#worki-rozne-wagi">„Ten sam dostawca ma worki 25 kg i 50 kg”</a>.</li>
+  <li><strong>Faktura już w kilogramach?</strong> Nic nie rób — kg to jednostka bazowa, pozycja przechodzi bez przelicznika.</li>
+</ul>

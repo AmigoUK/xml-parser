@@ -53,3 +53,14 @@ def test_static_links_point_to_repo_files():
     assert _markdown('<p>Plik <a href="/static/openapi.yaml">openapi.yaml</a>.</p>') == \
         "Plik [openapi.yaml](../../app/static/openapi.yaml).\n"
     assert _markdown('<p><a href="/api/docs">Swagger</a></p>') == "Swagger (`/api/docs`)\n"  # bez zmian
+
+
+def test_faq_heading_with_slug_keeps_anchor_numbered_does_not():
+    """Nagłówek akordeonu FAQ ze slugiem (id=worek-na-kg) dostaje kotwicę w Markdown — link /pomoc/faq#worek-na-kg
+    z Pomocy i Wiki działa; nagłówki numerowane (faq-h3) kotwicy nie mają, bo numer zmienia się przy każdym wpisie."""
+    html = ('<div class="accordion"><div class="accordion-item"><h2 class="accordion-header" id="faq-h3">'
+            '<button type="button">Jak zmienić hasło?</button></h2><div class="accordion-body">Tak.</div></div>'
+            '<div class="accordion-item"><h2 class="accordion-header" id="worek-na-kg">'
+            '<button type="button">Worki a kilogramy?</button></h2><div class="accordion-body">Krok.</div></div></div>')
+    assert _markdown(html) == ('## Jak zmienić hasło?\n\nTak.\n\n<a id="worek-na-kg"></a>\n\n## Worki a kilogramy?'
+                               '\n\nKrok.\n')

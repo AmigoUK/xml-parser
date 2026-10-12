@@ -288,6 +288,46 @@ FAQ: list[dict] = [
     {"q": "Jak przywrócić ręcznie odrzucony dokument?",
      "a": "Otwórz dokument i kliknij „Przywróć”. Ani „Przetwórz ponownie”, ani API (zwraca 409) nie cofają "
           "ręcznego odrzucenia.", "link": "statusy-i-problemy"},
+    {"q": "Dostawca sprzedaje w workach, a my liczymy w kilogramach. Jak to ustawić?",
+     "slug": "worek-na-kg", "template": "_worek-na-kg.html",
+     "a": "Wystarczy raz powiedzieć systemowi, ile waży worek. W negocjacji wskaż, że zapis „worek” z faktury to "
+          "nasza jednostka worek, a potem wpisz przelicznik „1 worek = 25 kg”. Od tej chwili każda pozycja w workach "
+          "tego dostawcy jest przeliczana na kilogramy: 20 worków staje się 500 kg, a cena za worek — ceną za "
+          "kilogram. Poniżej krok po kroku, zrzut z panelu i lista pułapek.", "link": "jednostki"},
+    {"q": "Ten sam dostawca ma worki 25 kg i 50 kg. Co wtedy?",
+     "slug": "worki-rozne-wagi",
+     "a": "Daj przelicznik na towar, nie na dostawcę: przy pozycji z workiem 50 kg wybierz zakres „tylko dla tego "
+          "towaru” i wpisz 50. Przelicznik dla towaru wygrywa z przelicznikiem „dla wszystkich towarów dostawcy”, "
+          "więc mąka dalej liczy się po 25 kg, a cukier po 50 kg. Warunek: towar musi być już przypisany do pozycji "
+          "(rozwiąż najpierw problem „nie przypisano towaru”). Kolejność wyboru przelicznika: ten dostawca i ten "
+          "towar → ten dostawca, wszystkie towary → wszyscy dostawcy, ten towar → wszyscy.", "link": "jednostki"},
+    {"q": "Wpisałem zły przelicznik. Jak go poprawić i co z fakturami już przeliczonymi?",
+     "slug": "zly-przelicznik",
+     "a": "Dane → Przeliczniki → „Edytuj” przy wpisie. Wpisanie w negocjacji nowego przelicznika dla tej samej "
+          "jednostki, dostawcy i towaru także nadpisuje stary — nigdy nie powstaje drugi. Poprawka działa od "
+          "następnego przetworzenia: dokumenty już przeliczone (także zatwierdzone) nie zmieniają się same. Otwórz "
+          "każdy z nich i kliknij „Przetwórz ponownie”; system zewnętrzny zobaczy nową wersję przy synchronizacji "
+          "(updated_since), bo ponowne przetworzenie odświeża updated_at.", "link": "jednostki"},
+    {"q": "Dlaczego po przeliczeniu cena jednostkowa jest inna niż na fakturze?",
+     "slug": "cena-po-przeliczeniu",
+     "a": "Bo to cena za naszą jednostkę, nie za opakowanie dostawcy: 75,00 zł za worek 25 kg to 3,00 zł za kilogram. "
+          "Ilość jest mnożona przez przelicznik, cena dzielona — wartość pozycji się nie zmienia. Oryginalną jednostkę "
+          "widać w kolumnie „JM źródłowa”, użyty współczynnik w kolumnie „Przelicznik” (w API: unit_source i "
+          "conversion_factor). Gdy dzielenie nie wychodzi równo (np. 40,00 zł za karton 12 szt), cena jest zaokrąglana "
+          "do 4 miejsc — grosz różnicy w przeliczeniu to nie błąd.", "link": "jednostki"},
+    {"q": "Czy mogę przeliczyć worek na karton albo paletę?",
+     "slug": "tylko-jednostka-bazowa",
+     "a": "Nie — przelicznik zawsze prowadzi do jednostki bazowej (kg, szt, l…), żeby każda pozycja kończyła w tej "
+          "jednostce, w której liczy nasz magazyn; lista „na jednostkę” pokazuje tylko jednostki bazowe. Jeśli "
+          "naprawdę liczysz w kartonach, oznacz karton jako jednostkę bazową w Dane → Jednostki — wtedy pozycje w "
+          "kartonach nie są przeliczane. Jednostka jest bazowa dla wszystkich albo dla nikogo: nie może być bazowa dla "
+          "jednego towaru, a przeliczana dla innego.", "link": "jednostki"},
+    {"q": "Dostawca raz pisze „worek”, raz „wor.”, raz „BAG”. Muszę to ustawiać trzy razy?",
+     "slug": "rozne-zapisy-jednostki",
+     "a": "Alias — tak, każdy nowy zapis trzeba raz wskazać (pojawi się „Nieznana jednostka” z podpowiedzią). "
+          "Przelicznik — nie: wszystkie trzy zapisy wskazują naszą jednostkę worek, a przelicznik „1 worek = 25 kg” "
+          "jest jeden. Wielkość liter, polskie znaki i podwójne spacje nie mają znaczenia („WOREK” = „worek”), a zapis "
+          "równy kodowi naszej jednostki (np. „KG”) jest rozpoznawany bez aliasu.", "link": "jednostki"},
     {"q": "Dlaczego liczba „1,234” blokuje fakturę?",
      "a": "Bo może oznaczać 1,234 albo 1234. Wskaż separator dziesiętny transformacją "
           "{\"decimal\": \",\"} lub {\"decimal\": \".\"} albo wybierz wariant podpowiedziany w panelu.",

@@ -12,7 +12,8 @@ Decyzje zapisują się w szablonie dostawcy, więc **kolejne faktury przechodzą
 Bez LLM: deterministyczne reguły i transformacje z białej listy.
 
 - **REST API v1** (`X-API-Key`) dla innych systemów + **panel po polsku** z trybem demo.
-- 📖 **Pomoc:** w panelu pod `/pomoc` oraz w repo: [docs/pomoc](docs/pomoc/README.md).
+- 📖 **Pomoc:** w panelu pod `/pomoc`, w repo: [docs/pomoc](docs/pomoc/README.md) i w zakładce [Wiki](https://github.com/AmigoUK/xml-parser/wiki) (lustro odświeżane automatycznie).
+- ❓ **FAQ:** [Najczęstsze pytania](docs/pomoc/faq.md) — m.in. [worki → kilogramy](docs/pomoc/faq.md#worek-na-kg) krok po kroku, ze zrzutem i listą pułapek.
 - 📝 Zmiany: [CHANGELOG.md](CHANGELOG.md) · Specyfikacja: [design](docs/superpowers/specs/2026-10-10-xml-invoice-parser-design.md)
 
 ![Widok dokumentu z problemami do wyjaśnienia](app/static/screenshots/04-dokument.png)
@@ -54,7 +55,7 @@ Wszystkie dane na zrzutach są fikcyjne (próbki z [`demo/samples`](demo/samples
 | ![Kartoteka towarów](app/static/screenshots/06-kartoteka.png)<br/>**Kartoteka towarów** | ![Przeliczniki](app/static/screenshots/07-przeliczniki.png)<br/>**Przeliczniki jednostek** |
 | ![Pomoc](app/static/screenshots/08-pomoc.png)<br/>**Pomoc** w panelu | ![Statusy i problemy](app/static/screenshots/09-pomoc-problemy.png)<br/>**Kody problemów** z opisem rozwiązania |
 | ![O demo](app/static/screenshots/01-demo.png)<br/>**Tryb demo** z próbkami faktur | ![API](app/static/screenshots/11-api-docs.png)<br/>**Dokumentacja API** (OpenAPI) |
-| ![Przewodnik integracji](app/static/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | |
+| ![Przewodnik integracji](app/static/screenshots/12-pomoc-integracja.png)<br/>**Przewodnik integracji przez API** — synchronizacja `updated_since` + `cursor` | ![FAQ: worki → kilogramy](app/static/screenshots/13-faq-worek.png)<br/>**Negocjacja przelicznika** `1 worek = 25 kg` — scenariusz z [FAQ](docs/pomoc/faq.md#worek-na-kg) |
 
 ## API w 30 sekund
 

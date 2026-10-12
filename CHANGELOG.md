@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nic jeszcze._
+
+## [0.7.0] — 2026-10-12
+
 ### Added
+- FAQ w Pomocy: sześć pytań o jednostki i przeliczniki napisanych prostym językiem — „Dostawca sprzedaje w workach, a my liczymy w kilogramach” (krok po kroku, zrzut ze scenariusza, tabela „co dzieje się z liczbami” i lista pułapek: alias wprost na kg, kropka dziesiętna, zawsze zapamiętywany, działa od teraz, tylko na jednostkę bazową, zakres „tylko dla tego towaru” wymaga towaru), worki 25 kg i 50 kg u jednego dostawcy, poprawa złego przelicznika i „Przetwórz ponownie”, cena jednostkowa po przeliczeniu, worek → karton (nie), różne zapisy tej samej jednostki. Pytania mają stałe kotwice (`/pomoc/faq#worek-na-kg`), linkowane z tematu „Jednostki”; wpis FAQ może mieć partial HTML (`app/templates/help/faq/`).
+- Zakładka **Wiki** na GitHubie jako lustro Pomocy: `tools/export_wiki.py` (tylko biblioteka standardowa) przepisuje `docs/pomoc/*.md` na strony Wiki (nazwy z nagłówków, linki między tematami, obrazki przez raw.githubusercontent.com, pasek boczny z FAQ na górze, stopka), a workflow `.github/workflows/wiki.yml` wypycha je po każdym pushu na `main`; ręczne edycje w Wiki są nadpisywane. README linkuje Wiki i FAQ.
+- Próbka demo `zeta.csv` (Hurtownia Zeta: „wor.”, 20 worków cukru po 25 kg) i zrzut `13-faq-worek.png` — karta „brak przelicznika” z podpowiedzianym `1 worek = 25 kg`; `tools/screenshots.py` potrafi zatrzymać „operatora” na wskazanym problemie (`SAMPLES` z kodem problemu), pętla `resolve_with_top_suggestions` ma `stop_at`. Próbka na stronie „O demo”, w teście uczenia i w `demo/samples/README.md`.
 - Zmiana hasła w panelu („Zmień hasło” obok adresu e-mail: obecne hasło + nowe dwa razy; min. 10 znaków, nie przykładowe) oraz `flask set-admin-password` (`--from-env`, `--password-stdin`, `--email`; tworzy konto, gdy go nie ma). Obie drogi unieważniają wszystkie wydane ciasteczka sesji konta; wpisy `password_change` / `password_set` w Historii. Seed nadal nie nadpisuje hasła istniejącego konta — rotacja po zmianie `ADMIN_PASSWORD` w `.env` to właśnie ta komenda (README: „Hasło administratora”, Pomoc: FAQ „Jak zmienić hasło?”).
 - `flask prune-audit`: retencja dziennika — usuwa wpisy `login_failed`/`login_blocked` starsze niż `AUDIT_RETENTION_DAYS` (domyślnie 90; `--days N`, `--all-actions` dla całego dziennika). Nowe zmienne `AUDIT_RETENTION_DAYS` i `SESSION_HOURS` (czas życia sesji, dotąd stała 8 h) — w `.env.example`, compose i README.
 - Nagłówki `Permissions-Policy: camera=(), microphone=(), geolocation=()` zawsze i `Strict-Transport-Security: max-age=31536000; includeSubDomains` dla żądań po HTTPS (także za proxy z `X-Forwarded-Proto` i `TRUSTED_PROXY_COUNT`).
@@ -265,7 +272,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/AmigoUK/xml-parser/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AmigoUK/xml-parser/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/AmigoUK/xml-parser/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/AmigoUK/xml-parser/compare/v0.3.0...v0.4.0

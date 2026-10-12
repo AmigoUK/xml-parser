@@ -77,11 +77,13 @@ class Shot(NamedTuple):
     wait_for: str | None = None  # selektor, na który trzeba poczekać po załadowaniu
 
 
-# Próbki demo w kolejności wgrywania; True = problemy rozwiązane pętlą „pierwsza podpowiedź + zapamiętaj”.
+# Próbki demo w kolejności wgrywania; True = problemy rozwiązane pętlą „pierwsza podpowiedź + zapamiętaj”,
+# False = nietknięte, kod problemu = operator zatrzymuje się na nim (dokument „w trakcie” negocjacji do zrzutu).
 # Baza jest świeża, więc id dokumentu = pozycja na liście (sprawdzane w serve()).
 SAMPLES = [("alfa-1.xml", True), ("alfa-2.xml", False), ("beta-ksef.xml", True), ("delta.csv", True),
-           ("gamma-ubl.xml", False), ("epsilon.json", False)]
+           ("gamma-ubl.xml", False), ("epsilon.json", False), ("zeta.csv", "missing_conversion")]
 DOC_ID = [name for name, _ in SAMPLES].index("gamma-ubl.xml") + 1  # nowy dostawca z problemami do wyjaśnienia
+ZETA_ID = [name for name, _ in SAMPLES].index("zeta.csv") + 1  # worki po 25 kg: karta „brak przelicznika” (FAQ)
 
 PAGES = [
     Shot("01-demo", "/demo", True),
@@ -96,6 +98,7 @@ PAGES = [
     Shot("10-szablony", "/szablony", True),
     Shot("11-api-docs", "/api/docs", False, wait_for=".opblock-summary-path"),  # Swagger UI wyrenderował specyfikację
     Shot("12-pomoc-integracja", "/pomoc/integracja#odbior", False),
+    Shot("13-faq-worek", f"/dokumenty/{ZETA_ID}", False),  # FAQ: „1 worek = 25 kg” w negocjacji
 ]
 
 
@@ -133,8 +136,10 @@ def serve(port: int, workdir: Path) -> None:
         seed_demo()
         for expected_id, (name, resolve) in enumerate(SAMPLES, start=1):
             doc = ingest((samples / name).read_bytes(), name, source="demo")
-            if resolve:
+            if resolve is True:
                 resolve_with_top_suggestions(doc)
+            elif resolve:
+                resolve_with_top_suggestions(doc, stop_at=resolve)
             print(f"  dokument {doc.id}: {name} — {doc.status}", flush=True)
             if doc.id != expected_id:
                 raise SystemExit(f"Oczekiwano dokumentu {expected_id}, jest {doc.id} — adresy w PAGES byłyby złe.")

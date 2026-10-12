@@ -17,6 +17,7 @@ Uczący się parser faktur strukturalnych (XML w tym KSeF/UBL, JSON, CSV) do jed
 - Stopka z kredytami na każdej stronie poza pełnoekranowym edytorem mapowań.
 - Demo lokalnie: port hosta > 18500 (`APP_PORT` w `.env`), dostęp przez Tailscale MagicDNS.
 - Po każdej zmianie treści pomocy (`app/help_content.py`, `app/templates/help/`) uruchom `.venv/bin/python tools/export_help.py` — `tests/test_help_export.py` pilnuje aktualności `docs/pomoc/`.
+- Zakładka Wiki na GitHubie to lustro `docs/pomoc/` wypychane przez `.github/workflows/wiki.yml` (`tools/export_wiki.py`, bez zależności aplikacji) — nie edytuj Wiki ręcznie; FAQ (`FAQ` w `app/help_content.py`) może mieć `slug` (stała kotwica) i `template` (partial w `app/templates/help/faq/`).
 - `app/help_examples/` (przykłady integracji i odpowiedź przykładowa) są potrzebne w runtime — Pomoc renderuje je w `/pomoc/integracja` — więc zostają w obrazie Docker (nie dodawaj ich do `.dockerignore`); po ich zmianie też uruchom `tools/export_help.py`.
 - Zrzuty ekranu generuje `tools/screenshots.py` (odizolowana instancja, Playwright) do `app/static/screenshots/` — używane w Pomocy i README; nigdy z żywego demo.
 
