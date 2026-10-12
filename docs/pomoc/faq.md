@@ -16,7 +16,7 @@ W tym samym zakresie (ten sam klucz API albo panel) jest już ten sam plik albo 
 
 ## Jaki jest limit wielkości pliku i liczby pozycji?
 
-Plik faktury: 10 MB. Pozycji: 5 000. Węzłów drzewa (elementy, atrybuty, komórki CSV): 200 000. Limity ustawia administrator w konfiguracji. [Więcej →](statusy-i-problemy.md)
+Plik faktury: 10 MiB. Pozycji: 5 000. Węzłów drzewa (elementy, atrybuty, komórki CSV): 200 000. Limity ustawia administrator w konfiguracji. [Więcej →](statusy-i-problemy.md)
 
 ## Jakie formaty są obsługiwane?
 
@@ -57,6 +57,12 @@ Czas lokalny. Panel pokazuje daty i godziny w strefie z ustawienia DISPLAY_TZ (d
 ## Lista się urywa — gdzie reszta wpisów?
 
 Długie listy (dokumenty, historia, słowniki) pokazują jedną stronę naraz. Dokumenty, kolejka, Historia i Szablony mają na dole przyciski „Starsze →” i „Następne →”; słowniki (Dane) mają numerowane strony, w stałej kolejności danego słownika. Żeby nie przewijać, użyj wyszukiwania: pole nad listą Dokumentów oraz pole „Szukaj” w słownikach (adres z ?q=…), a w Historii filtruj po akcji i użytkowniku. Strona z filtrem ma własny adres, więc możesz ją dodać do zakładek.
+
+<a id="zestaw-demo-api"></a>
+
+## Jak wczytać zestaw demo przez API?
+
+Użyj skryptu zestaw-demo.sh (curl i jq) z tematu „Zestaw demo”: ustaw klucz w zmiennej XP_API_KEY i uruchom go z fazą „pierwsze”, „pozostale” albo „wszystko”. Po fazie „pierwsze” rozwiąż problemy w panelu, dopiero potem wczytaj „pozostałe”. Uwaga: dokumenty wczytane kluczem API leżą w zakresie duplikatów tego klucza, więc ten sam plik wczytany przez panel albo innym kluczem nie będzie duplikatem. [Więcej →](zestaw-demo.md)
 
 <a id="worek-na-kg"></a>
 

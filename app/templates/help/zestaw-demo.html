@@ -1,0 +1,89 @@
+{% extends "help/_layout.html" %}
+{% from "help/_shot.html" import shot %}
+{% macro expected(x) -%}
+{{ status_labels.get(x.status, x.status) }}{% if x.blocking or x.warnings %} <span class="text-muted">({{ (x.blocking + x.warnings)|join(", ") }})</span>{% endif %}
+{%- endmacro %}
+{% block help_content %}
+<p>Zestaw demo „Miesiąc faktur” to <strong>24 fikcyjne faktury</strong> z jednego miesiąca (październik 2026) od
+  <strong>sześciu dostawców</strong>: Alfa, Beta, Gamma, Epsilon, Zeta i Eta. Są w różnych formatach (XML, KSeF, UBL,
+  JSON, CSV). Dzięki nim zobaczysz całą pracę systemu: pierwsze faktury trzeba wyjaśnić, a kolejne tych samych
+  dostawców przechodzą same.</p>
+{% if manifest is none %}
+<div class="alert alert-warning">Zestaw demo nie jest dostępny w tej instalacji (brak katalogu <code>demo/dataset</code>
+  albo manifestu). Poniższy opis nadal pokazuje, jak wygląda przejście; tabela faktur i skrypt wymagają plików zestawu.</div>
+{% endif %}
+{{ shot("14-demo-zestaw.png", "Karta „Zestaw demo” na stronie „O demo”: przyciski „Wczytaj pierwsze”, „Wczytaj pozostałe” i "
+        "„Wczytaj wszystko”, a pod nimi tabela 24 faktur z oczekiwanym i faktycznym statusem każdej z nich.",
+        "Karta zestawu demo z przyciskami wczytywania faz i tabelą postępu 24 faktur") }}
+
+<h2 class="h5 mt-4">Krok po kroku</h2>
+<ol>
+  <li><strong>„Wczytaj pierwsze (6)”.</strong> Wczytuje po jednej fakturze każdego dostawcy. Wszystkie sześć trafia do
+    <a href="{{ url_for('help.topic', slug='pierwsza-faktura') }}">Kolejki</a> ze statusem „Do wyjaśnienia”, bo to nowi dostawcy.
+    Otwórz każdą i rozwiąż problemy od góry; pierwsze podpowiedzi są tu prawie zawsze dobre.</li>
+  <li><strong>„Wczytaj pozostałe (18)”.</strong> Faktury 7–24 czytają się już same: <strong>13 zostaje zatwierdzonych</strong>
+    (jedna z ostrzeżeniem o niezgodności sumy), <strong>4 trafiają do wyjaśnienia</strong> (numery 15–18: nowy towar,
+    alias jednostki PCE, brak waluty, jednostka karton z przelicznikiem), a <strong>1 jest duplikatem</strong>.
+    Rozwiąż cztery z nich tak samo jak w kroku 1. <strong>Przy fakturze 17 (Epsilon, brak waluty) wybierz GBP, nie
+    pierwszą podpowiedź PLN</strong> — Epsilon rozlicza się w funtach, a PLN to tylko waluta domyślna systemu.
+    <span class="small text-muted">Czwarte faktury dostawców (19, 21–24) nie potrzebują nauki z faktur 15–18, więc
+    przejdą też wtedy, gdy wczytasz całą fazę naraz.</span></li>
+  <li><strong>„Wczytaj wszystko”</strong> (bez wcześniejszej nauki). Wczytuje obie fazy jednym kliknięciem. Dostawcy są
+    jeszcze nieznani, więc <strong>23 z 24 trafiają do wyjaśnienia</strong> (nieznani dostawcy), a plik 20 jest duplikatem — to dobry sposób, by zobaczyć, że bez
+    nauki system niczego nie zgaduje.</li>
+  <li><strong>„Resetuj zestaw demo”.</strong> Usuwa wczytane dokumenty i naukę zestawu, więc kolejne przejście daje
+    identyczny przebieg.</li>
+</ol>
+
+<h2 class="h5 mt-4">Wszystkie 24 faktury</h2>
+{% if manifest is none %}
+<p class="text-muted">Tabela jest budowana z manifestu zestawu, którego tu nie ma.</p>
+{% else %}
+<div class="table-responsive">
+<table class="table table-sm bg-white small">
+  <thead><tr><th>#</th><th>Plik</th><th>Dostawca</th><th>Format</th><th>Co pokazuje</th><th>Status na wejściu → po rozwiązaniu</th></tr></thead>
+  <tbody>
+  {% for e in manifest.entries %}
+    <tr>
+      <td>{{ e.order }}</td>
+      <td><code>{{ e.filename }}</code></td>
+      <td>{{ manifest.suppliers[e.supplier].name if e.supplier in manifest.suppliers else e.supplier }}</td>
+      <td>{{ e.format }}</td>
+      <td>{{ e.shows }}</td>
+      <td>{{ expected(e.on_ingest) }}{% if e.after_resolve %} → {{ expected(e.after_resolve) }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2 class="h5 mt-4">Legenda pułapek</h2>
+<ul>
+  <li><strong>Waluta u Epsilon (faktura 17).</strong> Pierwsza podpowiedź to PLN. Wybierz GBP, bo ten dostawca rozlicza
+    się w funtach.</li>
+  <li><strong>Worek i karton (Beta, Zeta, faktury 2, 6, 18).</strong> Opakowanie dostawcy trzeba przeliczyć na naszą jednostkę:
+    1 worek = 25 kg, 1 karton = 20 szt (liczba jest w nazwie towaru). Zobacz
+    <a href="{{ url_for('help.topic', slug='jednostki') }}">jednostki i przeliczniki</a>.</li>
+  <li><strong>Skrót jednostki (Alfa, Eta, Gamma, Epsilon, Zeta).</strong> „pcs”, „C62”, „H87”, „EA”, „wor.”, „PCE”, „kart.” to
+    aliasy — każdy dostawca ma własne.</li>
+  <li><strong>Niezgodność sumy (13).</strong> To tylko ostrzeżenie; faktura jest zatwierdzona.</li>
+  <li><strong>Duplikat (20).</strong> Ten sam plik co 14 wysłany drugi raz — system go rozpoznaje.</li>
+</ul>
+
+<h2 class="h5 mt-4" id="przez-api">Przez API</h2>
+<p>Zestaw możesz wczytać też z zewnątrz, skryptem poniżej (potrzebne <code>curl</code> i <code>jq</code>). Klucz API ustaw w zmiennej
+  <code>XP_API_KEY</code>, a skrypt uruchom z fazą <code>pierwsze</code>, <code>pozostale</code> albo <code>wszystko</code>
+  (i opcjonalnie katalogiem z plikami; domyślnie <code>demo/dataset</code>). Po fazie „pierwsze” rozwiąż problemy w panelu,
+  dopiero potem wczytaj „pozostałe”. Klucze tworzysz w zakładce „Klucze API”, a przykłady w innych językach są w
+  <a href="{{ url_for('help.topic', slug='integracja') }}">przewodniku integracji</a>.</p>
+<div class="alert alert-info small"><strong>Zakres klucza.</strong> Dokumenty wczytane kluczem API leżą w zakresie duplikatów
+  tego klucza: ten sam plik wysłany przez panel albo innym kluczem nie zostanie uznany za duplikat, a postęp na karcie
+  „Zestaw demo” w panelu liczy się z dokumentów wczytanych przez panel.</div>
+{% if manifest is none %}
+<p class="text-muted">Skrypt jest dostępny tylko razem z zestawem demo.</p>
+{% else %}
+<pre class="bg-light border rounded p-2 small"><code>{{ dataset_script }}</code></pre>
+{% endif %}
+<p class="small">Zobacz też FAQ: <a href="{{ url_for('help.topic', slug='faq') }}#zestaw-demo-api">Jak wczytać zestaw demo przez API?</a></p>
+{% endblock %}

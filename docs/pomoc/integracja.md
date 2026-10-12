@@ -50,14 +50,14 @@ Dwa równoważne sposoby wysłania pliku na `POST https://parser.example.com/api
 - **multipart/form-data** z polem o nazwie dokładnie `file` (nazwa pliku z formularza zostaje zapisana w dokumencie) — zalecane;
 - **surowe body** z nagłówkiem `Content-Type` innym niż formularzowy (np. `application/xml`, `application/json`, `text/csv`) i opcjonalnym `X-Filename` z nazwą pliku (bez niego zapisywana jest nazwa `dokument`).
 
-Format (XML, JSON, CSV) rozpoznawany jest po treści, nie po nazwie ani `Content-Type`. Maksymalny rozmiar pliku na tej instancji: **10 MB**; faktura może mieć najwyżej 5 000 pozycji.
+Format (XML, JSON, CSV) rozpoznawany jest po treści, nie po nazwie ani `Content-Type`. Maksymalny rozmiar pliku na tej instancji: **10 MiB**; faktura może mieć najwyżej 5 000 pozycji.
 
 | HTTP | `error.code` | Co zrobić |
 | --- | --- | --- |
 | 201 | — | dokument przyjęty; sprawdź `status` — także `duplicate` i `rejected` przychodzą jako 201 |
 | 400 | `empty_body` | pusty plik, pole formularza o innej nazwie niż `file` albo surowe body wysłane jako formularz (patrz „Najczęstsze błędy”) — popraw żądanie, nie ponawiaj bez zmian |
 | 401 | `unauthorized` | sprawdź klucz i czy nie został wyłączony; nie ponawiaj w pętli |
-| 413 | `too_large` | plik większy niż 10 MB — nie ponawiaj |
+| 413 | `too_large` | plik większy niż 10 MiB — nie ponawiaj |
 | 500 | `internal_error` | ponów z przerwą (rozdział 6); błędy sieci i odpowiedzi 5xx serwera pośredniczącego traktuj tak samo |
 | 503 | `storage_unavailable` | magazyn plików chwilowo niedostępny (dokument nie powstał) — ponów z przerwą jak przy 500 |
 

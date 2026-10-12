@@ -26,7 +26,7 @@ Towar ma **indeks** (unikalny, maks. 64 znaki), nazwę (maks. 255 znaków), opcj
   | Jednostka | `jednostka`, `jm`, `unit` | nie |
 - separator `;`, `,` lub tabulator (wykrywany automatycznie, domyślnie `;`);
 - kodowanie UTF-8 (także z BOM) albo Windows-1250;
-- maks. 2 MB i 20 000 wierszy danych (nadmiarowe są pomijane).
+- maks. 2 MiB i 20 000 wierszy danych (nadmiarowe są pomijane).
 
 ```
 indeks;nazwa;gtin;jednostka

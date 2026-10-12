@@ -10,7 +10,7 @@ Parser zamienia fakturę strukturalną dowolnego dostawcy na jeden **dokument ka
 
 *Przebieg przetwarzania: plik XML, JSON lub CSV → wykrycie formatu i drzewo ścieżek → rozpoznanie dostawcy (NIP/VAT lub odcisk) → szablon → walidacja → „Zatwierdzona” albo „Do wyjaśnienia”; negocjacja w panelu z „zapamiętaj w szablonie” wraca do szablonu.*
 
-1. **Wejście** — plik z panelu („Wgraj fakturę”) albo z API. Plik większy niż 10 MB jest odrzucany od razu. Plik zapisywany jest w magazynie plików, a dokument dostaje status „Przyjęta”.
+1. **Wejście** — plik z panelu („Wgraj fakturę”) albo z API. Plik większy niż 10 MiB jest odrzucany od razu. Plik zapisywany jest w magazynie plików, a dokument dostaje status „Przyjęta”.
 2. **Wykrycie formatu** — po treści, nie po rozszerzeniu: plik zaczynający się od `<` to XML, od `{` lub `[` — JSON, pozostałe — CSV (separator `;`, `,`, tabulator lub `|` wykrywany automatycznie). Pliki puste, binarne (np. PDF, ZIP, obrazy) oraz w kodowaniu UTF-16/UTF-32 są odrzucane.
 3. **Drzewo** — plik zamieniany jest na drzewo ścieżek, np. `Faktura/Naglowek/DostawcaNIP`. Przestrzenie nazw XML są pomijane (liczy się nazwa lokalna), atrybuty są osobnymi węzłami. Limit: 200 000 węzłów. XML z DOCTYPE/ENTITY jest odrzucany, encje nie są rozwijane, parser nie sięga do sieci.
 4. **Identyfikacja dostawcy i odcisk** — system szuka NIP/VAT w ścieżkach znanych z aktywnych szablonów i w ścieżkach pasujących do słownika synonimów, a następnie porównuje go z NIP-ami dostawców. Szablon dostawcy wybierany jest po *odcisku* struktury: podobieństwie zbioru ścieżek pliku do ścieżek szablonu (co najmniej 60%). Gdy dostawca jest nieznany, a struktura pasuje do szablonu innego dostawcy, panel zaproponuje skopiowanie jego reguł.
@@ -32,3 +32,5 @@ Reguły zapisane w szablonach podpowiadają też ścieżki dla *nowych* dostawc�
 ![Pulpit panelu: liczniki statusów dokumentów i lista ostatnich dokumentów](../../app/static/screenshots/02-pulpit.png)
 
 *Pulpit po nauczeniu na alfa-1.xml: alfa-2.xml tego samego dostawcy zatwierdzona automatycznie, a pierwsze faktury nowych dostawców (gamma-ubl.xml, epsilon.json, zeta.csv) czekają ze statusem „Do wyjaśnienia”.*
+
+Cały proces możesz przećwiczyć na gotowym zestawie 24 faktur: [zestaw demo „Miesiąc faktur”](zestaw-demo.md).

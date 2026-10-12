@@ -37,6 +37,8 @@ Aliasów, przeliczników i mapowań towarów nie da się zapamiętać, dopóki d
 
 Każde rozwiązanie problemu (poza „Odrzuć”) przetwarza dokument ponownie. Ręcznie — przyciskiem „Przetwórz ponownie” (np. po zmianie kartoteki, słowników albo szablonu w edytorze) albo przez API (`POST /api/v1/documents/{id}/reprocess`). Dokument odrzucony ręcznie pozostaje odrzucony, dopóki nie użyjesz „Przywróć”.
 
+Chcesz przećwiczyć to na całym miesiącu faktur? Zobacz [zestaw demo „Miesiąc faktur”](zestaw-demo.md).
+
 ## Przykład: alfa-1.xml → alfa-2.xml
 
 Próbki demo są fikcyjne (Hurtownia Alfa). Po wczytaniu `alfa-1.xml` pojawiają się cztery problemy blokujące:

@@ -12,6 +12,9 @@ TOPICS: list[dict] = [
      "summary": "Droga faktury od pliku do zatwierdzonego dokumentu i na czym polega „uczenie”."},
     {"slug": "pierwsza-faktura", "title": "Pierwsza faktura dostawcy",
      "summary": "Negocjacja w widoku dokumentu: „tylko ta faktura” albo „zapamiętaj w szablonie”."},
+    {"slug": "zestaw-demo", "title": "Zestaw demo „Miesiąc faktur”",
+     "summary": "24 fikcyjne faktury sześciu dostawców: przejdź krok po kroku całe uczenie, z tabelą oczekiwanych "
+                "wyników i skryptem do wczytania przez API."},
     {"slug": "edytor-mapowan", "title": "Edytor mapowań",
      "summary": "Pełnoekranowy edytor reguł szablonu i wszystkie transformacje z białej listy."},
     {"slug": "szablony", "title": "Szablony i wersje",
@@ -301,6 +304,13 @@ FAQ: list[dict] = [
           "strony, w stałej kolejności danego słownika. Żeby nie przewijać, użyj wyszukiwania: pole nad listą "
           "Dokumentów oraz pole „Szukaj” w słownikach (adres z ?q=…), a w Historii filtruj po akcji i użytkowniku. "
           "Strona z filtrem ma własny adres, więc możesz ją dodać do zakładek.", "link": None},
+    {"q": "Jak wczytać zestaw demo przez API?",
+     "slug": "zestaw-demo-api",
+     "a": "Użyj skryptu zestaw-demo.sh (curl i jq) z tematu „Zestaw demo”: ustaw klucz w zmiennej XP_API_KEY i "
+          "uruchom go z fazą „pierwsze”, „pozostale” albo „wszystko”. Po fazie „pierwsze” rozwiąż problemy w "
+          "panelu, dopiero potem wczytaj „pozostałe”. Uwaga: dokumenty wczytane kluczem API leżą w zakresie "
+          "duplikatów tego klucza, więc ten sam plik wczytany przez panel albo innym kluczem nie będzie "
+          "duplikatem.", "link": "zestaw-demo"},
     {"q": "Dostawca sprzedaje w workach, a my liczymy w kilogramach. Jak to ustawić?",
      "slug": "worek-na-kg", "template": "_worek-na-kg.html",
      "a": "Wystarczy raz powiedzieć systemowi, ile waży worek. W negocjacji wskaż, że zapis „worek” z faktury to "
