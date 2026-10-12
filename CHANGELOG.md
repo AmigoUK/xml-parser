@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nic jeszcze._
+
+## [0.8.0] — 2026-10-12
+
 ### Added
 - Zestaw demo „Miesiąc faktur” (`demo/dataset/`): 24 fikcyjne faktury sześciu dostawców, w tym nowy „Eta Packaging Sp. z o.o.” (XML z angielskimi tagami), z `manifest.json` (kolejność, fazy, oczekiwane statusy `on_ingest`/`after_resolve`). Pułapki: brak waluty, jednostki `pcs`/`C62`/`H87`/`EA`/`wor.`/`kart.`, towary spoza kartoteki, niezgodność sumy pozycji, nowy alias `PCE`, duplikat bajtowy.
 - Karta „Zestaw demo” na stronie „O demo”: przyciski „Wczytaj pierwsze (6)”, „Wczytaj pozostałe (18)”, „Wczytaj wszystko (24)” i tabela postępu (status oczekiwany a rzeczywisty, źródło); serwis `demo_dataset`.
@@ -329,7 +333,8 @@ Przed wdrożeniem przeczytaj wpisy **BREAKING** w sekcji „Changed”. Kolejno�
 - Strażnik danych prywatnych (`tests/test_no_private_data.py`) + hook pre-commit.
 - Specyfikacja projektowa i plan etapu 1.
 
-[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/AmigoUK/xml-parser/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/AmigoUK/xml-parser/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/AmigoUK/xml-parser/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/AmigoUK/xml-parser/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AmigoUK/xml-parser/compare/v0.5.0...v0.6.0
