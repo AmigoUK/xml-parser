@@ -66,7 +66,9 @@ def _op_client(client):
 def test_demo_page_shows_dataset_table_with_24_rows_and_buttons(auth_client):
     html = auth_client.get("/demo").get_data(as_text=True)
     assert 'id="zestaw"' in html and "Miesiąc faktur" in html
-    assert html.count("<tr") >= 25  # nagłówek + 24 wiersze zestawu (+ próbki)
+    card = html[html.index('id="zestaw"'):]
+    card = card[:card.index("</table>")]
+    assert card.count("<tr") == 25  # nagłówek + dokładnie 24 wiersze zestawu
     assert "Wczytaj pierwsze (6)" in html and "Wczytaj pozostałe (18)" in html and "Wczytaj wszystko (24)" in html
     assert "/demo/zestaw/wczytaj/pierwsze" in html
 
@@ -97,7 +99,7 @@ def test_load_rest_then_all_is_idempotent(auth_client):
     auth_client.post("/demo/zestaw/wczytaj/pierwsze")
     auth_client.post("/demo/zestaw/wczytaj/pozostale")
     n = Document.query.count()
-    assert n >= 24
+    assert n == 24
     auth_client.post("/demo/zestaw/wczytaj/wszystko")
     assert Document.query.count() == n
 
@@ -134,3 +136,39 @@ def test_web_demo_only_wires_views():
     src = (Path(__file__).resolve().parent.parent / "app" / "web" / "demo.py").read_text(encoding="utf-8")
     assert "from app.services.demo_dataset import" in src
     assert "ingest(" in src and "DATASET_DIR" not in src and "json.load" not in src and "sha256" not in src
+
+
+def test_load_with_missing_manifest_flashes_error_not_500(auth_client, monkeypatch, tmp_path):
+    from app.services import demo_dataset
+    monkeypatch.setattr(demo_dataset, "DATASET_DIR", tmp_path)
+    r = auth_client.post("/demo/zestaw/wczytaj/pierwsze")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/demo#zestaw")
+    assert "Brak manifestu zestawu demo" in auth_client.get("/demo").get_data(as_text=True)
+    assert Document.query.count() == 0
+
+
+def test_load_error_with_partial_result_flashes_loaded_count(auth_client, monkeypatch):
+    from app.services import demo_dataset
+    from app.web import demo as demo_web
+    doc = Document(filename="x.xml", sha256="0" * 64, source="demo")
+    partial = demo_dataset.BatchResult(loaded=[doc, doc], skipped=[object()])
+    def boom(phase, source="demo"):
+        raise demo_dataset.DatasetLoadError("Przerwano.", partial)
+    monkeypatch.setattr(demo_web, "load_phase", boom)
+    r = auth_client.post("/demo/zestaw/wczytaj/pierwsze")
+    assert r.status_code == 302
+    html = auth_client.get("/demo").get_data(as_text=True)
+    assert "Przerwano. Wczytano 2 faktur, pominięto 1." in html
+
+
+def test_progress_row_not_matching_expected_is_highlighted(auth_client, monkeypatch):
+    from app.web import demo as demo_web
+    real = demo_web.dataset_progress
+    def tweaked(manifest):
+        import dataclasses
+        rows = real(manifest)
+        rows[0] = dataclasses.replace(rows[0], matches_expected=False)
+        return rows
+    monkeypatch.setattr(demo_web, "dataset_progress", tweaked)
+    html = auth_client.get("/demo").get_data(as_text=True)
+    assert html.count('class="table-warning"') == 1

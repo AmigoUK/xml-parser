@@ -6,7 +6,6 @@ from flask_login import current_user, login_required
 from app.models import STATUS_LABELS
 from app.services.demo_dataset import (
     PHASES,
-    DatasetError,
     DatasetLoadError,
     load_manifest,
     load_phase,
@@ -60,7 +59,7 @@ def index():
         try:
             manifest = load_manifest()
             dataset, counts = dataset_progress(manifest), dataset_counts()
-        except DatasetError as exc:  # uszkodzony manifest → komunikat zamiast 500
+        except (FileNotFoundError, ValueError) as exc:  # brak/uszkodzony manifest → komunikat zamiast 500
             flash(str(exc), "error")
     return render_template("demo.html", samples=DEMO_SAMPLES, api_base=request.host_url.rstrip("/"),
                            demo_key=demo_key, admin_email=current_app.config.get("ADMIN_EMAIL"),
@@ -76,7 +75,7 @@ def load_dataset_phase(phase):
         result = load_phase(phase, source="demo")
     except DatasetLoadError as exc:
         flash(f"{exc} Wczytano {len(exc.partial.loaded)} faktur, pominięto {len(exc.partial.skipped)}.", "error")
-    except DatasetError as exc:
+    except (FileNotFoundError, ValueError) as exc:  # DatasetError jest ValueError
         flash(str(exc), "error")
     else:
         flash(f"Wczytano {len(result.loaded)} faktur, pominięto {len(result.skipped)} już wczytanych.", "success")
