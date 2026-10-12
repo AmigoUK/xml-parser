@@ -16,13 +16,24 @@ function editorComponent(cfg) {
     preview: null,
     comment: '',
     saving: false,
+    dirty: false, // niezapisane zmiany reguł lub komentarza — włącza ostrzeżenie przy zamknięciu karty
     error: '',
     sections: [
       { key: 'header', label: 'Nagłówek', fields: cfg.header || [] },
       { key: 'lines', label: 'Pozycje (ścieżki względne)', fields: cfg.lines || [] },
     ],
     transformList: Object.entries(cfg.transforms || {}).map(function (e) { return { name: e[0], label: e[1] }; }),
-    init() { this.runPreview(); },
+    init() {
+      this.runPreview();
+      window.addEventListener('beforeunload', this.onBeforeUnload.bind(this));
+    },
+    markDirty() { this.dirty = true; },
+    // ostrzeżenie przeglądarki o utracie zmian; nie przy zapisie (po nim następuje przekierowanie)
+    onBeforeUnload(e) {
+      if (!this.dirty || this.saving) return;
+      e.preventDefault();
+      e.returnValue = '';
+    },
 
     // --- drzewo pliku ---
     select(r) { this.selected = r.path; },
@@ -61,20 +72,23 @@ function editorComponent(cfg) {
       }
       var old = this.rules[section][key] || {};
       this.rules[section][key] = { path: path, transforms: old.transforms || [] };
+      this.markDirty();
       this.runPreview();
     },
     applyCandidate(section, key, c) {
       this.rules[section][key] = { path: c.path, transforms: c.transforms || [] };
+      this.markDirty();
       this.runPreview();
     },
-    clear(section, key) { delete this.rules[section][key]; this.runPreview(); },
-    setLinePath() { this.rules.line_path = this.selected; this.runPreview(); },
+    clear(section, key) { delete this.rules[section][key]; this.markDirty(); this.runPreview(); },
+    setLinePath() { this.rules.line_path = this.selected; this.markDirty(); this.runPreview(); },
     setTransforms(section, key, text) {
       this.error = '';
       try {
         var t = JSON.parse(text || '[]');
         if (!Array.isArray(t)) throw new Error();
         this.rules[section][key].transforms = t;
+        this.markDirty();
         this.runPreview();
       } catch (e) { this.error = 'Transformacje muszą być listą JSON, np. ["trim", {"gs1": "10"}].'; }
     },
@@ -82,6 +96,7 @@ function editorComponent(cfg) {
     setDefault(section, key, value) {
       var bucket = this.rules[section === 'lines' ? 'line_defaults' : 'defaults'];
       if (value === '') delete bucket[key]; else bucket[key] = value;
+      this.markDirty();
       this.runPreview();
     },
     onDefaultChange(section, key, event) { this.setDefault(section, key, event.target.value); },
@@ -122,6 +137,7 @@ function editorComponent(cfg) {
           if (!(e.data && e.data.needs_confirm && window.confirm(e.message))) throw e;
           res = await this.post(this.cfg.saveUrl, Object.assign({}, body, { confirm_incomplete: true }));
         }
+        this.dirty = false;
         window.location = res.redirect;
       } catch (e) { this.error = e.message; } finally { this.saving = false; }
     },

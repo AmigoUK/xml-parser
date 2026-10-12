@@ -7,12 +7,12 @@
   <div class="d-flex align-items-center gap-2 p-2 border-bottom bg-white">
     <a class="btn btn-sm btn-link" :href="cfg.backUrl">← Wróć</a>
     <strong class="me-auto">{{ title }}</strong>
-    <input class="form-control form-control-sm w-auto" x-model="comment" placeholder="Komentarz do wersji">
+    <input class="form-control form-control-sm w-auto" x-model="comment" @input="markDirty()" placeholder="Komentarz do wersji">
     <button class="btn btn-sm btn-outline-secondary" @click="runPreview()">Podgląd</button>
     <button class="btn btn-sm btn-primary" @click="save()" :disabled="saving">Zapisz nową wersję</button>
     <a class="btn btn-sm btn-link" href="{{ url_for('help.topic', slug='edytor-mapowan') }}" target="_blank" rel="noopener">? Pomoc</a>
   </div>
-  <div class="row g-0 flex-grow-1" style="min-height:0">
+  <div class="row g-0 flex-grow-1 min-h-0">
     <div class="col-3 border-end overflow-auto p-2 bg-white">
       <div class="small text-muted mb-1">1. Kliknij element w pliku</div>
       <template x-for="(r, idx) in cfg.rows" :key="idx">
@@ -26,7 +26,7 @@
       <div class="card card-body p-2 mb-2">
         <div class="small fw-semibold">Element z pozycjami faktury</div>
         <div class="d-flex gap-2 align-items-center"><code class="small" x-text="linePathLabel()"></code>
-          <button class="btn btn-sm btn-outline-primary ms-auto" @click="setLinePath()" :disabled="!canSetLinePath()">← ustaw</button></div>
+          <button class="btn btn-sm btn-outline-primary ms-auto" @click="setLinePath()" aria-label="Ustaw zaznaczony element jako element z pozycjami faktury" title="Ustaw zaznaczony element jako element z pozycjami faktury" :disabled="!canSetLinePath()">← ustaw</button></div>
       </div>
       <p class="text-danger small" x-show="error" x-text="error"></p>
       <template x-for="s in sections" :key="s.key">
@@ -36,8 +36,8 @@
             <div class="border rounded p-2 mb-2 bg-white">
               <div class="d-flex align-items-center gap-2">
                 <span class="small fw-semibold" x-text="fieldLabel(f)"></span>
-                <button class="btn btn-sm btn-outline-primary ms-auto py-0" @click="assign(s.key, f.key)" :disabled="!selected">←</button>
-                <button class="btn btn-sm btn-outline-secondary py-0" @click="clear(s.key, f.key)">×</button>
+                <button class="btn btn-sm btn-outline-primary ms-auto py-0" @click="assign(s.key, f.key)" aria-label="Przypisz zaznaczony element do pola" title="Przypisz zaznaczony element do pola" :disabled="!selected">←</button>
+                <button class="btn btn-sm btn-outline-secondary py-0" @click="clear(s.key, f.key)" aria-label="Usuń mapowanie pola" title="Usuń mapowanie pola">×</button>
               </div>
               <code class="small d-block" x-text="ruleSource(s.key, f.key)"></code>
               <input class="form-control form-control-sm mt-1" placeholder='transformacje JSON, np. ["strip_percent"]'
