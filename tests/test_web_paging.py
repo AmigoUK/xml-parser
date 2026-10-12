@@ -311,7 +311,8 @@ def test_crud_flash_names_object(auth_client):
 def test_all_specs_have_singular_forms_and_titles_match_menu():
     from app.web.catalog import SPECS
     nav = (ROOT / "app/templates/_nav.html").read_text(encoding="utf-8")
-    menu = dict(re.findall(r"url_for\('catalog\.list_(\w+)'\) }}\">([^<]+)</a>", nav))
+    # pozycje menu „Dane” to makro dd_item(url_for('catalog.list_<key>'), 'Etykieta', 'key')
+    menu = dict(re.findall(r"dd_item\(url_for\('catalog\.list_(\w+)'\), '([^']+)'", nav))
     assert len(SPECS) == len(menu) == 6
     for spec in SPECS:
         assert spec.title == menu[spec.key], spec.key
