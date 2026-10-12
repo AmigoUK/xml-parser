@@ -111,13 +111,13 @@ Błędy mają postać `{"error": {"code": "…", "message": "…"}}`.
 | 404 | `not_found` | brak dokumentu (albo dokument innego klucza) lub nieznany adres |
 | 405 | `method_not_allowed` | metoda niedozwolona dla adresu |
 | 409 | `rejected` | `reprocess` dokumentu odrzuconego ręcznie |
-| 413 | `too_large` | plik większy niż 10 MB |
+| 413 | `too_large` | plik większy niż 10 MiB |
 | 500 | `internal_error` | wewnętrzny błąd serwera |
 | 503 | `storage_unavailable` | nie udało się zapisać pliku w magazynie (pełny dysk, niedostępny wolumen) — ponów później |
 
 ## Limity
 
-- Plik faktury: maks. 10 MB.
+- Plik faktury: maks. 10 MiB.
 - Pozycji na fakturze: maks. 5 000 (więcej — dokument odrzucony z problemem `too_many_lines`).
 - Węzłów drzewa: maks. 200 000 (więcej — problem `unreadable`).
 - Lista dokumentów: maks. 500 wyników na żądanie (w trybie synchronizacji — na stronę).

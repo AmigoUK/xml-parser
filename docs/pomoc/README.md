@@ -22,6 +22,10 @@ Droga faktury od pliku do zatwierdzonego dokumentu i na czym polega „uczenie�
 
 Negocjacja w widoku dokumentu: „tylko ta faktura” albo „zapamiętaj w szablonie”.
 
+### [Zestaw demo „Miesiąc faktur”](zestaw-demo.md)
+
+24 fikcyjne faktury sześciu dostawców: przejdź krok po kroku całe uczenie, z tabelą oczekiwanych wyników i skryptem do wczytania przez API.
+
 ### [Edytor mapowań](edytor-mapowan.md)
 
 Pełnoekranowy edytor reguł szablonu i wszystkie transformacje z białej listy.
@@ -56,6 +60,6 @@ Krótkie odpowiedzi na pytania, które pojawiają się najczęściej.
 
 **Najważniejsze limity tej instancji**
 
-- Plik faktury: maks. 10 MB.
+- Plik faktury: maks. 10 MiB.
 - Pozycji na fakturze: maks. 5 000.
 - Węzłów drzewa (elementy, atrybuty, komórki CSV): maks. 200 000.

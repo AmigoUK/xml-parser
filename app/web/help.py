@@ -15,6 +15,7 @@ from app.engine.values import MAX_FACTOR_INTEGER_DIGITS, MAX_INTEGER_DIGITS, MAX
 from app.formatting import MIB, mib
 from app.help_content import FAQ, ISSUE_HELP, STATUS_HELP, TOPICS, TOPICS_BY_SLUG, TRANSFORM_HELP
 from app.models import STATUS_LABELS
+from app.services import demo_dataset
 from app.services.catalog import MAX_IMPORT_BYTES, MAX_IMPORT_ROWS
 from app.services.pipeline import FINGERPRINT_MIN
 from app.web.documents import ISSUE_CARDS_LIMIT
@@ -32,6 +33,7 @@ INTEGRATION_EXAMPLES = [  # (język bloku kodu, tytuł, plik)
     ("bash", "Powłoka — curl i jq", "integracja.sh"),
 ]
 SAMPLE_RESPONSE_FILE = "odpowiedz-zatwierdzona.json"
+DATASET_SCRIPT = "zestaw-demo.sh"
 
 # Zrzuty ekranu w tematach Pomocy (makro help/_shot.html) — te same pliki, co w README.
 SCREENSHOTS_DIR = Path(__file__).resolve().parent.parent / "static" / "screenshots"
@@ -55,14 +57,14 @@ def fmt_int(n: int) -> str:
 
 
 def fmt_bytes(n: int) -> str:
-    """Rozmiar po polsku: pełne MB, ułamek MB z przecinkiem, KB albo B."""
+    """Rozmiar po polsku: pełne MiB, ułamek MiB z przecinkiem, KiB albo B."""
     kib = 1024
     if n >= MIB and n % MIB == 0:
-        return f"{mib(n)} MB"
+        return f"{mib(n)} MiB"
     if n >= MIB:
-        return f"{n / MIB:.1f} MB".replace(".", ",")
+        return f"{n / MIB:.1f} MiB".replace(".", ",")
     if n >= kib:
-        return f"{n // kib} KB"
+        return f"{n // kib} KiB"
     return f"{n} B"
 
 
@@ -155,6 +157,17 @@ def inject_help_codes():
     return {"help_issue_codes": ISSUE_HELP}
 
 
+def _dataset_context(api_base: str) -> dict:
+    """Manifest zestawu demo (None, gdy katalogu brak lub manifest nie daje się odczytać — strona ma się wyrenderować)
+    i skrypt zestaw-demo.sh z adresem instancji; działa bez DEMO_MODE (eksport Pomocy)."""
+    try:
+        manifest = demo_dataset.load_manifest()
+    except (FileNotFoundError, ValueError):
+        manifest = None
+    return {"manifest": manifest, "status_labels": STATUS_LABELS,
+            "dataset_script": _example_text(DATASET_SCRIPT).replace(API_BASE_MARK, api_base).rstrip("\n")}
+
+
 @bp.get("")
 def index():
     return render_template("help/index.html", topics=TOPICS, quick_start=QUICK_START, limits=help_limits())
@@ -172,6 +185,8 @@ def topic(slug):
     if slug == "integracja":
         extra = {"examples": integration_examples(api_base),
                  "sample_response": _example_text(SAMPLE_RESPONSE_FILE).rstrip("\n")}
+    if slug == "zestaw-demo":
+        extra = _dataset_context(api_base)
     return render_template(
         f"help/{slug}.html", topic=t, topics=TOPICS, prev=prev, next=nxt, limits=limits,
         issues=ISSUE_HELP, statuses=[(k, STATUS_LABELS[k], STATUS_HELP.get(k, "")) for k in STATUS_LABELS],

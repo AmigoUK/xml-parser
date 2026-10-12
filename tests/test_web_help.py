@@ -120,6 +120,7 @@ SCREENSHOTS_DIR = ROOT / "app" / "static" / "screenshots"
 HELP_SHOTS = {
     "jak-to-dziala": ["diagram-przetwarzania-td.png", "02-pulpit.png"],
     "pierwsza-faktura": ["03-kolejka.png", "04-dokument.png"],
+    "zestaw-demo": ["14-demo-zestaw.png"],
     "edytor-mapowan": ["05-edytor-mapowan.png"],
     "szablony": ["10-szablony.png"],
     "jednostki": ["07-przeliczniki.png"],
@@ -283,8 +284,8 @@ def test_limits_follow_configuration(app, client):
     app.config.update(MAX_DOCUMENT_BYTES=3 * 1024 * 1024, MAX_LINES=1234, MAX_TREE_NODES=54321)
     for path in ("/pomoc", "/pomoc/api", "/pomoc/faq"):
         html = client.get(path).get_data(as_text=True)
-        assert "3 MB" in html and "1 234" in html and "54 321" in html, path
-        assert "10 MB" not in html and "200 000" not in html and "5 000 pozycji" not in html
+        assert "3 MiB" in html and "1 234" in html and "54 321" in html, path
+        assert "10 MiB" not in html and "200 000" not in html and "5 000 pozycji" not in html
 
 
 def test_import_and_list_limits_from_code(client):
@@ -452,7 +453,7 @@ def test_integration_limits_follow_configuration(app, client):
     from app.api.routes import LIST_DEFAULT_LIMIT, LIST_MAX_LIMIT
     app.config.update(MAX_DOCUMENT_BYTES=3 * 1024 * 1024, MAX_LINES=1234)
     html = client.get(INTEGRATION).get_data(as_text=True)
-    assert "3 MB" in html and "1 234" in html and "10 MB" not in html
+    assert "3 MiB" in html and "1 234" in html and "10 MiB" not in html
     assert f"domyślnie {LIST_DEFAULT_LIMIT}, maks. {LIST_MAX_LIMIT}" in html
 
 
@@ -567,3 +568,39 @@ def test_faq_time_and_longer_lists_have_stable_anchors(client):
                     ("dluzsze-listy", "Lista się urywa — gdzie reszta wpisów?")):
         assert f'id="{slug}"' in faq and q in faq
     assert "DISPLAY_TZ" in faq and "Starsze →" in faq
+
+
+# --- temat „Zestaw demo” ---
+
+def test_dataset_topic_lists_all_files_and_phases(client):
+    from app.services.demo_dataset import load_manifest
+    html = client.get("/pomoc/zestaw-demo").get_data(as_text=True)
+    m = load_manifest()
+    assert len(m.entries) == 24
+    for e in m.entries:
+        assert e.filename in html, e.filename
+    assert "Wczytaj pierwsze (6)" in html and "Wczytaj pozostałe (18)" in html
+    assert "GBP" in html and "XP_API_KEY" in html
+
+
+def test_dataset_topic_renders_api_script_with_request_host(client):
+    import html as html_lib
+    html = html_lib.unescape(
+        client.get("/pomoc/zestaw-demo", base_url="http://faktury.example:8123").get_data(as_text=True))
+    assert 'BASE="http://faktury.example:8123/api/v1"' in html
+    assert "__API_BASE__" not in html
+
+
+def test_dataset_topic_without_dataset_dir_is_not_500(client, monkeypatch, tmp_path):
+    from app.services import demo_dataset
+    monkeypatch.setattr(demo_dataset, "DATASET_DIR", tmp_path)
+    r = client.get("/pomoc/zestaw-demo")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "nie jest dostępny" in html and "Wczytaj pierwsze (6)" in html
+
+
+def test_dataset_faq_has_slug_and_links_to_topic(client):
+    entry = next(f for f in FAQ if f.get("slug") == "zestaw-demo-api")
+    assert entry["link"] == "zestaw-demo"
+    assert 'id="zestaw-demo-api"' in client.get("/pomoc/faq").get_data(as_text=True)
