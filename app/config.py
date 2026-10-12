@@ -52,3 +52,14 @@ class Config:
     TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", 0))
     # schemat adresów budowanych poza żądaniem (CLI, zadania); w żądaniu za proxy decyduje X-Forwarded-Proto
     PREFERRED_URL_SCHEME = os.environ.get("PREFERRED_URL_SCHEME", "http")
+    # webhooki (v0.9.0): publiczny adres panelu do `document_url` w ładunku (np. https://xp.example.com);
+    # pusty = adres z żądania, a poza żądaniem (worker) null
+    PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
+    # adresy webhooków tylko https; 1 dopuszcza http (sieć wewnętrzna, testy)
+    WEBHOOK_ALLOW_HTTP = _bool("WEBHOOK_ALLOW_HTTP", "0")
+    # wyjątki od blokady adresów niepublicznych (SSRF): nazwy hostów i podsieci CIDR po przecinku
+    WEBHOOK_ALLOWED_HOSTS = os.environ.get("WEBHOOK_ALLOWED_HOSTS", "")
+    # retencja: `flask prune-webhooks` usuwa zakończone dostawy starsze niż tyle dni
+    WEBHOOK_RETENTION_DAYS = int(os.environ.get("WEBHOOK_RETENTION_DAYS", 30))
+    # plik heartbeat workera webhooków (healthcheck usługi `worker`); pusty = bez heartbeatu
+    WEBHOOK_HEARTBEAT_FILE = os.environ.get("WEBHOOK_HEARTBEAT_FILE", "")

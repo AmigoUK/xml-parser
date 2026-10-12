@@ -1,4 +1,5 @@
 import secrets
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -25,6 +26,13 @@ STATUS_LABELS = {
     STATUS_DUPLICATE: "Duplikat",
     STATUS_REJECTED: "Odrzucona",
 }
+
+# webhooki (v0.9.0): stan dostawy w outboxie i rodzaje zdarzeń
+WEBHOOK_PENDING = "pending"
+WEBHOOK_SENT = "sent"
+WEBHOOK_FAILED = "failed"
+EVENT_STATUS_CHANGED = "document.status_changed"
+EVENT_TEST = "webhook.test"
 
 
 def utcnow():
@@ -204,6 +212,8 @@ class Document(db.Model):
     supplier = db.relationship("Supplier")
     template = db.relationship("Template")
     template_version = db.relationship("TemplateVersion")
+    # bez backrefu: usunięcie klucza nie dotyka dokumentów (klucz z dokumentami można tylko dezaktywować, BE-18)
+    api_key = db.relationship("ApiKey")
 
     @validates("status")
     def _release_dedupe_key(self, key, value):
@@ -231,6 +241,45 @@ class ApiKey(db.Model):
     webhook_secret = db.Column(db.String(128))
     last_used_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=utcnow)
+    # dostawy webhooków znikają razem z kluczem — w ORM (delete-orphan) i w bazie (ON DELETE CASCADE)
+    deliveries = db.relationship("WebhookDelivery", back_populates="api_key", cascade="all, delete-orphan",
+                                 passive_deletes=True)
+
+
+def new_delivery_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+class WebhookDelivery(db.Model):
+    """Outbox webhooków (v0.9.0, migracja 99f2fe61d963): jeden wiersz = jedno zdarzenie do wysłania na adres klucza
+    API. Wiersz powstaje w tej samej sesji co zmiana dokumentu; wysyła go worker z ponowieniami."""
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        # lista dostaw klucza (API, panel): keyset po (created_at, id) w obrębie klucza; obsługuje też klucz obcy
+        # api_key_id (pierwsza kolumna) — osobny indeks na samym api_key_id byłby nadmiarowy
+        db.Index("ix_webhook_deliveries_api_key_created", "api_key_id", "created_at", "id"),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    # stały identyfikator dostawy (nagłówek X-XP-Delivery) — ten sam przy każdym ponowieniu
+    uuid = db.Column(db.String(36), unique=True, index=True, nullable=False, default=new_delivery_uuid)
+    api_key_id = db.Column(db.Integer, db.ForeignKey("api_keys.id", ondelete="CASCADE"), nullable=False)
+    # NULL dla webhook.test; bez kaskady — dokumentu z dostawą nie da się usunąć (reset demo kasuje najpierw dostawy)
+    document_id = db.Column(db.Integer, db.ForeignKey("documents.id"), index=True)
+    event = db.Column(db.String(64), nullable=False)
+    # ładunek zbudowany przy enqueue; bajty i podpis liczy wysyłka
+    payload = db.Column(db.JSON, nullable=False)
+    status = db.Column(db.String(16), nullable=False, default=WEBHOOK_PENDING, index=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    # kiedy najbliższa próba (także lease workera); NULL = od razu
+    next_attempt_at = db.Column(PRECISE_DATETIME, index=True)
+    # Text, a nie String(500): zbyt długi komunikat nie może wywrócić zapisu wyniku (tryb strict MariaDB);
+    # worker i tak obcina go przed zapisem
+    last_error = db.Column(db.Text)
+    last_status_code = db.Column(db.Integer)
+    created_at = db.Column(PRECISE_DATETIME, nullable=False, default=utcnow)
+    sent_at = db.Column(PRECISE_DATETIME)
+    api_key = db.relationship("ApiKey", back_populates="deliveries")
+    document = db.relationship("Document")
 
 
 def new_session_token() -> str:
