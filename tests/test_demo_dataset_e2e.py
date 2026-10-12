@@ -29,9 +29,10 @@ def _codes(doc, severity=None):
 
 
 def _flow(check=None):
-    """Przebieg „po kolei”: faza pierwsza (6 faktur, każda rozwiązana pierwszymi podpowiedziami), potem reszta
-    wczytywana pojedynczo w kolejności manifestu (jak operator: późniejsze faktury korzystają z nauki wcześniejszych).
-    `check(entry, doc)` wywoływane po wczytaniu, przed rozwiązaniem. Zwraca dokumenty w kolejności manifestu."""
+    """Przebieg jak w panelu: faza pierwsza (6 faktur, każda rozwiązana pierwszymi podpowiedziami), potem „pozostałe”
+    JEDNĄ partią (`load_phase("pozostale")`, jak przycisk „Wczytaj pozostałe” i skrypt curl), a dopiero po niej
+    rozwiązanie faktur z pułapkami. `check(entry, doc)` wywoływane po wczytaniu, przed rozwiązaniem. Zwraca dokumenty
+    w kolejności manifestu."""
     manifest = dd.load_manifest()
     by_name = {e.filename: e for e in manifest.entries}
     docs = {}
@@ -47,8 +48,9 @@ def _flow(check=None):
 
     for doc in dd.load_phase("pierwsze").loaded:
         handle(doc)
-    for entry in manifest.by_phase("pozostale"):
-        (doc,) = dd.load_entries([entry]).loaded
+    rest = dd.load_phase("pozostale")
+    assert not rest.skipped and len(rest.loaded) == 18
+    for doc in rest.loaded:
         handle(doc)
     return [docs[e.filename] for e in manifest.entries]
 

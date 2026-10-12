@@ -480,7 +480,7 @@
     {
       "order": 21,
       "filename": "21-eta-4.xml",
-      "sha256": "2a730a2f027db5a1352ccafc8bd8a0ee145a889b73673a783c7c238c173a45f3",
+      "sha256": "8bcac805db624a812c8f8b9ee6958a2ab79f848bec8743d8df6e51dc1296ca53",
       "supplier": "eta",
       "format": "xml",
       "phase": "rest",
@@ -498,7 +498,7 @@
     {
       "order": 22,
       "filename": "22-gamma-4.xml",
-      "sha256": "76007fd4a5f246faf5bf5701c91940b626acbb5051df216921a3886fcbfc6e9e",
+      "sha256": "dba59ae81b5b61cce68ec93a6e4c978bb42931a4980e9c001153bbcd1f86f3b2",
       "supplier": "gamma",
       "format": "xml",
       "phase": "rest",
@@ -516,7 +516,7 @@
     {
       "order": 23,
       "filename": "23-epsilon-4.json",
-      "sha256": "b601d9ac7a92c092fdb49ef1385ae6476d9d191fff3661f392fb7bc8a4b67c7d",
+      "sha256": "fcd923ee85bfb2e14452709a1678de8c7d59e07426185e34a3a13015254ef2c8",
       "supplier": "epsilon",
       "format": "json",
       "phase": "rest",
@@ -534,7 +534,7 @@
     {
       "order": 24,
       "filename": "24-zeta-4.csv",
-      "sha256": "3a43516e361f55dc22007127062ee920569a265537a41b4de2b302f184307218",
+      "sha256": "89b86561af69e553ee8312ff3d68dcd9ce3e7ada80611e865b0d2686155f614e",
       "supplier": "zeta",
       "format": "csv",
       "phase": "rest",
