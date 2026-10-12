@@ -186,8 +186,8 @@ def test_serve_mode_starts_isolated_instance(tool, tmp_path):
         assert health["status"] == "ok" and health["version"] == __version__
         with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(base + "/demo", timeout=10) as r:
             assert r.status == 200
-        # TODO (kontroler, po scaleniu karty zestawu z T3): dodać assert "Zestaw demo" w treści /demo
-        # (tu: /dokumenty wymaga logowania, więc sprawdzamy log startu — sześć plików zestawu wczytanych przed próbkami)
+            assert "Zestaw demo" in r.read().decode("utf-8")  # karta zestawu (tabela postępu widoczna bez logowania)
+        # /dokumenty wymaga logowania, więc kolejność wczytania sprawdzamy w logu startu (zestaw przed próbkami)
     from app.services.demo_dataset import load_manifest
     log = (tmp_path / "serwer.log").read_text(encoding="utf-8")
     for entry in load_manifest().by_phase("pierwsze"):
