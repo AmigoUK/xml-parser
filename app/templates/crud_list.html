@@ -33,7 +33,7 @@
   {% else %}
     <tr><td colspan="{{ spec.columns|length + 1 }}" class="text-muted">
       {%- if q %}Brak rekordów pasujących do „{{ q }}”.
-      {%- else %}Brak rekordów. <a href="{{ url_for('catalog.new_' ~ spec.key) }}">Dodaj pierwszy →</a>
+      {%- else %}Brak rekordów. <a href="{{ url_for('catalog.new_' ~ spec.key) }}">{{ spec.new_label }} →</a>
         {%- for label, endpoint in spec.extra_actions %} · <a href="{{ url_for(endpoint) }}">{{ label }}</a>{% endfor %}
       {%- endif -%}
     </td></tr>

@@ -13,7 +13,8 @@
     </tr>
   {% else %}
     <tr><td colspan="8" class="text-muted">
-      {%- if queue is defined and queue %}Kolejka pusta — wszystko wyjaśnione.
+      {%- if first_url is defined and first_url %}Brak dalszych dokumentów. <a href="{{ first_url }}">{{ "← Pierwsze" if queue is defined and queue else "← Najnowsze" }}</a>
+      {%- elif queue is defined and queue %}Kolejka pusta — wszystko wyjaśnione.
       {%- elif q is defined and q %}Brak dokumentów pasujących do „{{ q }}”.
       {%- else %}Brak dokumentów. <a href="{{ url_for('docs.upload') }}">Wgraj fakturę →</a>
       {%- endif -%}

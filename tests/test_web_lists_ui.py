@@ -92,6 +92,23 @@ def test_queue_pager_labels_and_empty_state(auth_client, monkeypatch):
     assert _href(pager, "← Pierwsze") == "/kolejka" and "Następne →" not in pager
 
 
+def test_empty_page_with_cursor_links_back_instead_of_empty_state(auth_client):
+    ids = [d.id for d in _docs(2, status=STATUS_NEEDS_REVIEW)]
+    html = _get(auth_client, f"/kolejka?after={max(ids)}")
+    assert "Kolejka pusta" not in html and "Brak dalszych dokumentów." in html
+    assert _href(html, "← Pierwsze") == "/kolejka" and _href(_pager(html), "← Pierwsze") == "/kolejka"
+    html = _get(auth_client, f"/dokumenty?before={min(ids)}")
+    assert "Wgraj fakturę →" not in html and "Brak dalszych dokumentów." in html
+    assert _href(html, "← Najnowsze") == "/dokumenty"
+    db.session.add(AuditLog(user="ala@example.com", action="ingest", entity="document"))
+    db.session.commit()
+    html = _get(auth_client, "/historia?before=1")
+    assert "Brak dalszych wpisów." in html and _href(html, "← Najnowsze") == "/historia"
+    html = _get(auth_client, "/szablony?after=99999")
+    assert "Brak dalszych szablonów." in html and "wgraj pierwszą fakturę" not in html
+    assert _href(html, "← Pierwsze") == "/szablony"
+
+
 def test_documents_empty_state_links_upload(auth_client):
     html = _get(auth_client, "/dokumenty")
     assert "Brak dokumentów." in html and _href(html, "Wgraj fakturę →") == "/wgraj"
@@ -104,7 +121,8 @@ def test_documents_empty_state_links_upload(auth_client):
 
 
 def test_list_pages_wrap_tables_in_table_responsive(auth_client):
-    for url in ("/pulpit", "/dokumenty", "/kolejka", "/historia", "/szablony", "/dostawcy"):
+    from app.web.catalog import SPECS
+    for url in ("/pulpit", "/dokumenty", "/kolejka", "/historia", "/szablony", *(spec.url for spec in SPECS)):
         html = _get(auth_client, url)
         assert re.search(r'<div class="table-responsive">\s*<table', html), url
 
@@ -176,11 +194,12 @@ def test_crud_empty_state_add_and_import_links(auth_client):
     html = _get(auth_client, "/towary")
     empty = re.search(r'<td colspan="\d+" class="text-muted">(.*?)</td>', html, re.S).group(1)
     assert "Brak rekordów." in empty
-    assert _href(empty, "Dodaj pierwszy →") == "/towary/nowy"
+    assert _href(empty, "Nowy towar →") == "/towary/nowy"  # R12: etykieta akcji ze spec.new_label
+    assert "Dodaj pierwszy" not in html
     assert _href(empty, "Import CSV") == "/towary/import"
     assert _href(html, "Nowy towar") == "/towary/nowy"  # przycisk w nagłówku = spec.new_label
     html = _get(auth_client, "/dostawcy")
-    assert _href(html, "Dodaj pierwszy →") == "/dostawcy/nowy" and "Import CSV" not in html
+    assert _href(html, "Nowy dostawca →") == "/dostawcy/nowy" and "Import CSV" not in html
     html = _get(auth_client, "/dostawcy", q="zzz")
     assert "Brak rekordów pasujących do „zzz”." in html
 
