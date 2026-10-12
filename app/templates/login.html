@@ -6,8 +6,10 @@
   {% if DEMO_MODE %}<div class="alert alert-info small">Tryb demo — e-mail konta znajdziesz na stronie <a href="{{ url_for('docs.index') }}">O demo</a>, hasło ustawia administrator instancji (<code>ADMIN_PASSWORD</code>).</div>{% endif %}
   <form method="post" class="card card-body">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="form-label">E-mail <input class="form-control" type="email" name="email" required autofocus></label>
-    <label class="form-label">Hasło <input class="form-control" type="password" name="password" required></label>
+    <label class="form-label" for="login-email">E-mail</label>
+    <input class="form-control mb-2" id="login-email" type="email" name="email" value="{{ request.form.get('email', '') }}" autocomplete="username" required autofocus>
+    <label class="form-label" for="login-password">Hasło</label>
+    <input class="form-control mb-3" id="login-password" type="password" name="password" autocomplete="current-password" required>
     <button class="btn btn-primary">Zaloguj</button>
   </form>
 </div></div>

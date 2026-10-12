@@ -18,6 +18,7 @@ from app.services.audit import audit
 from .paging import first_url, like_pattern, next_url, page_by_number, search_arg
 
 CRUD_PAGE_SIZE = 200  # rozmiar strony listy słownika (`?page=N`)
+TEXTAREA_MAX = 2000  # limit znaków pól wieloliniowych (kolumny Text nie mają długości)
 
 
 @dataclass
@@ -137,7 +138,8 @@ def register_crud(bp, spec: CrudSpec) -> None:
             form = request.form
         else:
             form = None
-        return render_template("crud_form.html", spec=spec, obj=obj, is_new=obj_id is None, form=form)
+        return render_template("crud_form.html", spec=spec, obj=obj, is_new=obj_id is None, form=form,
+                               textarea_max=TEXTAREA_MAX)
 
     def delete_view(obj_id: int):
         obj = db.session.get(spec.model, obj_id)
